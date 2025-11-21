@@ -1,0 +1,305 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1729 100%);
+  background-attachment: fixed;
+  color: #e5e7eb;
+  overflow-x: hidden;
+}
+
+/* 스크롤바 스타일링 - 파란색 테마 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a2332;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2d3e5f;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3d4e6f;
+}
+
+/* 애니메이션 */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(59, 130, 246, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.8);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* 레어리티 글로우 효과 */
+.glow-common { box-shadow: 0 0 10px rgba(156, 163, 175, 0.3); }
+.glow-rare { box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); }
+.glow-epic { box-shadow: 0 0 10px rgba(168, 85, 247, 0.5); }
+.glow-legendary { box-shadow: 0 0 15px rgba(249, 115, 22, 0.6); }
+.glow-mythic { box-shadow: 0 0 20px rgba(239, 68, 68, 0.7); }
+
+/* 숫자 카운트 애니메이션 */
+@keyframes number-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.number-pop {
+  animation: number-pop 0.3s ease-out;
+}
+
+/* 모달 애니메이션 */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.3s ease-out;
+}
+
+/* Dark 등급 글리치 효과 */
+@keyframes glitch-border {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.3),
+                0 0 10px rgba(100, 255, 218, 0.5),
+                0 0 15px rgba(100, 255, 218, 0.4),
+                inset 0 0 5px rgba(100, 255, 218, 0.2);
+  }
+  25% {
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.5),
+                0 0 15px rgba(138, 43, 226, 0.6),
+                0 0 20px rgba(138, 43, 226, 0.5),
+                inset 0 0 8px rgba(138, 43, 226, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.6),
+                0 0 20px rgba(0, 255, 255, 0.7),
+                0 0 30px rgba(0, 255, 255, 0.6),
+                inset 0 0 10px rgba(0, 255, 255, 0.4);
+  }
+  75% {
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.5),
+                0 0 15px rgba(255, 0, 255, 0.6),
+                0 0 20px rgba(255, 0, 255, 0.5),
+                inset 0 0 8px rgba(255, 0, 255, 0.3);
+  }
+}
+
+@keyframes glitch-text {
+  0%, 100% {
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.8),
+                 0 0 10px rgba(100, 255, 218, 0.8),
+                 0 0 15px rgba(100, 255, 218, 0.6),
+                 0 0 20px rgba(100, 255, 218, 0.4),
+                 2px 2px 2px rgba(0, 0, 0, 0.8);
+    color: #ffffff;
+  }
+  25% {
+    text-shadow: 0 0 8px rgba(255, 255, 255, 1),
+                 0 0 15px rgba(138, 43, 226, 0.9),
+                 0 0 20px rgba(138, 43, 226, 0.7),
+                 0 0 30px rgba(138, 43, 226, 0.5),
+                 -2px 2px 2px rgba(0, 0, 0, 0.8);
+    color: #e0d0ff;
+  }
+  50% {
+    text-shadow: 0 0 10px rgba(255, 255, 255, 1),
+                 0 0 20px rgba(0, 255, 255, 1),
+                 0 0 30px rgba(0, 255, 255, 0.8),
+                 0 0 40px rgba(0, 255, 255, 0.6),
+                 2px -2px 2px rgba(0, 0, 0, 0.8);
+    color: #d0ffff;
+  }
+  75% {
+    text-shadow: 0 0 8px rgba(255, 255, 255, 1),
+                 0 0 15px rgba(255, 0, 255, 0.9),
+                 0 0 20px rgba(255, 0, 255, 0.7),
+                 0 0 30px rgba(255, 0, 255, 0.5),
+                 -2px -2px 2px rgba(0, 0, 0, 0.8);
+    color: #ffd0ff;
+  }
+}
+
+.dark-glitch-border {
+  animation: glitch-border 2s ease-in-out infinite;
+}
+
+.dark-glitch-text {
+  animation: glitch-text 2s ease-in-out infinite;
+}
+
+/* Dark 등급 별 반짝임 애니메이션 */
+@keyframes dark-star-shine {
+  0%, 100% {
+    filter: drop-shadow(0 0 6px rgba(100, 255, 218, 1))
+            drop-shadow(0 0 12px rgba(138, 43, 226, 0.8))
+            drop-shadow(0 0 18px rgba(255, 255, 255, 0.6));
+    opacity: 1;
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(100, 255, 218, 1))
+            drop-shadow(0 0 20px rgba(0, 255, 255, 1))
+            drop-shadow(0 0 30px rgba(138, 43, 226, 1));
+    opacity: 0.9;
+  }
+}
+
+.dark-star-glow {
+  animation: dark-star-shine 2s ease-in-out infinite;
+}
+
+/* 영웅 등급별 글로우 효과 */
+/* Mythic 등급 - Dark 다음으로 강한 효과 */
+@keyframes hero-glow-mythic {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.6),
+                0 0 20px rgba(239, 68, 68, 0.4),
+                0 0 30px rgba(239, 68, 68, 0.2),
+                inset 0 0 10px rgba(239, 68, 68, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.8),
+                0 0 30px rgba(239, 68, 68, 0.6),
+                0 0 45px rgba(239, 68, 68, 0.4),
+                inset 0 0 15px rgba(239, 68, 68, 0.25);
+  }
+}
+
+.hero-glow-mythic {
+  animation: hero-glow-mythic 2.5s ease-in-out infinite;
+}
+
+/* Legendary 등급 */
+@keyframes hero-glow-legendary {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(249, 115, 22, 0.5),
+                0 0 16px rgba(249, 115, 22, 0.3),
+                0 0 24px rgba(249, 115, 22, 0.15),
+                inset 0 0 8px rgba(249, 115, 22, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(249, 115, 22, 0.7),
+                0 0 24px rgba(249, 115, 22, 0.5),
+                0 0 36px rgba(249, 115, 22, 0.3),
+                inset 0 0 12px rgba(249, 115, 22, 0.2);
+  }
+}
+
+.hero-glow-legendary {
+  animation: hero-glow-legendary 3s ease-in-out infinite;
+}
+
+/* Unique 등급 */
+@keyframes hero-glow-unique {
+  0%, 100% {
+    box-shadow: 0 0 6px rgba(168, 85, 247, 0.4),
+                0 0 12px rgba(168, 85, 247, 0.25),
+                0 0 18px rgba(168, 85, 247, 0.1),
+                inset 0 0 6px rgba(168, 85, 247, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.6),
+                0 0 20px rgba(168, 85, 247, 0.4),
+                0 0 30px rgba(168, 85, 247, 0.2),
+                inset 0 0 10px rgba(168, 85, 247, 0.15);
+  }
+}
+
+.hero-glow-unique {
+  animation: hero-glow-unique 3.5s ease-in-out infinite;
+}
+
+/* Epic 등급 */
+@keyframes hero-glow-epic {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(139, 92, 246, 0.35),
+                0 0 10px rgba(139, 92, 246, 0.2),
+                0 0 15px rgba(139, 92, 246, 0.08),
+                inset 0 0 5px rgba(139, 92, 246, 0.06);
+  }
+  50% {
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.5),
+                0 0 16px rgba(139, 92, 246, 0.3),
+                0 0 24px rgba(139, 92, 246, 0.15),
+                inset 0 0 8px rgba(139, 92, 246, 0.12);
+  }
+}
+
+.hero-glow-epic {
+  animation: hero-glow-epic 4s ease-in-out infinite;
+}
+
+/* Rare 등급 */
+@keyframes hero-glow-rare {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(59, 130, 246, 0.3),
+                0 0 8px rgba(59, 130, 246, 0.15),
+                0 0 12px rgba(59, 130, 246, 0.05),
+                inset 0 0 4px rgba(59, 130, 246, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 6px rgba(59, 130, 246, 0.45),
+                0 0 12px rgba(59, 130, 246, 0.25),
+                0 0 18px rgba(59, 130, 246, 0.1),
+                inset 0 0 6px rgba(59, 130, 246, 0.1);
+  }
+}
+
+.hero-glow-rare {
+  animation: hero-glow-rare 4.5s ease-in-out infinite;
+}
+
+/* Normal 등급 - 가장 약한 효과 */
+@keyframes hero-glow-normal {
+  0%, 100% {
+    box-shadow: 0 0 3px rgba(156, 163, 175, 0.25),
+                0 0 6px rgba(156, 163, 175, 0.12),
+                0 0 9px rgba(156, 163, 175, 0.04),
+                inset 0 0 3px rgba(156, 163, 175, 0.04);
+  }
+  50% {
+    box-shadow: 0 0 5px rgba(156, 163, 175, 0.35),
+                0 0 10px rgba(156, 163, 175, 0.2),
+                0 0 15px rgba(156, 163, 175, 0.08),
+                inset 0 0 5px rgba(156, 163, 175, 0.08);
+  }
+}
+
+.hero-glow-normal {
+  animation: hero-glow-normal 5s ease-in-out infinite;
+}
