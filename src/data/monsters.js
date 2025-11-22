@@ -202,17 +202,33 @@ export const getRareMonsterList = () => {
   return rareMonsters;
 };
 
-// 층별 도감 보너스 (각 층 구간의 일반 몬스터 10마리 + 희귀 1마리 = 11마리)
+// 층별 도감 보너스 - 세트 효과로 몬스터 수 감소
+// 2셋: 1마리 추가 감소
+// 5셋: 2마리 추가 감소 (총 3마리)
+// 10셋: 5마리 추가 감소 (총 8마리)
 export const getCollectionBonus = (collectedCount, totalCount) => {
-  // 피보나치 방식: 수집 개수별 개별 보너스
-  // 1개: 1%, 2개: 2%, 3개: 3%, 4개: 5%, 5개: 8%, 6개: 13%, 7개: 21%, 8개: 34%, 9개: 55%, 10개: 89%
-  const fibonacci = [0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-  const attackBonus = collectedCount > 0 && collectedCount <= 10 ? fibonacci[collectedCount] : 0;
+  let monsterReduction = 0;
 
-  // 세트 효과: 10개 완성 시 골드 획득량 50% 추가
-  const goldBonus = collectedCount >= totalCount ? 50 : 0;
+  // 기본: 수집한 수만큼 감소
+  monsterReduction = collectedCount;
 
-  return { attack: attackBonus, goldBonus: goldBonus, expBonus: 0 };
+  // 세트 보너스 누적 (2셋 + 5셋 + 10셋)
+  if (collectedCount >= 2) {
+    monsterReduction += 1; // 2셋: +1
+  }
+  if (collectedCount >= 5) {
+    monsterReduction += 2; // 5셋: +2 (총 2셋+5셋 = +3)
+  }
+  if (collectedCount >= 10) {
+    monsterReduction += 5; // 10셋: +5 (총 2셋+5셋+10셋 = +8)
+  }
+
+  return {
+    monsterReduction: monsterReduction,
+    attack: 0,
+    goldBonus: 0,
+    expBonus: 0
+  };
 };
 
 // 층에 맞는 몬스터 이름 가져오기 (monsterIndex 파라미터 추가)
@@ -254,42 +270,71 @@ const getMonsterNameForFloor = (floor, isBoss = false, isRare = false, monsterIn
 };
 
 export const getMonsterForStage = (stage, isBoss = false, forceRare = false, forceLegendary = false, collection = null) => {
-  // 희귀/전설 몬스터 출현 체크
-  let isRare = forceRare || Math.random() * 100 < RARE_MONSTER_CHANCE;
+  // 새로운 스폰 로직: 몬스터 타입을 먼저 결정 후, 수집 여부에 따라 희귀/전설 결정
+  let isRare = false;
   let isLegendary = false;
+  let monsterIndex = null;
 
-  // 보스가 아닌 경우, 희귀 몬스터 수집 여부에 따라 전설 출현
   if (!isBoss && collection) {
+    // 1. 몬스터 타입을 먼저 선택 (0-9)
     const rangeStart = Math.floor((stage - 1) / 5) * 5 + 1;
-    const monsterIndex = Math.floor(Math.random() * 10);
+    monsterIndex = Math.floor(Math.random() * 10);
     const rareId = `rare_${rangeStart}_${monsterIndex}`;
+    const legendaryId = `legendary_${rangeStart}_${monsterIndex}`;
 
-    // 희귀 수집 완료 시 전설 출현 가능
-    if (collection.rareMonsters?.[rareId]?.unlocked) {
-      isLegendary = forceLegendary || Math.random() * 100 < LEGENDARY_MONSTER_CHANCE;
-      if (isLegendary) isRare = false; // 전설이면 희귀가 아님
+    // 2. 해당 몬스터의 희귀 수집 여부 확인
+    const rareCollected = collection.rareMonsters?.[rareId]?.unlocked || false;
+    const legendaryCollected = collection.legendaryMonsters?.[legendaryId]?.unlocked || false;
+
+    // 3. 수집 상태에 따라 희귀/전설/일반 결정
+    if (!rareCollected) {
+      // 희귀가 수집 안됨 → 희귀 출현 가능
+      isRare = forceRare || Math.random() * 100 < RARE_MONSTER_COLLECTION_CHANCE; // 30% 확률
+    } else if (rareCollected && !legendaryCollected) {
+      // 희귀는 수집됨, 전설은 수집 안됨 → 전설 출현 가능
+      isLegendary = forceLegendary || Math.random() * 100 < LEGENDARY_MONSTER_COLLECTION_CHANCE; // 30% 확률
+    }
+    // 둘 다 수집됨 → 일반 몬스터 (isRare = false, isLegendary = false)
+  } else {
+    // 보스의 경우 기존 로직 유지
+    isRare = forceRare || Math.random() * 100 < RARE_MONSTER_CHANCE;
+    if (collection && isRare) {
+      const rangeStart = Math.floor((stage - 1) / 5) * 5 + 1;
+      const rareId = `rare_boss_${rangeStart}`;
+      if (collection.rareBosses?.[rareId]?.unlocked) {
+        isLegendary = forceLegendary || Math.random() * 100 < LEGENDARY_MONSTER_CHANCE;
+        if (isLegendary) isRare = false;
+      }
     }
   }
 
-  const monsterData = getMonsterNameForFloor(stage, isBoss, isRare || isLegendary);
+  const monsterData = getMonsterNameForFloor(stage, isBoss, isRare || isLegendary, monsterIndex);
 
   if (isBoss) {
-    // 희귀 보스는 HP와 골드가 1.5배
-    const hpMultiplier = isRare ? 1.5 : 1;
-    const goldMultiplier = isRare ? 1.5 : 1;
+    // 희귀 보스는 HP 5배, 전설 보스는 HP 20배
+    // 골드는 체력에 비례
+    let hpMultiplier = 1;
+
+    if (isLegendary) {
+      hpMultiplier = 20; // 전설 보스: 일반 보스의 20배 (= 일반 몹의 200배)
+    } else if (isRare) {
+      hpMultiplier = 5; // 희귀 보스: 일반 보스의 5배
+    }
 
     // 5층 단위로 시작 층 계산
     const rangeStart = Math.floor((stage - 1) / 5) * 5 + 1;
 
+    const bossHP = Math.floor(getBossHP(stage) * hpMultiplier);
+
     return {
-      id: isRare ? `rare_boss_${stage}` : `boss_${stage}`,
+      id: isLegendary ? `legendary_boss_${stage}` : (isRare ? `rare_boss_${stage}` : `boss_${stage}`),
       name: monsterData.name,
-      hp: Math.floor(getBossHP(stage) * hpMultiplier),
-      maxHp: Math.floor(getBossHP(stage) * hpMultiplier),
-      gold: Math.floor(getBossGold(stage) * goldMultiplier),
+      hp: bossHP,
+      maxHp: bossHP,
+      gold: bossHP, // 골드는 체력에 비례
       isBoss: true,
       isRare: isRare,
-      isLegendary: false,
+      isLegendary: isLegendary,
       stage,
       monsterIndex: monsterData.monsterIndex,
       rangeStart: rangeStart // 도감 ID 계산용
@@ -297,26 +342,26 @@ export const getMonsterForStage = (stage, isBoss = false, forceRare = false, for
   }
 
   // 희귀 몬스터는 HP 3배, 전설 몬스터는 HP 10배
+  // 골드는 체력에 비례
   let hpMultiplier = 1;
-  let goldMultiplier = 1;
 
   if (isLegendary) {
     hpMultiplier = 10;
-    goldMultiplier = 10;
   } else if (isRare) {
     hpMultiplier = 3;
-    goldMultiplier = 3;
   }
 
   // 5층 단위로 시작 층 계산
   const rangeStart = Math.floor((stage - 1) / 5) * 5 + 1;
 
+  const monsterHP = Math.floor(getMonsterHP(stage) * hpMultiplier);
+
   return {
     id: isLegendary ? `legendary_${stage}_${monsterData.monsterIndex}` : (isRare ? `rare_${stage}_${monsterData.monsterIndex}` : `monster_${stage}`),
     name: monsterData.name,
-    hp: Math.floor(getMonsterHP(stage) * hpMultiplier),
-    maxHp: Math.floor(getMonsterHP(stage) * hpMultiplier),
-    gold: Math.floor(getMonsterGold(stage) * goldMultiplier),
+    hp: monsterHP,
+    maxHp: monsterHP,
+    gold: monsterHP, // 골드는 체력에 비례
     isBoss: false,
     isRare: isRare,
     isLegendary: isLegendary,

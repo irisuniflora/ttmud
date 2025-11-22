@@ -3,7 +3,8 @@ import { GameProvider, useGame } from './store/GameContext';
 import PlayerInfo from './components/Player/PlayerInfo';
 import StatsList from './components/Player/StatsList';
 import HeroList from './components/Heroes/HeroList';
-import Inventory from './components/Inventory/Inventory';
+import Equipment from './components/Equipment/Equipment';
+import Consumables from './components/Inventory/Consumables';
 import SkillTree from './components/SkillTree/SkillTree';
 import Collection from './components/Collection/Collection';
 import CombatLog from './components/Combat/CombatLog';
@@ -30,9 +31,8 @@ const GameContent = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-              Tap Titans MUD
+              Abyss Walker
             </h1>
-            <p className="text-sm text-gray-400 font-semibold">방치형 텍스트 RPG</p>
           </div>
           <div className="flex gap-2">
             <button
@@ -92,6 +92,16 @@ const GameContent = () => {
                 👥 영웅
               </button>
               <button
+                onClick={() => setActiveTab('equipment')}
+                className={`px-4 py-2 rounded font-bold transition-all ${
+                  activeTab === 'equipment'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
+                }`}
+              >
+                ⚔️ 장비
+              </button>
+              <button
                 onClick={() => setActiveTab('inventory')}
                 className={`px-4 py-2 rounded font-bold transition-all ${
                   activeTab === 'inventory'
@@ -136,7 +146,8 @@ const GameContent = () => {
             {/* 탭 컨텐츠 - 이 영역만 스크롤 */}
             <div className="flex-1 overflow-y-auto">
               {activeTab === 'heroes' && <HeroList />}
-              {activeTab === 'inventory' && <Inventory />}
+              {activeTab === 'equipment' && <Equipment />}
+              {activeTab === 'inventory' && <Consumables />}
               {activeTab === 'skills' && <SkillTree />}
               {activeTab === 'collection' && <Collection />}
               {activeTab === 'logs' && <CombatLog />}

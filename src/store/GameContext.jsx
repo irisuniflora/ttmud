@@ -191,6 +191,22 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
+  const useOrb = (slot) => {
+    const result = engineRef.current.useOrb(slot);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const releaseMonster = (monsterId, type) => {
+    const result = engineRef.current.releaseMonster(monsterId, type);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
   // 보스 타이머 업데이트 (1초마다)
   useEffect(() => {
     const timerInterval = setInterval(() => {
@@ -227,6 +243,8 @@ export const GameProvider = ({ children }) => {
       autoSellItems,
       updateSettings,
       useGearCore,
+      useOrb,
+      releaseMonster,
       prestige,
       upgradeSkill,
       enterBossBattle,

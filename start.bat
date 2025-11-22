@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-echo Starting Tap Titans MUD...
+echo Starting Abyss Walker...
 echo.
 echo Server will be available at: http://localhost:3000
 echo.

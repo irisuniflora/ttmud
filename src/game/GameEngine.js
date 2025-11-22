@@ -1,6 +1,6 @@
 import { getMonsterForStage, getCollectionBonus, RARE_MONSTER_COLLECTION_CHANCE, LEGENDARY_MONSTER_COLLECTION_CHANCE } from '../data/monsters.js';
 import { HEROES, getHeroById, getHeroStats, getNextGrade, getUpgradeCost, getStarUpgradeCost } from '../data/heroes.js';
-import { generateItem, GEAR_CORE_DROP_RATE, upgradeItemStatToMax } from '../data/items.js';
+import { generateItem, GEAR_CORE_DROP_RATE, upgradeItemStatToMax, rerollItemWithOrb } from '../data/items.js';
 import { getTotalSkillEffects } from '../data/skills.js';
 import {
   GAME_CONFIG,
@@ -24,6 +24,16 @@ export class GameEngine {
     // 초기 몬스터가 없으면 생성
     if (!this.state.currentMonster) {
       this.state.currentMonster = getMonsterForStage(this.state.player.floor, false, false, false, this.state.collection);
+      // 희귀 몬스터 스폰 체크 (초기화)
+      if (this.state.currentMonster.isRare && !this.state.currentMonster.isBoss) {
+        if (!this.state.statistics) {
+          this.state.statistics = { rareMonstersMet: 0, rareMonstersCaptured: 0 };
+        }
+        if (!this.state.statistics.rareMonstersMet) {
+          this.state.statistics.rareMonstersMet = 0;
+        }
+        this.state.statistics.rareMonstersMet++;
+      }
     }
   }
 
@@ -73,6 +83,7 @@ export class GameEngine {
       inventory: [],
       upgradeCoins: 5000, // 등급업 코인 (테스트용 5000개)
       gearCores: 0, // 기어 코어 (장비 옵션 최대치 강화 아이템)
+      orbs: 0, // 오브 (아이템 옵션 재조정 아이템)
       skillLevels: {},
       settings: {
         autoSellEnabled: false, // 자동 판매 활성화 여부
@@ -93,6 +104,18 @@ export class GameEngine {
             count: 500,
             totalObtained: 500
           }
+        },
+        // 방생 시스템
+        release: {
+          // 층별 방생 데이터 (rare_1_0, rare_1_1 등)
+          releasedMonsters: {},
+          // 누적 방생 통계
+          totalRareReleased: 0,
+          totalLegendaryReleased: 0,
+          // 보상 아이템
+          legendaryScrolls: 0, // 전설 몬스터 소환권
+          legendaryChoiceTokens: 0, // 전설 몬스터 도감 선택권
+          mysteryTokens: 0 // 수수께끼 토큰
         }
       },
       statistics: {
@@ -101,7 +124,9 @@ export class GameEngine {
         totalMonstersKilled: 0,
         totalBossesKilled: 0,
         totalItemsFound: 0,
-        totalHeroCardsFound: 0
+        totalHeroCardsFound: 0,
+        rareMonstersMet: 0, // 만난 희귀 몬스터 수
+        rareMonstersCaptured: 0 // 수집한 희귀 몬스터 수
       }
     };
   }
@@ -149,6 +174,7 @@ export class GameEngine {
 
     // 새로운 일반 몬스터 생성
     this.state.currentMonster = getMonsterForStage(this.state.player.floor, false, false, false, collection);
+    this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
   }
 
   // 총 DPS 계산
@@ -222,7 +248,13 @@ export class GameEngine {
     heroBuffs.expBonus += collectionBonus.expBonus;
 
     // 영웅 공격력 추가
-    const totalDmg = playerDmg + heroBuffs.attack;
+    let totalDmg = playerDmg + heroBuffs.attack;
+
+    // 방생 보너스 곱연산 적용
+    const releaseBonus = this.calculateReleaseBonus(Math.floor((player.floor - 1) / 5) * 5 + 1);
+    if (releaseBonus.damageBonus > 0) {
+      totalDmg *= (1 + releaseBonus.damageBonus / 100);
+    }
 
     // 장비 스탯 적용 (크리티컬 등)
     let equipmentCritChance = 0;
@@ -330,8 +362,9 @@ export class GameEngine {
       }
     });
 
-    // 골드 획득 (장비 + 영웅 버프 포함)
-    let goldGained = currentMonster.gold;
+    // 골드 획득 = 몬스터 최대 체력 기반 (체력 = 골드)
+    // 골드 보너스는 % 증가로 적용
+    let goldGained = currentMonster.maxHp;
     goldGained *= (1 + (player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus) / 100);
     goldGained = Math.floor(goldGained);
 
@@ -359,10 +392,15 @@ export class GameEngine {
     // 기어 코어 드랍
     this.tryDropGearCore();
 
+    // 오브 드랍
+    this.tryDropOrb();
+
     // 희귀 몬스터 도감 등록 (30% 확률)
     if (currentMonster.isRare && !currentMonster.isBoss && currentMonster.monsterIndex !== undefined) {
       // 새로운 ID 형식: rare_floorStart_monsterIndex
-      const rangeStart = currentMonster.rangeStart || Math.floor((currentMonster.stage - 1) / 5) * 5 + 1;
+      // 101층 이상은 1-100으로 매핑 (접두사만 다르고 같은 몬스터)
+      const baseFloor = ((currentMonster.stage - 1) % 100) + 1;
+      const rangeStart = Math.floor((baseFloor - 1) / 5) * 5 + 1;
       const rareId = `rare_${rangeStart}_${currentMonster.monsterIndex}`;
 
       // 도감에 없으면 초기화
@@ -381,6 +419,7 @@ export class GameEngine {
       if (!collection.rareMonsters[rareId].unlocked) {
         if (Math.random() * 100 < RARE_MONSTER_COLLECTION_CHANCE) {
           collection.rareMonsters[rareId].unlocked = true;
+          statistics.rareMonstersCaptured++; // 통계: 수집한 희귀 몬스터 수 증가
           this.addCombatLog(`✨ 희귀 몬스터 수집 완료! ${currentMonster.name}`, 'rare_monster');
         } else {
           this.addCombatLog(`⚔️ 희귀 몬스터 처치! ${currentMonster.name} (미수집)`, 'rare_monster');
@@ -391,7 +430,9 @@ export class GameEngine {
     // 희귀 보스 도감 등록 (30% 확률)
     if (currentMonster.isRare && currentMonster.isBoss) {
       // ID 형식: rare_boss_floorStart
-      const rangeStart = currentMonster.rangeStart || Math.floor((currentMonster.stage - 1) / 5) * 5 + 1;
+      // 101층 이상은 1-100으로 매핑 (접두사만 다르고 같은 보스)
+      const baseFloor = ((currentMonster.stage - 1) % 100) + 1;
+      const rangeStart = Math.floor((baseFloor - 1) / 5) * 5 + 1;
       const rareId = `rare_boss_${rangeStart}`;
 
       // 도감에 없으면 초기화
@@ -423,7 +464,9 @@ export class GameEngine {
 
     // 전설 몬스터 도감 등록 (30% 확률)
     if (currentMonster.isLegendary && !currentMonster.isBoss && currentMonster.monsterIndex !== undefined) {
-      const rangeStart = currentMonster.rangeStart || Math.floor((currentMonster.stage - 1) / 5) * 5 + 1;
+      // 101층 이상은 1-100으로 매핑 (접두사만 다르고 같은 몬스터)
+      const baseFloor = ((currentMonster.stage - 1) % 100) + 1;
+      const rangeStart = Math.floor((baseFloor - 1) / 5) * 5 + 1;
       const legendaryId = `legendary_${rangeStart}_${currentMonster.monsterIndex}`;
 
       // 도감에 없으면 초기화
@@ -453,8 +496,46 @@ export class GameEngine {
       }
     }
 
-    // 장비로 인한 몬스터 감소 적용 (최소 5마리는 유지)
-    const actualMonstersPerFloor = Math.max(5, FLOOR_CONFIG.monstersPerFloor - equipmentMonsterReduction);
+    // 전설 보스 도감 등록 (30% 확률)
+    if (currentMonster.isLegendary && currentMonster.isBoss) {
+      // ID 형식: legendary_boss_floorStart
+      // 101층 이상은 1-100으로 매핑 (접두사만 다르고 같은 보스)
+      const baseFloor = ((currentMonster.stage - 1) % 100) + 1;
+      const rangeStart = Math.floor((baseFloor - 1) / 5) * 5 + 1;
+      const legendaryId = `legendary_boss_${rangeStart}`;
+
+      // 도감에 없으면 초기화
+      if (!collection.legendaryBosses) {
+        collection.legendaryBosses = {};
+      }
+
+      if (!collection.legendaryBosses[legendaryId]) {
+        collection.legendaryBosses[legendaryId] = {
+          name: currentMonster.name,
+          count: 0,
+          unlocked: false
+        };
+      }
+
+      // 처치 횟수 증가
+      collection.legendaryBosses[legendaryId].count++;
+
+      // 아직 미수집 상태면 30% 확률로 수집
+      if (!collection.legendaryBosses[legendaryId].unlocked) {
+        if (Math.random() * 100 < LEGENDARY_MONSTER_COLLECTION_CHANCE) {
+          collection.legendaryBosses[legendaryId].unlocked = true;
+          this.addCombatLog(`🌟 전설 보스 수집 완료! ${currentMonster.name}`, 'legendary_boss');
+        } else {
+          this.addCombatLog(`⚔️ 전설 보스 처치! ${currentMonster.name} (미수집)`, 'legendary_boss');
+        }
+      }
+    }
+
+    // 도감 보너스 계산
+    const collectionBonus = this.calculateCollectionBonus();
+
+    // 장비 + 도감으로 인한 몬스터 감소 적용 (최소 5마리는 유지)
+    const actualMonstersPerFloor = Math.max(5, FLOOR_CONFIG.monstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction);
 
     // 스테이지 스킵 확률 체크 (일반 몬스터만, 보스는 제외) - 장비 + 영웅 버프
     let skipCount = 0;
@@ -484,6 +565,7 @@ export class GameEngine {
 
       // 새 층의 일반 몬스터 생성
       this.state.currentMonster = getMonsterForStage(player.floor, false, false, false, collection);
+      this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
     } else {
       // 일반 몬스터 처치
       player.monstersKilledInFloor++;
@@ -496,16 +578,29 @@ export class GameEngine {
           player.bossTimer = FLOOR_CONFIG.bossTimeLimit;
           // 보스 몬스터 생성
           this.state.currentMonster = getMonsterForStage(player.floor, true, false, false, collection);
+          this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
         } else {
           // 실패한 적이 있으면 boss_ready 상태로 (수동 입장 대기)
           player.floorState = 'boss_ready';
           // 일반 몬스터 생성
           this.state.currentMonster = getMonsterForStage(player.floor, false, false, false, collection);
+          this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
         }
       } else {
         // 다음 몬스터 생성 (같은 층)
         this.state.currentMonster = getMonsterForStage(player.floor, false, false, false, collection);
+        this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
       }
+    }
+  }
+
+  // 희귀 몬스터 스폰 체크 (만난 횟수 증가)
+  checkRareMonsterSpawn() {
+    const { currentMonster, statistics } = this.state;
+
+    // 희귀 몬스터가 스폰되었을 때 통계 증가
+    if (currentMonster.isRare && !currentMonster.isBoss) {
+      statistics.rareMonstersMet++;
     }
   }
 
@@ -540,8 +635,14 @@ export class GameEngine {
       }
     });
 
-    const dropChance = player.stats.dropRate + equipmentDropRate + (skillEffects.dropRate || 0) + heroDropRateBonus;
-    
+    let dropChance = player.stats.dropRate + equipmentDropRate + (skillEffects.dropRate || 0) + heroDropRateBonus;
+
+    // 방생 보너스 곱연산 적용
+    const releaseBonus = this.calculateReleaseBonus(Math.floor((player.floor - 1) / 5) * 5 + 1);
+    if (releaseBonus.dropRateBonus > 0) {
+      dropChance *= (1 + releaseBonus.dropRateBonus / 100);
+    }
+
     if (Math.random() * 100 < dropChance) {
       const slots = ['weapon', 'armor', 'gloves', 'boots', 'necklace', 'ring'];
       const randomSlot = slots[Math.floor(Math.random() * slots.length)];
@@ -647,6 +748,9 @@ export class GameEngine {
       // 카드 1장 추가
       collection.heroCards[randomHero.id].count++;
       collection.heroCards[randomHero.id].totalObtained++;
+
+      // 로그 추가
+      this.addCombatLog(`🎴 영웅 카드 획득! ${randomHero.name} (보유: ${collection.heroCards[randomHero.id].count}장)`, 'hero_card');
 
       return { type: 'hero_card', hero: randomHero, count: collection.heroCards[randomHero.id].count };
     }
@@ -760,6 +864,9 @@ export class GameEngine {
       const coinAmount = calculateUpgradeCoinAmount(player.floor);
       this.state.upgradeCoins += coinAmount;
 
+      // 로그 추가
+      this.addCombatLog(`📖 영웅의 서 획득! +${coinAmount}개`, 'upgrade_coin');
+
       return coinAmount;
     }
 
@@ -772,6 +879,17 @@ export class GameEngine {
     if (Math.random() * 100 < GEAR_CORE_DROP_RATE) {
       this.state.gearCores += 1;
       this.addCombatLog('⚙️ 기어 코어 획득!', 'gear_core');
+      return true;
+    }
+    return false;
+  }
+
+  // 오브 드랍 시도
+  tryDropOrb() {
+    // 0.5% 확률
+    if (Math.random() * 100 < 0.5) {
+      this.state.orbs += 1;
+      this.addCombatLog('🔮 오브 획득!', 'orb');
       return true;
     }
     return false;
@@ -988,7 +1106,10 @@ export class GameEngine {
       }
     });
 
-    const actualMonstersPerFloor = Math.max(5, FLOOR_CONFIG.monstersPerFloor - equipmentMonsterReduction);
+    // 도감 보너스 계산
+    const collectionBonus = this.calculateCollectionBonus();
+
+    const actualMonstersPerFloor = Math.max(5, FLOOR_CONFIG.monstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction);
 
     // 보스방 입장 가능 조건: 필요한 몬스터 수 처치
     if (player.monstersKilledInFloor < actualMonstersPerFloor) {
@@ -1001,6 +1122,7 @@ export class GameEngine {
 
     // 보스 몬스터 생성
     this.state.currentMonster = getMonsterForStage(player.floor, true, false, false, this.state.collection);
+    this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
 
     return true;
   }
@@ -1030,6 +1152,7 @@ export class GameEngine {
 
     // 일반 몬스터로 교체
     this.state.currentMonster = getMonsterForStage(player.floor, false, false, false, collection);
+    this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
   }
 
   // 슬롯 강화
@@ -1173,38 +1296,321 @@ export class GameEngine {
     };
   }
 
-  // 도감 보너스 계산 (층별 5층 단위로 보너스 누적)
+  // 오브로 아이템 옵션 재조정
+  useOrb(slot) {
+    const { equipment, player } = this.state;
+
+    // 오브 소지 확인
+    if (this.state.orbs < 1) {
+      return { success: false, message: '오브가 부족합니다' };
+    }
+
+    // 장비 착용 확인
+    const item = equipment[slot];
+    if (!item) {
+      return { success: false, message: '해당 슬롯에 장비가 없습니다' };
+    }
+
+    // 아이템 재조정
+    const success = rerollItemWithOrb(item, player.floor);
+    if (!success) {
+      return { success: false, message: '재조정에 실패했습니다' };
+    }
+
+    // 오브 소모
+    this.state.orbs -= 1;
+
+    return {
+      success: true,
+      message: `${item.name}의 옵션을 재조정했습니다!`,
+      item: item
+    };
+  }
+
+  // 도감 보너스 계산 (층별 5층 단위로)
   calculateCollectionBonus() {
     const { collection, player } = this.state;
-    let totalBonus = { attack: 0, goldBonus: 0, expBonus: 0 };
+    let totalBonus = { monsterReduction: 0, attack: 0, goldBonus: 0, expBonus: 0, dropRate: 0 };
 
     // rareMonsters가 없으면 초기화
     if (!collection.rareMonsters) {
       collection.rareMonsters = {};
     }
 
-    // 희귀 몬스터 도감 기준으로 10층 구간별 보너스 계산
-    const maxFloorRange = Math.floor(player.highestFloor / 10) * 10;
-
-    for (let floorStart = 1; floorStart <= maxFloorRange; floorStart += 10) {
-      // 해당 10층 구간의 희귀 몬스터들 (2마리: floorStart와 floorStart+5)
-      const rare1Id = `rare_${floorStart}`;
-      const rare2Id = `rare_${floorStart + 5}`;
-
-      let collectedCount = 0;
-      if (collection.rareMonsters[rare1Id]?.unlocked) collectedCount++;
-      if (collection.rareMonsters[rare2Id]?.unlocked) collectedCount++;
-
-      const totalCount = 2; // 10층 구간당 희귀 몬스터 2마리
-
-      // 해당 구간의 보너스 계산
-      const bonus = getCollectionBonus(collectedCount, totalCount);
-      totalBonus.attack += bonus.attack;
-      totalBonus.goldBonus += bonus.goldBonus;
-      totalBonus.expBonus += bonus.expBonus;
+    // legendaryMonsters가 없으면 초기화
+    if (!collection.legendaryMonsters) {
+      collection.legendaryMonsters = {};
     }
 
+    // 현재 층의 5층 구간 계산 (101+ 층도 1-100으로 매핑)
+    const baseFloor = ((player.floor - 1) % 100) + 1;
+    const rangeStart = Math.floor((baseFloor - 1) / 5) * 5 + 1;
+
+    // 해당 5층 구간의 희귀 몬스터 10마리 확인
+    let rareCollectedCount = 0;
+    for (let i = 0; i < 10; i++) {
+      const rareId = `rare_${rangeStart}_${i}`;
+      if (collection.rareMonsters[rareId]?.unlocked) {
+        rareCollectedCount++;
+      }
+    }
+
+    // 해당 5층 구간의 전설 몬스터 10마리 확인
+    let legendaryCollectedCount = 0;
+    for (let i = 0; i < 10; i++) {
+      const legendaryId = `legendary_${rangeStart}_${i}`;
+      if (collection.legendaryMonsters[legendaryId]?.unlocked) {
+        legendaryCollectedCount++;
+      }
+    }
+
+    const totalCount = 10; // 5층 구간당 몬스터 10마리
+
+    // 희귀 보너스 계산
+    const rareBonus = getCollectionBonus(rareCollectedCount, totalCount);
+
+    // 전설 보너스 계산 (희귀와 동일한 로직)
+    const legendaryBonus = getCollectionBonus(legendaryCollectedCount, totalCount);
+
+    // 희귀 + 전설 보너스 합산
+    totalBonus.monsterReduction = rareBonus.monsterReduction + legendaryBonus.monsterReduction;
+    totalBonus.attack = rareBonus.attack + legendaryBonus.attack;
+    totalBonus.goldBonus = rareBonus.goldBonus + legendaryBonus.goldBonus;
+    totalBonus.expBonus = rareBonus.expBonus + legendaryBonus.expBonus;
+
+    // 방생 보너스는 이제 곱연산으로 calculateTotalDPS()와 tryDropItem()에서 직접 적용됨
+
     return totalBonus;
+  }
+
+  // 방생 보너스 계산 (해당 구간, 방생 횟수 반영)
+  calculateReleaseBonus(rangeStart) {
+    const { collection } = this.state;
+
+    if (!collection.release) {
+      collection.release = {
+        releasedMonsters: {},
+        totalRareReleased: 0,
+        totalLegendaryReleased: 0,
+        legendaryScrolls: 0,
+        legendaryChoiceTokens: 0,
+        mysteryTokens: 0
+      };
+    }
+
+    let damageBonus = 0;
+    let dropRateBonus = 0;
+
+    // 해당 구간의 방생된 몬스터 확인
+    Object.entries(collection.release.releasedMonsters).forEach(([monsterId, data]) => {
+      // monsterId 형식: rare_1_0, legendary_1_0 등
+      const parts = monsterId.split('_');
+      const type = parts[0]; // 'rare' or 'legendary'
+      const floor = parseInt(parts[1]);
+
+      // 현재 구간에 속하는지 확인
+      if (floor === rangeStart) {
+        const releaseCount = data.releaseCount || 0;
+        if (type === 'rare') {
+          // 희귀: 1회당 +5% (최대 3회 = +15%)
+          damageBonus += 5 * releaseCount;
+          dropRateBonus += 5 * releaseCount;
+        } else if (type === 'legendary') {
+          // 전설: 1회당 +20% (최대 3회 = +60%)
+          damageBonus += 20 * releaseCount;
+          dropRateBonus += 20 * releaseCount;
+        }
+      }
+    });
+
+    return { damageBonus, dropRateBonus };
+  }
+
+  // 몬스터 방생 (최대 3회)
+  releaseMonster(monsterId, type = 'rare') {
+    const { collection } = this.state;
+
+    // release 초기화
+    if (!collection.release) {
+      collection.release = {
+        releasedMonsters: {}, // { monsterId: { name, releaseCount, releasedAt } }
+        totalRareReleased: 0,
+        totalLegendaryReleased: 0,
+        legendaryScrolls: 0,
+        legendaryChoiceTokens: 0,
+        mysteryTokens: 0
+      };
+    }
+
+    // 몬스터가 수집되어 있는지 확인
+    if (type === 'rare') {
+      if (!collection.rareMonsters[monsterId]?.unlocked) {
+        return { success: false, message: '수집되지 않은 몬스터입니다' };
+      }
+
+      // 전설 우선 방생 확인
+      const legendaryId = monsterId.replace('rare_', 'legendary_');
+      const legendaryCollected = collection.legendaryMonsters?.[legendaryId]?.unlocked || false;
+      const legendaryReleaseData = collection.release.releasedMonsters[legendaryId];
+      const legendaryReleaseCount = legendaryReleaseData?.releaseCount || 0;
+
+      // 전설이 수집되어 있고 방생 횟수가 희귀보다 적으면 방생 불가
+      const rareReleaseData = collection.release.releasedMonsters[monsterId];
+      const rareReleaseCount = rareReleaseData?.releaseCount || 0;
+
+      if (legendaryCollected && legendaryReleaseCount < rareReleaseCount + 1) {
+        const monsterName = collection.rareMonsters[monsterId].name;
+        return {
+          success: false,
+          message: `${monsterName}의 전설 버전을 먼저 방생해야 합니다!`
+        };
+      }
+
+      // 방생 횟수 확인 (최대 3회)
+      if (rareReleaseCount >= 3) {
+        return { success: false, message: '최대 방생 횟수(3회)에 도달했습니다!' };
+      }
+
+      // 방생 처리
+      const monsterName = collection.rareMonsters[monsterId].name;
+      collection.rareMonsters[monsterId].unlocked = false;
+
+      if (!collection.release.releasedMonsters[monsterId]) {
+        collection.release.releasedMonsters[monsterId] = {
+          name: monsterName,
+          releaseCount: 0,
+          releasedAt: Date.now()
+        };
+      }
+      collection.release.releasedMonsters[monsterId].releaseCount++;
+      collection.release.releasedMonsters[monsterId].releasedAt = Date.now();
+      collection.release.totalRareReleased++;
+
+      // 마일스톤 보상 체크
+      this.checkReleaseMilestones();
+
+      this.addCombatLog(`🕊️ ${monsterName}을(를) 방생했습니다! (${collection.release.releasedMonsters[monsterId].releaseCount}/3회)`, 'release');
+
+      return {
+        success: true,
+        message: `${monsterName}을(를) 방생했습니다! (${collection.release.releasedMonsters[monsterId].releaseCount}/3회)`,
+        damageBonus: 5,
+        dropRateBonus: 5
+      };
+    } else if (type === 'legendary') {
+      if (!collection.legendaryMonsters[monsterId]?.unlocked) {
+        return { success: false, message: '수집되지 않은 몬스터입니다' };
+      }
+
+      // 방생 횟수 확인 (최대 3회)
+      const legendaryReleaseData = collection.release.releasedMonsters[monsterId];
+      const legendaryReleaseCount = legendaryReleaseData?.releaseCount || 0;
+
+      if (legendaryReleaseCount >= 3) {
+        return { success: false, message: '최대 방생 횟수(3회)에 도달했습니다!' };
+      }
+
+      // 방생 처리
+      const monsterName = collection.legendaryMonsters[monsterId].name;
+      collection.legendaryMonsters[monsterId].unlocked = false;
+
+      if (!collection.release.releasedMonsters[monsterId]) {
+        collection.release.releasedMonsters[monsterId] = {
+          name: monsterName,
+          releaseCount: 0,
+          releasedAt: Date.now()
+        };
+      }
+      collection.release.releasedMonsters[monsterId].releaseCount++;
+      collection.release.releasedMonsters[monsterId].releasedAt = Date.now();
+      collection.release.totalLegendaryReleased++;
+
+      // 마일스톤 보상 체크
+      this.checkReleaseMilestones();
+
+      this.addCombatLog(`🕊️ ${monsterName}을(를) 방생했습니다! (${collection.release.releasedMonsters[monsterId].releaseCount}/3회)`, 'release');
+
+      return {
+        success: true,
+        message: `${monsterName}을(를) 방생했습니다! (${collection.release.releasedMonsters[monsterId].releaseCount}/3회)`,
+        damageBonus: 20,
+        dropRateBonus: 20
+      };
+    }
+
+    return { success: false, message: '잘못된 몬스터 타입입니다' };
+  }
+
+  // 방생 마일스톤 보상 체크
+  checkReleaseMilestones() {
+    const { collection } = this.state;
+    const { totalRareReleased, totalLegendaryReleased } = collection.release;
+
+    // 희귀 몬스터 마일스톤
+    const rareMilestones = [
+      { count: 5, scrolls: 1 },
+      { count: 10, scrolls: 2 },
+      { count: 25, scrolls: 3 },
+      { count: 50, scrolls: 5 }
+    ];
+
+    rareMilestones.forEach(milestone => {
+      if (totalRareReleased === milestone.count) {
+        collection.release.legendaryScrolls += milestone.scrolls;
+        this.addCombatLog(`🎁 희귀 방생 ${milestone.count}마리 달성! 전설 소환권 ${milestone.scrolls}개 획득!`, 'milestone');
+      }
+    });
+
+    // 전설 몬스터 마일스톤
+    const legendaryMilestones = [
+      { count: 5, tokens: 1 },
+      { count: 10, tokens: 2 },
+      { count: 25, tokens: 3, mystery: true },
+      { count: 50, tokens: 5 }
+    ];
+
+    legendaryMilestones.forEach(milestone => {
+      if (totalLegendaryReleased === milestone.count) {
+        collection.release.legendaryChoiceTokens += milestone.tokens;
+        if (milestone.mystery) {
+          collection.release.mysteryTokens += 1;
+          this.addCombatLog(`🎁 전설 방생 ${milestone.count}마리 달성! 전설 선택권 ${milestone.tokens}개 + 수수께끼 토큰 획득!`, 'milestone');
+        } else {
+          this.addCombatLog(`🎁 전설 방생 ${milestone.count}마리 달성! 전설 선택권 ${milestone.tokens}개 획득!`, 'milestone');
+        }
+      }
+    });
+  }
+
+  // 방생으로 인한 출현율 보너스 계산
+  getReleaseSpawnBonus() {
+    const { collection } = this.state;
+
+    if (!collection.release) {
+      return { rareSpawnBonus: 0, legendarySpawnBonus: 0 };
+    }
+
+    const { totalRareReleased, totalLegendaryReleased } = collection.release;
+
+    let rareSpawnBonus = 0;
+    let legendarySpawnBonus = 0;
+
+    // 희귀 방생에 따른 희귀 출현율 증가
+    if (totalRareReleased >= 50) rareSpawnBonus = 200;
+    else if (totalRareReleased >= 25) rareSpawnBonus = 150;
+    else if (totalRareReleased >= 10) rareSpawnBonus = 100;
+    else if (totalRareReleased >= 5) rareSpawnBonus = 50;
+
+    // 희귀 50마리 이상 방생 시 전설 출현율도 증가
+    if (totalRareReleased >= 50) legendarySpawnBonus += 25;
+
+    // 전설 방생에 따른 전설 출현율 증가
+    if (totalLegendaryReleased >= 50) legendarySpawnBonus += 200;
+    else if (totalLegendaryReleased >= 25) legendarySpawnBonus += 150;
+    else if (totalLegendaryReleased >= 10) legendarySpawnBonus += 100;
+    else if (totalLegendaryReleased >= 5) legendarySpawnBonus += 50;
+
+    return { rareSpawnBonus, legendarySpawnBonus };
   }
 
   // 전투 로그 추가
