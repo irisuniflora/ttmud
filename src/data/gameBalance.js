@@ -142,7 +142,7 @@ export const HERO_CONFIG = {
 // ===== 층(Floor) 시스템 =====
 export const FLOOR_CONFIG = {
   // 한 층당 일반 몬스터 수
-  monstersPerFloor: 20,
+  monstersPerFloor: 40,
 
   // 보스 타이머
   bossTimeLimit: 20, // 초
@@ -198,24 +198,34 @@ export const EQUIPMENT_CONFIG = {
     atk: {
       floorMultiplier: 0.05, // 층당 5% 증가
       rarityRanges: {
-        common: { min: 5, max: 10 },
-        rare: { min: 10, max: 20 },
-        epic: { min: 20, max: 40 },
-        legendary: { min: 40, max: 80 },
-        mythic: { min: 80, max: 150 },
+        common: { min: 10, max: 20 },
+        rare: { min: 20, max: 40 },
+        epic: { min: 40, max: 80 },
+        legendary: { min: 80, max: 160 },
+        mythic: { min: 160, max: 300 },
       },
     },
     critChance: {
       floorMultiplier: 0.02, // 층당 2% 증가
       rarityRanges: {
-        common: { min: 1, max: 3 },
-        rare: { min: 3, max: 5 },
-        epic: { min: 5, max: 8 },
-        legendary: { min: 8, max: 12 },
-        mythic: { min: 12, max: 20 },
+        common: { min: 2, max: 6 },
+        rare: { min: 6, max: 10 },
+        epic: { min: 10, max: 16 },
+        legendary: { min: 16, max: 24 },
+        mythic: { min: 24, max: 40 },
       },
     },
     critDmg: {
+      floorMultiplier: 0.03, // 층당 3% 증가
+      rarityRanges: {
+        common: { min: 20, max: 40 },
+        rare: { min: 40, max: 80 },
+        epic: { min: 80, max: 140 },
+        legendary: { min: 140, max: 240 },
+        mythic: { min: 240, max: 400 },
+      },
+    },
+    goldBonus: {
       floorMultiplier: 0.03, // 층당 3% 증가
       rarityRanges: {
         common: { min: 10, max: 20 },
@@ -225,44 +235,34 @@ export const EQUIPMENT_CONFIG = {
         mythic: { min: 120, max: 200 },
       },
     },
-    goldBonus: {
-      floorMultiplier: 0.03, // 층당 3% 증가
-      rarityRanges: {
-        common: { min: 5, max: 10 },
-        rare: { min: 10, max: 20 },
-        epic: { min: 20, max: 35 },
-        legendary: { min: 35, max: 60 },
-        mythic: { min: 60, max: 100 },
-      },
-    },
     dropRate: {
       floorMultiplier: 0.02, // 층당 2% 증가
       rarityRanges: {
-        common: { min: 2, max: 5 },
-        rare: { min: 5, max: 10 },
-        epic: { min: 10, max: 15 },
-        legendary: { min: 15, max: 25 },
-        mythic: { min: 25, max: 40 },
-      },
-    },
-    allDmg: {
-      floorMultiplier: 0.03, // 층당 3% 증가
-      rarityRanges: {
-        common: { min: 5, max: 10 },
+        common: { min: 4, max: 10 },
         rare: { min: 10, max: 20 },
         epic: { min: 20, max: 30 },
         legendary: { min: 30, max: 50 },
         mythic: { min: 50, max: 80 },
       },
     },
+    allDmg: {
+      floorMultiplier: 0.03, // 층당 3% 증가
+      rarityRanges: {
+        common: { min: 10, max: 20 },
+        rare: { min: 20, max: 40 },
+        epic: { min: 40, max: 60 },
+        legendary: { min: 60, max: 100 },
+        mythic: { min: 100, max: 160 },
+      },
+    },
     heroDmg: {
       floorMultiplier: 0.04, // 층당 4% 증가
       rarityRanges: {
-        common: { min: 10, max: 20 },
-        rare: { min: 20, max: 35 },
-        epic: { min: 35, max: 60 },
-        legendary: { min: 60, max: 100 },
-        mythic: { min: 100, max: 150 },
+        common: { min: 20, max: 40 },
+        rare: { min: 40, max: 70 },
+        epic: { min: 70, max: 120 },
+        legendary: { min: 120, max: 200 },
+        mythic: { min: 200, max: 300 },
       },
     },
   },

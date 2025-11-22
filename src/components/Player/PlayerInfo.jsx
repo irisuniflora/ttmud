@@ -3,8 +3,8 @@ import { useGame } from '../../store/GameContext';
 import { formatNumber, formatNumberWithCommas, getHPPercent } from '../../utils/formatter';
 
 const PlayerInfo = () => {
-  const { gameState, enterBossBattle } = useGame();
-  const { player, currentMonster, gearCores = 0, upgradeCoins = 0, equipment = {} } = gameState;
+  const { gameState, enterBossBattle, engine } = useGame();
+  const { player, currentMonster, gearCores = 0, orbs = 0, upgradeCoins = 0, equipment = {} } = gameState;
 
   const hpPercent = getHPPercent(currentMonster.hp, currentMonster.maxHp);
 
@@ -20,7 +20,10 @@ const PlayerInfo = () => {
     }
   });
 
-  const actualMonstersPerFloor = Math.max(5, 20 - equipmentMonsterReduction);
+  // 도감 보너스 계산
+  const collectionBonus = engine ? engine.calculateCollectionBonus() : { monsterReduction: 0 };
+
+  const actualMonstersPerFloor = Math.max(5, 40 - equipmentMonsterReduction - collectionBonus.monsterReduction);
 
   // 보스방 입장 가능 여부
   const canEnterBoss = player.monstersKilledInFloor >= actualMonstersPerFloor && player.floorState !== 'boss_battle';
@@ -45,11 +48,11 @@ const PlayerInfo = () => {
             </p>
           )}
           <div className="flex gap-2 justify-end text-sm">
-            <p className="text-cyan-400 font-bold" title="등급업 코인">
-              🪙 {formatNumber(upgradeCoins)}
-            </p>
-            <p className="text-orange-400 font-bold" title="기어 코어">
+            <p className="text-orange-400 font-bold" title="기어 코어 - 장비 옵션을 최대치로 강화">
               ⚙️ {gearCores}
+            </p>
+            <p className="text-purple-300 font-bold" title="오브 - 장비 옵션을 재조정">
+              🔮 {orbs}
             </p>
           </div>
         </div>
@@ -65,19 +68,70 @@ const PlayerInfo = () => {
              `몬스터: ${player.monstersKilledInFloor} / ${actualMonstersPerFloor}`}
           </p>
         </div>
-        <p className="text-xl font-bold text-gray-100">
-          {player.floor}층 - {currentMonster.name}
+        <p className="text-xl font-bold">
+          {player.floor}층 -
+          <span className={
+            currentMonster.isLegendary ? 'text-orange-400' :
+            currentMonster.isRare ? 'text-purple-400' :
+            'text-gray-100'
+          }>
+            {currentMonster.name}
+          </span>
           {currentMonster.isBoss && <span className="text-red-400 ml-2">👑 BOSS</span>}
         </p>
 
         {/* 보스 타이머 또는 버튼 영역 - 고정 높이 */}
         <div className="mt-2 h-10 flex items-center">
           {player.floorState === 'boss_battle' && (
-            <div className="w-full p-2 bg-red-100 border border-red-500 rounded flex items-center justify-center">
-              <p className="text-center text-red-600 font-bold text-base">
-                ⏰ 남은 시간: {player.bossTimer}초
-              </p>
+            <div className="w-full space-y-1">
+              <div className="flex justify-between items-center px-1">
+                <span className="text-xs text-red-600 font-bold">⏰ 보스 타이머</span>
+                <span className="text-xs text-red-600 font-bold">{player.bossTimer}초</span>
+              </div>
+              <div className="w-full bg-red-200 rounded-full h-4 overflow-hidden border-2 border-red-500">
+                <div
+                  className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-1000"
+                  style={{ width: `${(player.bossTimer / 20) * 100}%` }}
+                />
+              </div>
             </div>
+          )}
+
+          {/* 레어/전설 몬스터 타이머 (보스가 아닌 경우) */}
+          {!currentMonster.isBoss && (currentMonster.isRare || currentMonster.isLegendary) && currentMonster.spawnTime && (
+            (() => {
+              const elapsedTime = Math.floor((Date.now() - currentMonster.spawnTime) / 1000);
+              const remainingTime = Math.max(0, 5 - elapsedTime);
+
+              if (remainingTime > 0) {
+                const isLegendary = currentMonster.isLegendary;
+                return (
+                  <div className="w-full space-y-1">
+                    <div className="flex justify-between items-center px-1">
+                      <span className={`text-xs font-bold ${isLegendary ? 'text-orange-600' : 'text-purple-600'}`}>
+                        ⏰ {isLegendary ? '전설' : '레어'} 몬스터!
+                      </span>
+                      <span className={`text-xs font-bold ${isLegendary ? 'text-orange-600' : 'text-purple-600'}`}>
+                        {remainingTime}초
+                      </span>
+                    </div>
+                    <div className={`w-full rounded-full h-4 overflow-hidden border-2 ${
+                      isLegendary ? 'bg-orange-200 border-orange-500' : 'bg-purple-200 border-purple-500'
+                    }`}>
+                      <div
+                        className={`h-full transition-all duration-1000 ${
+                          isLegendary
+                            ? 'bg-gradient-to-r from-orange-600 to-orange-400'
+                            : 'bg-gradient-to-r from-purple-600 to-purple-400'
+                        }`}
+                        style={{ width: `${(remainingTime / 5) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()
           )}
 
           {canEnterBoss && (

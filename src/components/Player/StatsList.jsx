@@ -21,6 +21,7 @@ const StatsList = () => {
     dropRate: 0,
     expBonus: 0,
     hpPercentDmgChance: 0,
+    hpPercentDmgValue: 0,
     dotDmgPercent: 0,
     stageSkipChance: 0,
   };
@@ -38,6 +39,7 @@ const StatsList = () => {
         if (stats.dropRate) heroBuffs.dropRate += stats.dropRate;
         if (stats.expBonus) heroBuffs.expBonus += stats.expBonus;
         if (stats.hpPercentDmgChance) heroBuffs.hpPercentDmgChance += stats.hpPercentDmgChance;
+        if (stats.hpPercentDmgValue) heroBuffs.hpPercentDmgValue += stats.hpPercentDmgValue;
         if (stats.dotDmgPercent) heroBuffs.dotDmgPercent += stats.dotDmgPercent;
         if (stats.stageSkipChance) heroBuffs.stageSkipChance += stats.stageSkipChance;
       }
@@ -89,6 +91,10 @@ const StatsList = () => {
     heroBuffs.attack
   );
 
+  // 방생 보너스 계산
+  const rangeStart = Math.floor((player.floor - 1) / 5) * 5 + 1;
+  const releaseBonus = engine ? engine.calculateReleaseBonus(rangeStart) : { damageBonus: 0, dropRateBonus: 0 };
+
   // 총 크리티컬 확률과 데미지
   const totalCritChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroBuffs.critChance;
   const totalCritDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroBuffs.critDmg;
@@ -113,12 +119,21 @@ const StatsList = () => {
     { icon: '💰', name: '골드 획득량', value: '+' + formatPercent(player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus), color: 'text-yellow-400' },
     { icon: '🍀', name: '드랍율', value: formatPercent(player.stats.dropRate + equipmentDropRate + (skillEffects.dropRate || 0) + heroBuffs.dropRate), color: 'text-yellow-400' },
     { icon: '✨', name: '경험치 증가량', value: '+' + formatPercent(equipmentExpBonus + heroBuffs.expBonus), color: 'text-yellow-400', hide: (equipmentExpBonus + heroBuffs.expBonus) === 0 },
-    { icon: '💀', name: '체력비례 데미지', value: `${formatPercent(heroBuffs.hpPercentDmgChance)} (29%HP)`, color: 'text-yellow-400', hide: heroBuffs.hpPercentDmgChance === 0 },
+    { icon: '💀', name: '체력퍼뎀', value: `${formatPercent(heroBuffs.hpPercentDmgChance)} (${Math.floor(heroBuffs.hpPercentDmgValue)}%HP)`, color: 'text-yellow-400', hide: heroBuffs.hpPercentDmgChance === 0 },
     { icon: '🔥', name: '도트 데미지', value: formatPercent(heroBuffs.dotDmgPercent), color: 'text-yellow-400', hide: heroBuffs.dotDmgPercent === 0 },
     { icon: '⏭️', name: '스킵 확률', value: formatPercent(heroBuffs.stageSkipChance), color: 'text-yellow-400', hide: heroBuffs.stageSkipChance === 0 },
 
-    // 몬스터 감소 (맨 아래, 초록색)
-    { icon: '➖', name: '몬스터 감소', value: `-${Math.min(15, Math.floor(equipmentMonstersPerStageReduction))}`, color: 'text-green-400' },
+    // 방생 보너스 (연보라색)
+    { icon: '🕊️', name: '방생 데미지', value: '+' + formatPercent(releaseBonus.damageBonus), color: 'text-purple-300', hide: releaseBonus.damageBonus === 0 },
+    { icon: '🕊️', name: '방생 드랍', value: '+' + formatPercent(releaseBonus.dropRateBonus), color: 'text-purple-300', hide: releaseBonus.dropRateBonus === 0 },
+
+    // 몬스터 감소 (맨 아래, 초록색) - 장비 + 도감 보너스
+    {
+      icon: '➖',
+      name: '몬스터 감소',
+      value: `${Math.floor(equipmentMonstersPerStageReduction) + (engine ? engine.calculateCollectionBonus().monsterReduction : 0)}`,
+      color: 'text-green-400'
+    },
   ];
 
   return (

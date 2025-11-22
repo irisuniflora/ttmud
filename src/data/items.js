@@ -134,15 +134,21 @@ export const generateItem = (slot, playerFloor = 1) => {
     } else {
       const range = STAT_RANGES[statDef.id][rarity];
 
-      // 랜덤 값 생성 (층수에 따른 보너스 추가 가능)
+      // 4% 간격으로 값 생성 (25단계: 0%, 4%, 8%, ..., 96%, 100%)
+      const step = Math.floor(Math.random() * 26); // 0~25 단계
+      const percentage = step * 4; // 0%, 4%, 8%, ..., 100%
+
+      // 층수에 따른 보너스 추가
       const floorMultiplier = 1 + (playerFloor * 0.02); // 층당 2% 증가
-      const baseValue = range.min + Math.random() * (range.max - range.min);
-      const finalValue = Math.floor(baseValue * floorMultiplier);
+      const baseValue = range.min + (range.max - range.min) * (percentage / 100);
+      const finalValue = baseValue * floorMultiplier;
 
       stats.push({
         id: statDef.id,
         name: statDef.name,
         value: finalValue,
+        minValue: range.min * floorMultiplier, // 최소값 저장 (% 계산용)
+        maxValue: range.max * floorMultiplier, // 최대값 저장 (% 계산용)
         suffix: statDef.suffix
       });
     }
@@ -170,6 +176,24 @@ const rollRarity = () => {
   return 'common';
 };
 
+// 옵션 % 계산 함수
+export const calculateStatPercentage = (stat) => {
+  if (!stat.minValue || !stat.maxValue) return 100; // 최소/최대값이 없으면 100%로 표시
+  if (stat.maxValue === stat.minValue) return 100;
+
+  const percentage = ((stat.value - stat.minValue) / (stat.maxValue - stat.minValue)) * 100;
+  return Math.max(0, Math.min(100, percentage));
+};
+
+// 옵션 % 기준 색상 결정
+export const getStatColorByPercentage = (percentage) => {
+  if (percentage >= 100) return 'text-dark'; // 100%: 다크 (검정 + 빛남)
+  if (percentage >= 95) return 'text-red-500'; // 95%+: 빨강
+  if (percentage >= 80) return 'text-orange-500'; // 80%+: 주황
+  if (percentage >= 50) return 'text-blue-400'; // 50%+: 파랑
+  return 'text-gray-400'; // 50% 미만: 회색
+};
+
 // 아이템 가격 계산 (등급에 따라)
 export const getItemPrice = (item) => {
   const rarityPrices = {
@@ -189,7 +213,7 @@ export const getItemPrice = (item) => {
 export const GEAR_CORE_DROP_RATE = 0.003; // 0.003%
 
 // 기어 코어로 장비 옵션 최대치로 강화
-export const upgradeItemStatToMax = (item, statIndex) => {
+export const upgradeItemStatToMax = (item, statIndex, playerFloor = 1) => {
   if (!item || !item.stats || !item.stats[statIndex]) {
     return false;
   }
@@ -199,7 +223,76 @@ export const upgradeItemStatToMax = (item, statIndex) => {
 
   if (!range) return false;
 
+  // 층수에 따른 보너스 적용
+  const floorMultiplier = 1 + (playerFloor * 0.02);
+  const maxValue = range.max * floorMultiplier;
+
   // 최대값으로 설정
-  stat.value = Math.floor(range.max);
+  stat.value = maxValue;
+  stat.minValue = range.min * floorMultiplier;
+  stat.maxValue = maxValue;
+  return true;
+};
+
+// 오브로 아이템 옵션 재조정
+export const rerollItemWithOrb = (item, playerFloor = 1) => {
+  if (!item || !item.stats) {
+    return false;
+  }
+
+  const statType = SLOT_STAT_TYPES[item.slot];
+  const statPool = statType === 'damage' ? DAMAGE_STATS : UTILITY_STATS;
+  const statKeys = Object.keys(statPool).filter(key => key !== 'monstersPerStageReduction');
+
+  // 기존 스탯을 새로운 랜덤 스탯으로 재조정
+  item.stats = [];
+
+  for (let i = 0; i < 3; i++) {
+    let randomStatKey = statKeys[Math.floor(Math.random() * statKeys.length)];
+    let statDef = statPool[randomStatKey];
+
+    // 몬스터 감소 옵션 처리 (전설 이상, 유틸리티 슬롯만)
+    if (statType === 'utility' && (item.rarity === 'legendary' || item.rarity === 'mythic' || item.rarity === 'dark')) {
+      const monsterReductionChance = Math.random();
+      if (monsterReductionChance < 0.005) {
+        randomStatKey = 'monstersPerStageReduction';
+        statDef = statPool[randomStatKey];
+      }
+    }
+
+    // 몬스터 감소 옵션은 고정값
+    if (randomStatKey === 'monstersPerStageReduction') {
+      let reductionValue = 1;
+      if (item.rarity === 'mythic') reductionValue = 2;
+      if (item.rarity === 'dark') reductionValue = Math.random() < 0.5 ? 3 : 4;
+
+      item.stats.push({
+        id: statDef.id,
+        name: statDef.name,
+        value: reductionValue,
+        suffix: statDef.suffix
+      });
+    } else {
+      const range = STAT_RANGES[statDef.id][item.rarity];
+
+      // 4% 간격으로 값 생성 (25단계: 0%, 4%, 8%, ..., 96%, 100%)
+      const step = Math.floor(Math.random() * 26); // 0~25 단계
+      const percentage = step * 4; // 0%, 4%, 8%, ..., 100%
+
+      const floorMultiplier = 1 + (playerFloor * 0.02);
+      const baseValue = range.min + (range.max - range.min) * (percentage / 100);
+      const finalValue = baseValue * floorMultiplier;
+
+      item.stats.push({
+        id: statDef.id,
+        name: statDef.name,
+        value: finalValue,
+        minValue: range.min * floorMultiplier,
+        maxValue: range.max * floorMultiplier,
+        suffix: statDef.suffix
+      });
+    }
+  }
+
   return true;
 };

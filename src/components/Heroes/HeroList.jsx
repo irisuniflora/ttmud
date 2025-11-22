@@ -97,27 +97,27 @@ const HeroList = () => {
       />
       <div className="space-y-3">
         <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xl font-bold text-gray-100">영웅</h3>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleBulkUpgradeStars}
-            className="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold rounded transition-all text-sm shadow-md"
-          >
-            ⭐ 일괄 별+
-          </button>
-          <button
-            onClick={handleBulkUpgradeGrades}
-            className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold rounded transition-all text-sm shadow-md"
-          >
-            💎 일괄 등급↑
-          </button>
-          <div className="text-right">
+          <div className="flex items-center gap-4">
+            <h3 className="text-xl font-bold text-gray-100">영웅</h3>
             <p className="text-sm text-blue-400">
               📖 영웅의 서: <span className="font-bold">{gameState.upgradeCoins || 0}</span>
             </p>
           </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBulkUpgradeStars}
+              className="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold rounded transition-all text-sm shadow-md"
+            >
+              ⭐ 일괄 별+
+            </button>
+            <button
+              onClick={handleBulkUpgradeGrades}
+              className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold rounded transition-all text-sm shadow-md"
+            >
+              👑 일괄 등급↑
+            </button>
+          </div>
         </div>
-      </div>
 
       <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 max-h-[600px] overflow-y-auto pr-2">
         {HEROES.map(hero => {
