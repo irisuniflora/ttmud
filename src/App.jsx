@@ -94,7 +94,7 @@ const GameContent = () => {
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
                 }`}
               >
-                👥 영웅
+                👥 동료
               </button>
               <button
                 onClick={() => setActiveTab('equipment')}

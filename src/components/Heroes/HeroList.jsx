@@ -28,16 +28,16 @@ const HeroList = () => {
     if (result.success && result.upgradedCount > 0) {
       showNotification('별 업그레이드 완료!', `${result.upgradedCount}개의 별을 업그레이드했습니다!`, 'success');
     } else {
-      showNotification('업그레이드 불가', '업그레이드 가능한 영웅이 없습니다.', 'warning');
+      showNotification('업그레이드 불가', '업그레이드 가능한 동료가 없습니다.', 'warning');
     }
   };
 
   const handleBulkUpgradeGrades = () => {
     const result = bulkUpgradeHeroGrades();
     if (result.success && result.upgradedCount > 0) {
-      showNotification('등급 업그레이드 완료!', `${result.upgradedCount}명의 영웅 등급을 업그레이드했습니다!`, 'success');
+      showNotification('등급 업그레이드 완료!', `${result.upgradedCount}명의 동료 등급을 업그레이드했습니다!`, 'success');
     } else {
-      showNotification('업그레이드 불가', '등급 업그레이드 가능한 영웅이 없습니다.', 'warning');
+      showNotification('업그레이드 불가', '등급 업그레이드 가능한 동료가 없습니다.', 'warning');
     }
   };
 
@@ -98,9 +98,9 @@ const HeroList = () => {
       <div className="space-y-3">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-4">
-            <h3 className="text-xl font-bold text-gray-100">영웅</h3>
+            <h3 className="text-xl font-bold text-gray-100">동료</h3>
             <p className="text-sm text-blue-400">
-              📖 영웅의 서: <span className="font-bold">{gameState.upgradeCoins || 0}</span>
+              📖 동료의 서: <span className="font-bold">{gameState.upgradeCoins || 0}</span>
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -127,7 +127,7 @@ const HeroList = () => {
           const currentGrade = heroData?.grade || 'normal';
           const currentStars = heroData?.stars || 0;
 
-          // 각인되지 않은 영웅
+          // 각인되지 않은 동료
           if (!isInscribed) {
             const hasCard = collectionCard && collectionCard.count > 0;
 
@@ -136,7 +136,7 @@ const HeroList = () => {
                 key={hero.id}
                 className={`border-2 border-gray-600 bg-gray-800 rounded-lg p-2 flex flex-col ${hasCard ? '' : 'opacity-50'}`}
               >
-                {/* 영웅 이미지 */}
+                {/* 동료 이미지 */}
                 <div className="relative w-full aspect-[3/4] rounded-lg overflow-hidden bg-gray-900 mb-1 border-2 border-gray-600">
                   <img
                     src={hero.image}
@@ -154,7 +154,7 @@ const HeroList = () => {
                   )}
                 </div>
 
-                {/* 영웅 정보 */}
+                {/* 동료 정보 */}
                 <div className="flex-1 flex flex-col">
                   {/* 상단 여백 - 콘텐츠를 아래로 밀기 위한 스페이서 */}
                   <div className="flex-1 min-h-[8px]"></div>
@@ -197,7 +197,7 @@ const HeroList = () => {
             );
           }
 
-          // 각인된 영웅
+          // 각인된 동료
           const stats = getHeroStats(hero, currentGrade, currentStars);
           const nextGrade = getNextGrade(currentGrade);
           const canUpgrade = nextGrade && currentStars >= 5;
@@ -212,7 +212,7 @@ const HeroList = () => {
               key={hero.id}
               className={`border-[3px] ${getGradeBorder(currentGrade)} ${getGradeGlow(currentGrade)} bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-2 flex flex-col transition-all h-full shadow-lg`}
             >
-              {/* 영웅 이미지 */}
+              {/* 동료 이미지 */}
               <div className={`relative w-full aspect-[3/4] rounded-lg overflow-hidden border-[3px] ${getGradeBorder(currentGrade)} ${getGradeGlow(currentGrade)} mb-1 bg-gray-950`}>
                 <img
                   src={hero.image}
@@ -230,7 +230,7 @@ const HeroList = () => {
                 )}
               </div>
 
-              {/* 영웅 정보 */}
+              {/* 동료 정보 */}
               <div className="flex-1 flex flex-col">
                 {/* 상단 여백 - 콘텐츠를 아래로 밀기 위한 스페이서 */}
                 <div className="flex-1 min-h-[8px]"></div>

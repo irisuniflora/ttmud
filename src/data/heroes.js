@@ -1,10 +1,10 @@
 import { HERO_CONFIG, calculateUpgradeCost } from './gameBalance.js';
 
-// 영웅 등급 시스템 (gameBalance.js에서 가져옴)
+// 동료 등급 시스템 (gameBalance.js에서 가져옴)
 export const HERO_GRADES = HERO_CONFIG.grades;
 export const GRADE_ORDER = HERO_CONFIG.gradeOrder;
 
-// 영웅 타입
+// 동료 타입
 export const HERO_TYPES = {
   CRIT_CHANCE: 'crit_chance',
   CRIT_DMG: 'crit_dmg',
@@ -16,7 +16,7 @@ export const HERO_TYPES = {
   EXP_BONUS: 'exp_bonus'
 };
 
-// 영웅 데이터
+// 동료 데이터
 export const HEROES = [
   // === 딜러 ===
   {
@@ -165,7 +165,7 @@ export const getNextGrade = (currentGradeId) => {
   return GRADE_ORDER[currentIndex + 1];
 };
 
-// 영웅의 현재 스탯 계산 (등급 + 별 고려)
+// 동료의 현재 스탯 계산 (등급 + 별 고려)
 export const getHeroStats = (hero, gradeId, stars) => {
   const gradeIndex = getGradeIndex(gradeId);
   const stats = {};
@@ -228,7 +228,7 @@ export const getStarUpgradeCost = (gradeId) => {
   return HERO_CONFIG.starUpgradeCostByGrade[gradeIndex] || 0;
 };
 
-// ID로 영웅 찾기
+// ID로 동료 찾기
 export const getHeroById = (heroId) => {
   return HEROES.find(h => h.id === heroId);
 };

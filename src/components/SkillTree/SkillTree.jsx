@@ -73,8 +73,8 @@ const SkillTree = () => {
     <div className="space-y-4">
       <h3 className="text-xl font-bold text-white">스킬 트리</h3>
 
-      {/* 모든 스킬 트리를 한 페이지에 표시 */}
-      <div className="space-y-4">
+      {/* 모든 스킬 트리를 가로 3열로 표시 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {Object.entries(SKILL_TREES).map(([key, tree]) => renderSkillTree(key, tree))}
       </div>
     </div>
