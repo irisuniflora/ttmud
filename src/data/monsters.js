@@ -130,7 +130,9 @@ const FLOOR_PREFIXES = [
   { minFloor: 401, maxFloor: 500, prefix: '심연' },
   { minFloor: 501, maxFloor: 600, prefix: '광기의' },
   { minFloor: 601, maxFloor: 700, prefix: '전설의' },
-  { minFloor: 701, maxFloor: 800, prefix: '암흑' }
+  { minFloor: 701, maxFloor: 800, prefix: '암흑' },
+  { minFloor: 801, maxFloor: 900, prefix: '불멸의' },
+  { minFloor: 901, maxFloor: 1000, prefix: '초월' }
 ];
 
 // 기존 몬스터 타입 (레거시 - 몬스터 도감용)

@@ -1,4 +1,5 @@
 // 새로운 아이템 시스템
+import { EQUIPMENT_CONFIG } from './gameBalance.js';
 
 // 아이템 슬롯
 export const ITEM_SLOTS = ['weapon', 'armor', 'gloves', 'boots', 'necklace', 'ring'];
@@ -29,8 +30,10 @@ export const DAMAGE_STATS = {
   critChance: { id: 'critChance', name: '치명타 확률', suffix: '%' },
   critDmg: { id: 'critDmg', name: '치명타 데미지', suffix: '%' },
   attackPercent: { id: 'attackPercent', name: '공격력', suffix: '%' },
-  bossDamageIncrease: { id: 'bossDamageIncrease', name: '보스 데미지 증가', suffix: '%' },
-  normalMonsterDamageIncrease: { id: 'normalMonsterDamageIncrease', name: '일반 몬스터 데미지 증가', suffix: '%' }
+  accuracy: { id: 'accuracy', name: '명중률', suffix: '%' },
+  penetration: { id: 'penetration', name: '관통', suffix: '%' },
+  bossDamageIncrease: { id: 'bossDamageIncrease', name: '보스몹 추뎀', suffix: '%' },
+  normalMonsterDamageIncrease: { id: 'normalMonsterDamageIncrease', name: '일반몹 추뎀', suffix: '%' }
 };
 
 // 보조 능력치 (신발, 목걸이, 반지)
@@ -49,6 +52,8 @@ const BASE_VALUES = {
   critChance: 0.03, // 영웅 크리 확률 5%의 1/150 수준 (1/10로 감소)
   critDmg: 0.15, // 영웅 크리 데미지 20%의 1/130 수준 (1/10로 감소)
   attackPercent: 0.1, // 퍼센트 보너스 (1/10로 감소)
+  accuracy: 0.1, // 명중률
+  penetration: 0.1, // 관통
   skipChance: 0.015, // 영웅 스킵 확률 2%의 1/130 수준 (1/10로 감소)
   expBonus: 0.12, // 영웅 경험치 15%의 1/120 수준 (1/10로 감소)
   dropRate: 0.04, // 영웅 드랍율 5%의 1/120 수준 (1/10로 감소)
@@ -93,11 +98,25 @@ export const SLOT_STAT_TYPES = {
   ring: 'utility'
 };
 
+// 티어 배수 계산 (50층마다 1.2배)
+const calculateTierMultiplier = (floor) => {
+  const tier = Math.floor((floor - 1) / EQUIPMENT_CONFIG.tierSystem.floorInterval);
+  return Math.pow(EQUIPMENT_CONFIG.tierSystem.tierMultiplier, tier);
+};
+
 // 아이템 생성
 export const generateItem = (slot, playerFloor = 1) => {
   const rarity = rollRarity();
   const statType = SLOT_STAT_TYPES[slot];
   const statPool = statType === 'damage' ? DAMAGE_STATS : UTILITY_STATS;
+
+  // 티어 배수 계산
+  const tierMultiplier = calculateTierMultiplier(playerFloor);
+
+  // 등급별 스탯 배수 범위 가져오기
+  const rarityConfig = EQUIPMENT_CONFIG.rarities[rarity];
+  const statMultiplierMin = rarityConfig.statMin;
+  const statMultiplierMax = rarityConfig.statMax;
 
   // 3개 랜덤 능력치 (중복 가능)
   const stats = [];
@@ -132,23 +151,31 @@ export const generateItem = (slot, playerFloor = 1) => {
         suffix: statDef.suffix
       });
     } else {
-      const range = STAT_RANGES[statDef.id][rarity];
+      // 기본 스탯 값
+      const baseValue = BASE_VALUES[statDef.id];
 
-      // 4% 간격으로 값 생성 (25단계: 0%, 4%, 8%, ..., 96%, 100%)
-      const step = Math.floor(Math.random() * 26); // 0~25 단계
-      const percentage = step * 4; // 0%, 4%, 8%, ..., 100%
+      // min/max도 티어 배수 적용
+      const minValue = baseValue * statMultiplierMin * tierMultiplier;
+      const maxValue = baseValue * statMultiplierMax * tierMultiplier;
 
-      // 층수에 따른 보너스 추가
-      const floorMultiplier = 1 + (playerFloor * 0.02); // 층당 2% 증가
-      const baseValue = range.min + (range.max - range.min) * (percentage / 100);
-      const finalValue = baseValue * floorMultiplier;
+      // 1/20 확률로 완벽한 100% 옵션
+      let finalValue;
+      if (Math.random() < 0.05) {
+        // 5% 확률로 최대치
+        finalValue = maxValue;
+      } else {
+        // 등급 범위 내에서 랜덤 배수 결정
+        const randomMultiplier = statMultiplierMin + Math.random() * (statMultiplierMax - statMultiplierMin);
+        // 최종 값 = 기본값 × 등급 배수 × 티어 배수
+        finalValue = baseValue * randomMultiplier * tierMultiplier;
+      }
 
       stats.push({
         id: statDef.id,
         name: statDef.name,
         value: finalValue,
-        minValue: range.min * floorMultiplier, // 최소값 저장 (% 계산용)
-        maxValue: range.max * floorMultiplier, // 최대값 저장 (% 계산용)
+        minValue: minValue, // 최소값 저장 (% 계산용)
+        maxValue: maxValue, // 최대값 저장 (% 계산용)
         suffix: statDef.suffix
       });
     }
@@ -159,7 +186,9 @@ export const generateItem = (slot, playerFloor = 1) => {
     slot,
     name: ITEM_SLOT_NAMES[slot],
     rarity,
-    stats
+    stats,
+    tier: Math.floor((playerFloor - 1) / EQUIPMENT_CONFIG.tierSystem.floorInterval) + 1, // 티어 저장 (표시용)
+    floor: playerFloor // 획득 층수 저장
   };
 };
 
@@ -275,24 +304,83 @@ export const rerollItemWithOrb = (item, playerFloor = 1) => {
     } else {
       const range = STAT_RANGES[statDef.id][item.rarity];
 
-      // 4% 간격으로 값 생성 (25단계: 0%, 4%, 8%, ..., 96%, 100%)
-      const step = Math.floor(Math.random() * 26); // 0~25 단계
-      const percentage = step * 4; // 0%, 4%, 8%, ..., 100%
+      // 티어 배수 계산
+      const tierMultiplier = calculateTierMultiplier(playerFloor);
 
-      const floorMultiplier = 1 + (playerFloor * 0.02);
-      const baseValue = range.min + (range.max - range.min) * (percentage / 100);
-      const finalValue = baseValue * floorMultiplier;
+      // 등급별 스탯 배수 범위 가져오기
+      const rarityConfig = EQUIPMENT_CONFIG.rarities[item.rarity];
+      const statMultiplierMin = rarityConfig.statMin;
+      const statMultiplierMax = rarityConfig.statMax;
+
+      // 기본 스탯 값
+      const baseValue = BASE_VALUES[statDef.id];
+
+      // min/max도 티어 배수 적용
+      const minValue = baseValue * statMultiplierMin * tierMultiplier;
+      const maxValue = baseValue * statMultiplierMax * tierMultiplier;
+
+      // 1/20 확률로 완벽한 100% 옵션
+      let finalValue;
+      if (Math.random() < 0.05) {
+        // 5% 확률로 최대치
+        finalValue = maxValue;
+      } else {
+        // 등급 범위 내에서 랜덤 배수 결정
+        const randomMultiplier = statMultiplierMin + Math.random() * (statMultiplierMax - statMultiplierMin);
+        // 최종 값 = 기본값 × 등급 배수 × 티어 배수
+        finalValue = baseValue * randomMultiplier * tierMultiplier;
+      }
 
       item.stats.push({
         id: statDef.id,
         name: statDef.name,
         value: finalValue,
-        minValue: range.min * floorMultiplier,
-        maxValue: range.max * floorMultiplier,
+        minValue: minValue,
+        maxValue: maxValue,
         suffix: statDef.suffix
       });
     }
   }
+
+  return true;
+};
+
+// 완벽의 정수로 장비의 모든 옵션을 최대치로 고정
+export const perfectItemStats = (item, playerFloor = 1) => {
+  if (!item || !item.stats) {
+    return false;
+  }
+
+  const statType = SLOT_STAT_TYPES[item.slot];
+  const statPool = statType === 'damage' ? DAMAGE_STATS : UTILITY_STATS;
+
+  // 티어 배수 계산
+  const tierMultiplier = calculateTierMultiplier(playerFloor);
+
+  // 등급별 스탯 배수 범위 가져오기
+  const rarityConfig = EQUIPMENT_CONFIG.rarities[item.rarity];
+  const statMultiplierMax = rarityConfig.statMax; // 최대치 사용
+
+  // 각 옵션을 최대치로 설정
+  item.stats.forEach(stat => {
+    const statDef = Object.values(statPool).find(s => s.id === stat.id);
+
+    if (!statDef) return;
+
+    // 몬스터 감소 옵션은 이미 최대치이므로 건드리지 않음
+    if (stat.id === 'monstersPerStageReduction') {
+      return;
+    }
+
+    // 기본 스탯 값
+    const baseValue = BASE_VALUES[stat.id];
+
+    // 최대 값 = 기본값 × 등급 최대 배수 × 티어 배수
+    const maxValue = baseValue * statMultiplierMax * tierMultiplier;
+
+    // 옵션 값을 최대치로 설정
+    stat.value = Math.floor(maxValue * 100) / 100; // 소수점 둘째자리까지
+  });
 
   return true;
 };

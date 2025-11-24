@@ -12,7 +12,8 @@ import {
   calculateExpToNextLevel,
   calculateHeroCardDropChance,
   calculateUpgradeCoinDropChance,
-  calculateUpgradeCoinAmount
+  calculateUpgradeCoinAmount,
+  getMonstersPerFloor
 } from '../data/gameBalance.js';
 
 export class GameEngine {
@@ -127,7 +128,8 @@ export class GameEngine {
         totalHeroCardsFound: 0,
         rareMonstersMet: 0, // 만난 희귀 몬스터 수
         rareMonstersCaptured: 0 // 수집한 희귀 몬스터 수
-      }
+      },
+      lastDailyRecharge: null // 마지막 일일 충전 시간 (Date.now())
     };
   }
 
@@ -152,6 +154,12 @@ export class GameEngine {
   tick() {
     const { currentMonster } = this.state;
 
+    // 일일 충전 체크 (60초마다 체크)
+    if (!this.lastDailyRechargeCheck || Date.now() - this.lastDailyRechargeCheck >= 60000) {
+      this.checkDailyRecharge();
+      this.lastDailyRechargeCheck = Date.now();
+    }
+
     // 희귀/전설 몬스터 타이머 체크 (5초 = 5000ms)
     if (currentMonster && (currentMonster.isRare || currentMonster.isLegendary) && !currentMonster.isBoss) {
       const elapsedTime = Date.now() - currentMonster.spawnTime;
@@ -164,6 +172,9 @@ export class GameEngine {
 
     const damage = this.calculateTotalDPS();
     this.dealDamage(damage);
+
+    // 월드보스 데미지 누적
+    this.tickWorldBossDamage();
   }
 
   // 몬스터 도망 (희귀/전설)
@@ -192,12 +203,17 @@ export class GameEngine {
 
     Object.entries(equipment).forEach(([slot, item]) => {
       if (item) {
-        const enhancementBonus = 1 + ((slotEnhancements[slot] || 0) * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        const enhancementLevel = slotEnhancements[slot] || 0;
+        const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
         item.stats.forEach(stat => {
+          // 크리티컬 스탯은 강화 효과 제외
+          const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
+          const bonus = isExcluded ? 1 : enhancementBonus;
+
           if (stat.id === 'attack') {
-            equipmentAttackFlat += stat.value * enhancementBonus;
+            equipmentAttackFlat += stat.value * bonus;
           } else if (stat.id === 'attackPercent') {
-            equipmentAttackPercent += stat.value * enhancementBonus;
+            equipmentAttackPercent += stat.value * bonus;
           }
         });
       }
@@ -261,12 +277,17 @@ export class GameEngine {
     let equipmentCritDmg = 0;
     Object.entries(equipment).forEach(([slot, item]) => {
       if (item) {
-        const enhancementBonus = 1 + ((slotEnhancements[slot] || 0) * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        const enhancementLevel = slotEnhancements[slot] || 0;
+        const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
         item.stats.forEach(stat => {
+          // 크리티컬 스탯은 강화 효과 제외
+          const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
+          const bonus = isExcluded ? 1 : enhancementBonus;
+
           if (stat.id === 'critChance') {
-            equipmentCritChance += stat.value * enhancementBonus;
+            equipmentCritChance += stat.value * bonus;
           } else if (stat.id === 'critDmg') {
-            equipmentCritDmg += stat.value * enhancementBonus;
+            equipmentCritDmg += stat.value * bonus;
           }
         });
       }
@@ -347,14 +368,19 @@ export class GameEngine {
     const slotEnhancements = this.state.slotEnhancements || {};
     Object.entries(this.state.equipment).forEach(([slot, item]) => {
       if (item) {
-        const enhancementBonus = 1 + ((slotEnhancements[slot] || 0) * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        const enhancementLevel = slotEnhancements[slot] || 0;
+        const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
         item.stats.forEach(stat => {
+          // 크리티컬 스탯은 강화 효과 제외
+          const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
+          const bonus = isExcluded ? 1 : enhancementBonus;
+
           if (stat.id === 'goldBonus') {
-            equipmentGoldBonus += stat.value * enhancementBonus;
+            equipmentGoldBonus += stat.value * bonus;
           } else if (stat.id === 'expBonus') {
-            equipmentExpBonus += stat.value * enhancementBonus;
+            equipmentExpBonus += stat.value * bonus;
           } else if (stat.id === 'skipChance') {
-            equipmentSkipChance += stat.value * enhancementBonus;
+            equipmentSkipChance += stat.value * bonus;
           } else if (stat.id === 'monstersPerStageReduction') {
             equipmentMonsterReduction += stat.value; // 고정값이므로 enhancementBonus 미적용
           }
@@ -374,6 +400,12 @@ export class GameEngine {
 
     if (currentMonster.isBoss) {
       statistics.totalBossesKilled++;
+
+      // 보스방(각 층의 마지막 보스)에서 문양 각인권 드랍 (10% 확률)
+      this.tryDropInscriptionToken();
+
+      // 보스방(각 층의 마지막 보스)에서 봉인구역 도전권 드랍 (5% 확률)
+      this.tryDropRaidTicket();
     }
 
     // 경험치 획득 (장비 + 영웅 버프 포함)
@@ -535,7 +567,8 @@ export class GameEngine {
     const collectionBonus = this.calculateCollectionBonus();
 
     // 장비 + 도감으로 인한 몬스터 감소 적용 (최소 5마리는 유지)
-    const actualMonstersPerFloor = Math.max(5, FLOOR_CONFIG.monstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction);
+    const baseMonstersPerFloor = getMonstersPerFloor(player.floor);
+    const actualMonstersPerFloor = Math.max(5, baseMonstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction);
 
     // 스테이지 스킵 확률 체크 (일반 몬스터만, 보스는 제외) - 장비 + 영웅 버프
     let skipCount = 0;
@@ -626,10 +659,15 @@ export class GameEngine {
     const slotEnhancements = this.state.slotEnhancements || {};
     Object.entries(this.state.equipment).forEach(([slot, item]) => {
       if (item) {
-        const enhancementBonus = 1 + ((slotEnhancements[slot] || 0) * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        const enhancementLevel = slotEnhancements[slot] || 0;
+        const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
         item.stats.forEach(stat => {
+          // 크리티컬 스탯은 강화 효과 제외
+          const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
+          const bonus = isExcluded ? 1 : enhancementBonus;
+
           if (stat.id === 'dropRate') {
-            equipmentDropRate += stat.value * enhancementBonus;
+            equipmentDropRate += stat.value * bonus;
           }
         });
       }
@@ -895,6 +933,171 @@ export class GameEngine {
     return false;
   }
 
+  // 문양 드랍 (보스방에서만, 층별로 특정 문양 드랍)
+  tryDropInscriptionToken() {
+    // 동적 import 대신 직접 함수 구현
+    const getInscriptionIdByFloor = (floor) => {
+      const INSCRIPTION_DROP_TABLE = {
+        1: { inscriptionId: 'rage', name: '분노', baseDropRate: 0.10 },
+        11: { inscriptionId: 'precision', name: '정밀', baseDropRate: 0.10 },
+        21: { inscriptionId: 'shadow', name: '그림자', baseDropRate: 0.10 },
+        31: { inscriptionId: 'chaos', name: '혼돈', baseDropRate: 0.10 },
+        41: { inscriptionId: 'decay', name: '부패', baseDropRate: 0.10 },
+        51: { inscriptionId: 'crush', name: '분쇄', baseDropRate: 0.10 },
+        61: { inscriptionId: 'void', name: '공허', baseDropRate: 0.10 },
+        71: { inscriptionId: 'thirst', name: '갈증', baseDropRate: 0.10 },
+        81: { inscriptionId: 'destruction', name: '파괴', baseDropRate: 0.10 },
+        91: { inscriptionId: 'eternity', name: '영원', baseDropRate: 0.10 }
+      };
+
+      const normalizedFloor = ((floor - 1) % 100) + 1;
+      const rangeStart = Math.floor((normalizedFloor - 1) / 10) * 10 + 1;
+      return INSCRIPTION_DROP_TABLE[rangeStart];
+    };
+
+    const getInscriptionDropRate = (floor) => {
+      const dropInfo = getInscriptionIdByFloor(floor);
+      if (!dropInfo) return 0;
+
+      const hundredBlock = Math.floor((floor - 1) / 100);
+      const dropRate = dropInfo.baseDropRate * Math.pow(2, hundredBlock);
+      return Math.min(dropRate, 0.80);
+    };
+
+    const floor = this.state.player.floor;
+    const dropInfo = getInscriptionIdByFloor(floor);
+    const dropRate = getInscriptionDropRate(floor);
+
+    if (!dropInfo) return false;
+
+    // 드랍 확률 체크
+    if (Math.random() < dropRate) {
+      if (!this.state.sealedZone) {
+        this.state.sealedZone = {
+          tickets: 0,
+          inscriptionTokens: 0,
+          ownedInscriptions: [],
+          unlockedBosses: ['vecta'],
+          unlockedInscriptionSlots: 1
+        };
+      }
+
+      // 랜덤 등급 결정
+      const rollInscriptionGrade = () => {
+        const INSCRIPTION_GACHA_RATES = {
+          common: 0.50,
+          rare: 0.30,
+          epic: 0.15,
+          unique: 0.04,
+          legendary: 0.009,
+          mythic: 0.001
+        };
+
+        const roll = Math.random();
+        let cumulative = 0;
+
+        for (const [grade, rate] of Object.entries(INSCRIPTION_GACHA_RATES)) {
+          cumulative += rate;
+          if (roll <= cumulative) return grade;
+        }
+        return 'common';
+      };
+
+      const grade = rollInscriptionGrade();
+
+      // 문양 직접 생성
+      const newInscription = {
+        id: `inscription_${Date.now()}_${Math.random()}`,
+        inscriptionId: dropInfo.inscriptionId,
+        grade,
+        level: 1
+      };
+
+      this.state.sealedZone.ownedInscriptions = [...(this.state.sealedZone.ownedInscriptions || []), newInscription];
+
+      // 등급별 색상
+      const gradeColors = {
+        common: '일반',
+        rare: '희귀',
+        epic: '레어',
+        unique: '유니크',
+        legendary: '레전드',
+        mythic: '신화'
+      };
+
+      this.addCombatLog(`📿 ${dropInfo.name}의 문양 (${gradeColors[grade]}) 획득!`, 'inscription');
+      return true;
+    }
+    return false;
+  }
+
+  // 봉인구역 도전권 드랍 (보스몬스터 처치 시)
+  tryDropRaidTicket() {
+    // 모든 보스 몬스터에서 10% 확률로 1개 드랍
+    const dropRate = 10;
+
+    if (Math.random() * 100 < dropRate) {
+      if (!this.state.sealedZone) {
+        this.state.sealedZone = {
+          tickets: 0,
+          inscriptionTokens: 0,
+          ownedInscriptions: [],
+          unlockedBosses: ['vecta'],
+          unlockedInscriptionSlots: 1,
+          bossCoins: 0
+        };
+      }
+
+      // 도전권 1개 획득
+      this.state.sealedZone.tickets = (this.state.sealedZone.tickets || 0) + 1;
+      this.addCombatLog('🎫 봉인구역 도전권 획득!', 'ticket');
+      return true;
+    }
+    return false;
+  }
+
+  // 일일 자동 충전 체크 (한국시간 기준 자정)
+  checkDailyRecharge() {
+    const now = Date.now();
+    const koreaTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+
+    // 마지막 충전 시간이 없으면 초기화
+    if (!this.state.lastDailyRecharge) {
+      this.state.lastDailyRecharge = now;
+      return;
+    }
+
+    const lastRecharge = new Date(this.state.lastDailyRecharge);
+    const lastRechargeKorea = new Date(lastRecharge.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+
+    // 날짜가 바뀌었는지 확인 (한국시간 기준)
+    const lastDay = lastRechargeKorea.getDate();
+    const currentDay = koreaTime.getDate();
+    const lastMonth = lastRechargeKorea.getMonth();
+    const currentMonth = koreaTime.getMonth();
+    const lastYear = lastRechargeKorea.getFullYear();
+    const currentYear = koreaTime.getFullYear();
+
+    // 날짜가 변경되었으면 충전
+    if (lastDay !== currentDay || lastMonth !== currentMonth || lastYear !== currentYear) {
+      if (!this.state.sealedZone) {
+        this.state.sealedZone = {
+          tickets: 0,
+          inscriptionTokens: 0,
+          ownedInscriptions: [],
+          unlockedBosses: ['vecta'],
+          unlockedInscriptionSlots: 1
+        };
+      }
+
+      // 도전권 2개 충전
+      this.state.sealedZone.tickets = (this.state.sealedZone.tickets || 0) + 2;
+      this.state.lastDailyRecharge = now;
+
+      this.addCombatLog('🎫 일일 충전! 봉인구역 도전권 2개 획득!', 'ticket');
+    }
+  }
+
   // 일괄 별 업그레이드
   bulkUpgradeHeroStars() {
     const { heroes, collection } = this.state;
@@ -1109,7 +1312,8 @@ export class GameEngine {
     // 도감 보너스 계산
     const collectionBonus = this.calculateCollectionBonus();
 
-    const actualMonstersPerFloor = Math.max(5, FLOOR_CONFIG.monstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction);
+    const baseMonstersPerFloor = getMonstersPerFloor(player.floor);
+    const actualMonstersPerFloor = Math.max(5, baseMonstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction);
 
     // 보스방 입장 가능 조건: 필요한 몬스터 수 처치
     if (player.monstersKilledInFloor < actualMonstersPerFloor) {
@@ -1161,11 +1365,6 @@ export class GameEngine {
     const slotEnhancements = this.state.slotEnhancements || {};
     const currentLevel = slotEnhancements[slot] || 0;
 
-    // 최대 레벨 체크
-    if (currentLevel >= EQUIPMENT_CONFIG.enhancement.maxLevel) {
-      return { success: false, message: '최대 강화 레벨입니다' };
-    }
-
     // 비용 계산
     const cost = Math.floor(
       EQUIPMENT_CONFIG.enhancement.baseCost *
@@ -1177,22 +1376,44 @@ export class GameEngine {
       return { success: false, message: '골드가 부족합니다', cost };
     }
 
-    // 강화 실행
+    // 성공률 계산
+    const { baseSuccessRate, successRateDecayPerLevel, minSuccessRate } = EQUIPMENT_CONFIG.enhancement;
+    const successRate = Math.max(
+      minSuccessRate,
+      baseSuccessRate - (currentLevel * successRateDecayPerLevel)
+    );
+
+    // 골드 차감
     player.gold -= cost;
 
-    // slotEnhancements가 없으면 초기화
-    if (!this.state.slotEnhancements) {
-      this.state.slotEnhancements = {};
+    // 강화 시도
+    const roll = Math.random() * 100;
+    const success = roll < successRate;
+
+    if (success) {
+      // slotEnhancements가 없으면 초기화
+      if (!this.state.slotEnhancements) {
+        this.state.slotEnhancements = {};
+      }
+
+      this.state.slotEnhancements[slot] = currentLevel + 1;
+
+      return {
+        success: true,
+        message: '강화 성공!',
+        newLevel: this.state.slotEnhancements[slot],
+        cost,
+        successRate
+      };
+    } else {
+      return {
+        success: false,
+        message: '강화 실패! (레벨 유지)',
+        currentLevel,
+        cost,
+        successRate
+      };
     }
-
-    this.state.slotEnhancements[slot] = currentLevel + 1;
-
-    return {
-      success: true,
-      message: '강화 성공!',
-      newLevel: this.state.slotEnhancements[slot],
-      cost
-    };
   }
 
   // 아이템 자동 판매 (특정 등급 이하 아이템 판매)
@@ -1541,6 +1762,68 @@ export class GameEngine {
     return { success: false, message: '잘못된 몬스터 타입입니다' };
   }
 
+  // 몬스터 선택권으로 몬스터 도감 등록
+  unlockMonsterWithTicket(monsterId, type, monsterName) {
+    const { collection, consumables } = this.state;
+
+    // 선택권 보유 확인
+    if (!consumables.monster_selection_ticket || consumables.monster_selection_ticket <= 0) {
+      return { success: false, message: '몬스터 도감 선택권이 없습니다!' };
+    }
+
+    // 이미 수집된 몬스터인지 확인
+    if (type === 'rare') {
+      if (collection.rareMonsters[monsterId]?.unlocked) {
+        return { success: false, message: '이미 수집된 몬스터입니다!' };
+      }
+
+      // 몬스터 초기화 (아직 없다면)
+      if (!collection.rareMonsters[monsterId]) {
+        collection.rareMonsters[monsterId] = {
+          name: monsterName,
+          count: 0,
+          unlocked: false
+        };
+      }
+
+      // 몬스터 해금
+      collection.rareMonsters[monsterId].unlocked = true;
+      consumables.monster_selection_ticket--;
+
+      this.addCombatLog(`✨ 몬스터 선택권 사용! ${monsterName}을(를) 도감에 등록했습니다!`, 'rare_monster');
+      return {
+        success: true,
+        message: `${monsterName}을(를) 도감에 등록했습니다!`
+      };
+
+    } else if (type === 'legendary') {
+      if (collection.legendaryMonsters[monsterId]?.unlocked) {
+        return { success: false, message: '이미 수집된 몬스터입니다!' };
+      }
+
+      // 몬스터 초기화 (아직 없다면)
+      if (!collection.legendaryMonsters[monsterId]) {
+        collection.legendaryMonsters[monsterId] = {
+          name: monsterName,
+          count: 0,
+          unlocked: false
+        };
+      }
+
+      // 몬스터 해금
+      collection.legendaryMonsters[monsterId].unlocked = true;
+      consumables.monster_selection_ticket--;
+
+      this.addCombatLog(`🌟 몬스터 선택권 사용! ${monsterName}을(를) 도감에 등록했습니다!`, 'legendary_monster');
+      return {
+        success: true,
+        message: `${monsterName}을(를) 도감에 등록했습니다!`
+      };
+    }
+
+    return { success: false, message: '잘못된 몬스터 타입입니다' };
+  }
+
   // 방생 마일스톤 보상 체크
   checkReleaseMilestones() {
     const { collection } = this.state;
@@ -1629,6 +1912,340 @@ export class GameEngine {
     if (this.state.combatLog.length > 50) {
       this.state.combatLog = this.state.combatLog.slice(0, 50);
     }
+  }
+
+  // ===== 월드보스 시스템 =====
+
+  // 월드보스 전투 시작
+  startWorldBossBattle() {
+    const { worldBoss = {} } = this.state;
+    const { isActive, manualOverride } = worldBoss;
+
+    // 월드보스 활성화 체크
+    const bossActive = require('../data/worldBoss').isWorldBossActive(new Date(), manualOverride);
+    if (!bossActive) {
+      return { success: false, message: '월드보스가 활성화되지 않았습니다!' };
+    }
+
+    // 월드보스 초기화
+    if (!this.state.worldBoss) {
+      this.state.worldBoss = {
+        isActive: false,
+        manualOverride: null,
+        totalDamage: 0,
+        rankings: [],
+        battleSession: null,
+        lastRewardTime: null,
+        auction: null
+      };
+    }
+
+    // 전투 세션 시작
+    const { WORLD_BOSS_CONFIG } = require('../data/worldBoss');
+    const sessionEndTime = Date.now() + (WORLD_BOSS_CONFIG.battleSession.duration * 1000);
+
+    this.state.worldBoss.battleSession = {
+      startTime: Date.now(),
+      endTime: sessionEndTime,
+      sessionDamage: 0,
+      playerId: this.state.player.id || 'player_' + Date.now()
+    };
+
+    // 전투 세션 자동 종료 타이머
+    setTimeout(() => {
+      this.endWorldBossBattle();
+    }, WORLD_BOSS_CONFIG.battleSession.duration * 1000);
+
+    this.addCombatLog('⚔️ 월드보스 전투를 시작했습니다!', 'boss');
+    return { success: true };
+  }
+
+  // 월드보스 전투 틱 (매 틱마다 데미지 누적)
+  tickWorldBossDamage() {
+    const { worldBoss } = this.state;
+    if (!worldBoss || !worldBoss.battleSession) return;
+
+    const { battleSession } = worldBoss;
+    const now = Date.now();
+
+    // 세션이 종료되었는지 확인
+    if (now >= battleSession.endTime) {
+      return;
+    }
+
+    // DPS 계산 및 데미지 누적
+    const damage = this.calculateTotalDPS();
+    battleSession.sessionDamage = (battleSession.sessionDamage || 0) + damage;
+  }
+
+  // 월드보스 전투 종료
+  endWorldBossBattle() {
+    const { worldBoss, player } = this.state;
+    if (!worldBoss || !worldBoss.battleSession) return;
+
+    const { battleSession } = worldBoss;
+    const finalDamage = battleSession.sessionDamage || 0;
+
+    // 랭킹에 추가/업데이트
+    const playerId = battleSession.playerId;
+    const existingRank = worldBoss.rankings.find(r => r.playerId === playerId);
+
+    if (existingRank) {
+      existingRank.damage += finalDamage;
+    } else {
+      worldBoss.rankings.push({
+        playerId: playerId,
+        playerName: player.name || `플레이어 ${playerId}`,
+        damage: finalDamage
+      });
+    }
+
+    // 랭킹 정렬 (데미지 높은 순)
+    worldBoss.rankings.sort((a, b) => b.damage - a.damage);
+
+    // 총 누적 데미지 업데이트
+    worldBoss.totalDamage += finalDamage;
+
+    // 전투 세션 종료
+    worldBoss.battleSession = null;
+
+    this.addCombatLog(`⚔️ 월드보스 전투 종료! 입힌 데미지: ${finalDamage.toLocaleString()}`, 'boss');
+  }
+
+  // 월드보스 수동 제어 (관리자)
+  toggleWorldBoss(forceState = null) {
+    if (!this.state.worldBoss) {
+      this.state.worldBoss = {
+        isActive: false,
+        manualOverride: null,
+        totalDamage: 0,
+        rankings: [],
+        battleSession: null,
+        lastRewardTime: null,
+        auction: null
+      };
+    }
+
+    if (forceState !== null) {
+      this.state.worldBoss.manualOverride = forceState;
+      this.addCombatLog(`🔧 월드보스 ${forceState ? '활성화' : '비활성화'} (수동)`, 'boss');
+    } else {
+      // 토글
+      const currentState = this.state.worldBoss.manualOverride;
+      this.state.worldBoss.manualOverride = !currentState;
+      this.addCombatLog(`🔧 월드보스 ${!currentState ? '활성화' : '비활성화'} (수동)`, 'boss');
+    }
+
+    return { success: true };
+  }
+
+  // 월드보스 보상 분배
+  distributeWorldBossRewards() {
+    const { worldBoss, sealedZone = {} } = this.state;
+    if (!worldBoss || worldBoss.rankings.length === 0) {
+      return { success: false, message: '참가자가 없습니다!' };
+    }
+
+    const { WORLD_BOSS_CONFIG, AUCTION_CONFIG, AUCTION_ITEMS } = require('../data/worldBoss');
+    const rewards = [];
+
+    // 랭킹별 보상 지급
+    worldBoss.rankings.forEach((rank, index) => {
+      const isTop10 = index < 10;
+      const coinReward = isTop10
+        ? WORLD_BOSS_CONFIG.rewards.top10.bossCoins
+        : WORLD_BOSS_CONFIG.rewards.participation.bossCoins;
+
+      // 현재 플레이어인 경우 코인 지급
+      if (rank.playerId === this.state.player.id || rank.playerId === ('player_' + this.state.player.id)) {
+        if (!this.state.sealedZone) {
+          this.state.sealedZone = {};
+        }
+        this.state.sealedZone.bossCoins = (this.state.sealedZone.bossCoins || 0) + coinReward;
+
+        this.addCombatLog(
+          `🎁 월드보스 보상: 🪙 ${coinReward} 보스코인 획득! (순위: ${index + 1}위)`,
+          'boss'
+        );
+      }
+
+      rewards.push({
+        playerId: rank.playerId,
+        playerName: rank.playerName,
+        rank: index + 1,
+        damage: rank.damage,
+        coinReward: coinReward
+      });
+    });
+
+    // 경매 시작
+    this.startAuction();
+
+    // 마지막 보상 시간 기록
+    worldBoss.lastRewardTime = Date.now();
+
+    // 랭킹 초기화 (다음 월드보스를 위해)
+    worldBoss.rankings = [];
+    worldBoss.totalDamage = 0;
+
+    return { success: true, rewards };
+  }
+
+  // ===== 경매 시스템 =====
+
+  // 경매 시작
+  startAuction() {
+    const { AUCTION_CONFIG, AUCTION_ITEMS } = require('../data/worldBoss');
+
+    if (!this.state.worldBoss) {
+      this.state.worldBoss = {};
+    }
+
+    // 경매 아이템 초기화
+    const auctionItems = {};
+    AUCTION_ITEMS.forEach(item => {
+      auctionItems[item.id] = {
+        itemId: item.id,
+        quantity: item.quantity,
+        currentBid: item.minBid,
+        highestBidder: null,
+        highestBidderName: null,
+        bids: [] // { playerId, playerName, amount, timestamp }
+      };
+    });
+
+    this.state.worldBoss.auction = {
+      active: true,
+      startTime: Date.now(),
+      endTime: Date.now() + (AUCTION_CONFIG.duration * 1000),
+      items: auctionItems
+    };
+
+    // 경매 자동 종료 타이머
+    setTimeout(() => {
+      this.endAuction();
+    }, AUCTION_CONFIG.duration * 1000);
+
+    this.addCombatLog('🔨 희귀 아이템 경매가 시작되었습니다!', 'boss');
+  }
+
+  // 입찰하기
+  placeBid(itemId, amount, playerId, playerName) {
+    const { worldBoss, sealedZone = {} } = this.state;
+
+    if (!worldBoss || !worldBoss.auction || !worldBoss.auction.active) {
+      return { success: false, message: '경매가 진행 중이 아닙니다!' };
+    }
+
+    const { auction } = worldBoss;
+    const auctionItem = auction.items[itemId];
+
+    if (!auctionItem) {
+      return { success: false, message: '존재하지 않는 아이템입니다!' };
+    }
+
+    // 최소 입찰가 확인
+    const { AUCTION_CONFIG } = require('../data/worldBoss');
+    const minBid = auctionItem.currentBid + AUCTION_CONFIG.bidding.minIncrement;
+
+    if (amount < minBid) {
+      return { success: false, message: `최소 ${minBid} 코인 이상 입찰해야 합니다!` };
+    }
+
+    // 보스 코인 확인
+    const bossCoins = sealedZone.bossCoins || 0;
+    if (amount > bossCoins) {
+      return { success: false, message: '보스 코인이 부족합니다!' };
+    }
+
+    // 이전 최고 입찰자에게 코인 반환
+    if (auctionItem.highestBidder) {
+      // 현재 플레이어가 이전 최고 입찰자인 경우
+      if (auctionItem.highestBidder === playerId) {
+        // 자신의 입찰 취소 후 재입찰
+        this.state.sealedZone.bossCoins = (this.state.sealedZone.bossCoins || 0) + auctionItem.currentBid;
+      }
+      // TODO: 다른 플레이어의 경우 멀티플레이어 구현 시 처리
+    }
+
+    // 코인 차감
+    this.state.sealedZone.bossCoins = bossCoins - amount;
+
+    // 입찰 정보 업데이트
+    auctionItem.currentBid = amount;
+    auctionItem.highestBidder = playerId;
+    auctionItem.highestBidderName = playerName;
+    auctionItem.bids.push({
+      playerId,
+      playerName,
+      amount,
+      timestamp: Date.now()
+    });
+
+    this.addCombatLog(`🔨 ${playerName}님이 ${amount} 코인 입찰!`, 'boss');
+    return { success: true };
+  }
+
+  // 경매 종료 및 아이템 분배
+  endAuction() {
+    const { worldBoss, sealedZone = {} } = this.state;
+
+    if (!worldBoss || !worldBoss.auction) return;
+
+    const { auction } = worldBoss;
+    const { AUCTION_ITEMS } = require('../data/worldBoss');
+
+    // 각 아이템별 낙찰 처리
+    Object.entries(auction.items).forEach(([itemId, auctionData]) => {
+      if (!auctionData.highestBidder) return;
+
+      const itemInfo = AUCTION_ITEMS.find(i => i.id === itemId);
+      if (!itemInfo) return;
+
+      // 현재 플레이어가 낙찰자인 경우 아이템 지급
+      if (auctionData.highestBidder === this.state.player.id ||
+          auctionData.highestBidder === ('player_' + this.state.player.id)) {
+
+        // 아이템별 지급 처리
+        switch (itemId) {
+          case 'gear_orb':
+            this.state.orbs = (this.state.orbs || 0) + auctionData.quantity;
+            this.addCombatLog(`🎉 경매 낙찰! ${itemInfo.name} ${auctionData.quantity}개 획득!`, 'boss');
+            break;
+
+          case 'stat_max_item':
+            if (!this.state.consumables) this.state.consumables = {};
+            this.state.consumables.stat_max_item = (this.state.consumables.stat_max_item || 0) + auctionData.quantity;
+            this.addCombatLog(`🎉 경매 낙찰! ${itemInfo.name} ${auctionData.quantity}개 획득!`, 'boss');
+            break;
+
+          case 'monster_selection_ticket':
+            if (!this.state.consumables) this.state.consumables = {};
+            this.state.consumables.monster_selection_ticket = (this.state.consumables.monster_selection_ticket || 0) + auctionData.quantity;
+            this.addCombatLog(`🎉 경매 낙찰! ${itemInfo.name} ${auctionData.quantity}개 획득!`, 'boss');
+            break;
+
+          case 'legendary_equipment_box':
+            // 전설 장비 상자 (인벤토리에 추가)
+            for (let i = 0; i < auctionData.quantity; i++) {
+              const legendaryItem = generateItem('legendary', this.state.player.floor);
+              this.state.inventory.push(legendaryItem);
+            }
+            this.addCombatLog(`🎉 경매 낙찰! ${itemInfo.name} ${auctionData.quantity}개 획득!`, 'boss');
+            break;
+
+          case 'inscription_token':
+            if (!this.state.sealedZone) this.state.sealedZone = {};
+            this.state.sealedZone.inscriptionTokens = (this.state.sealedZone.inscriptionTokens || 0) + auctionData.quantity;
+            this.addCombatLog(`🎉 경매 낙찰! ${itemInfo.name} ${auctionData.quantity}개 획득!`, 'boss');
+            break;
+        }
+      }
+    });
+
+    // 경매 종료
+    auction.active = false;
+    this.addCombatLog('🔨 경매가 종료되었습니다!', 'boss');
   }
 
   getState() {

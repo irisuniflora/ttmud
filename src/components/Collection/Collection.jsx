@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGame } from '../../store/GameContext';
 import { FLOOR_RANGES, getCollectionBonus } from '../../data/monsters';
 import { formatNumberWithCommas } from '../../utils/formatter';
 
 const Collection = () => {
-  const { gameState, releaseMonster, engine } = useGame();
-  const { collection, statistics } = gameState;
+  const { gameState, releaseMonster, unlockMonsterWithTicket, engine } = useGame();
+  const { collection, statistics, consumables = {} } = gameState;
   const [activeTab, setActiveTab] = useState('monsters');
   const [releaseModal, setReleaseModal] = useState(null); // { monsterId, monsterName, type }
   const [resultModal, setResultModal] = useState(null); // { success, message, damageBonus, dropRateBonus }
+  const [selectionModal, setSelectionModal] = useState(false); // 선택권 사용 모달
+  const [selectionResult, setSelectionResult] = useState(null); // 선택 결과 모달
 
   // 방생 확인 모달 열기
   const handleReleaseClick = (monsterId, monsterName, type) => {
@@ -26,12 +28,45 @@ const Collection = () => {
     setResultModal(result);
   };
 
+  // 몬스터 선택권 사용
+  const handleMonsterSelect = (monsterId, type, monsterName) => {
+    const result = unlockMonsterWithTicket(monsterId, type, monsterName);
+    setSelectionModal(false);
+    setSelectionResult(result);
+  };
+
   // 방생 정보 가져오기
   const releaseData = collection.release || {
     releasedMonsters: {},
     totalRareReleased: 0,
     totalLegendaryReleased: 0
   };
+
+  // 엔터키로 모달 닫기
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Enter') {
+        if (selectionResult) {
+          setSelectionResult(null);
+        } else if (resultModal) {
+          setResultModal(null);
+        } else if (releaseModal) {
+          confirmRelease();
+        }
+      } else if (e.key === 'Escape') {
+        if (selectionModal) {
+          setSelectionModal(false);
+        } else if (releaseModal) {
+          setReleaseModal(null);
+        }
+      }
+    };
+
+    if (releaseModal || resultModal || selectionModal || selectionResult) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [releaseModal, resultModal, selectionModal, selectionResult]);
 
   return (
     <div className="space-y-4">
@@ -73,14 +108,35 @@ const Collection = () => {
 
       {/* 방생 시스템 안내 */}
       {activeTab === 'monsters' && (
-        <div className="bg-gradient-to-r from-purple-900 to-orange-900 border border-purple-500 rounded-lg p-3">
-          <h4 className="text-sm font-bold text-yellow-400 mb-2">🐧 방생 시스템</h4>
-          <div className="text-xs text-gray-200 space-y-1">
-            <p>• 각 몬스터는 <span className="text-purple-400 font-bold">레어</span>와 <span className="text-orange-400 font-bold">전설</span> 각각 <span className="text-yellow-400 font-bold">최대 3회</span>까지 방생 가능</p>
-            <p>• 방생하면 해당 구간에서 <span className="text-red-400 font-bold">데미지</span>와 <span className="text-green-400 font-bold">드랍율</span>이 영구 증가</p>
-            <p>• 레어: 1회당 <span className="text-purple-400">+5%</span> (최대 +15%) | 전설: 1회당 <span className="text-orange-400">+20%</span> (최대 +60%)</p>
-            <p>• 방생 횟수는 펭귄(🐧)으로 표시됩니다</p>
-            <p>• 전설이 수집되어 있으면 전설을 먼저 방생해야 레어 방생 가능</p>
+        <div className="space-y-3">
+          {/* 몬스터 선택권 버튼 */}
+          {consumables.monster_selection_ticket > 0 && (
+            <div className="bg-gradient-to-r from-orange-900 to-yellow-900 border border-orange-500 rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-yellow-400 mb-1">📜 몬스터 도감 선택권</h4>
+                  <p className="text-xs text-gray-200">보유: <span className="text-orange-400 font-bold">{consumables.monster_selection_ticket}개</span></p>
+                </div>
+                <button
+                  onClick={() => setSelectionModal(true)}
+                  className="px-4 py-2 bg-orange-600 hover:bg-orange-700 border border-orange-400 rounded font-bold text-white transition-colors shadow-lg"
+                >
+                  몬스터 선택
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-gradient-to-r from-purple-900 to-orange-900 border border-purple-500 rounded-lg p-3">
+            <h4 className="text-sm font-bold text-yellow-400 mb-2">🐧 방생 시스템</h4>
+            <div className="text-xs text-gray-200 space-y-1">
+              <p>• <span className="text-purple-400 font-bold">💎 레어</span>와 <span className="text-orange-400 font-bold">👑 전설</span> 몬스터를 수집하면 이름 옆에 아이콘이 표시됩니다</p>
+              <p>• 각 몬스터는 레어와 전설 각각 <span className="text-yellow-400 font-bold">최대 3회</span>까지 방생 가능</p>
+              <p>• 방생하면 해당 구간에서 <span className="text-red-400 font-bold">데미지</span>와 <span className="text-green-400 font-bold">드랍율</span>이 영구 증가</p>
+              <p>• 레어: 1회당 <span className="text-purple-400">+5%</span> (최대 +15%) | 전설: 1회당 <span className="text-orange-400">+20%</span> (최대 +60%)</p>
+              <p>• 방생 횟수는 펭귄(🐧)으로 표시됩니다</p>
+              <p>• 전설이 수집되어 있으면 전설을 먼저 방생해야 레어 방생 가능</p>
+            </div>
           </div>
         </div>
       )}
@@ -198,11 +254,20 @@ const Collection = () => {
 
                     return (
                       <div key={idx} className="space-y-0.5">
-                        {/* 몬스터 이름 칸 + 펭귄 아이콘 */}
-                        <div className="bg-gray-800 border border-gray-700 rounded p-1 text-center">
-                          <p className="text-[9px] font-bold text-gray-300 truncate mb-0.5">
-                            {(rareUnlocked || rareReleaseCount > 0 || legendaryUnlocked || legendaryReleaseCount > 0) ? monsterName : '???'}
-                          </p>
+                        {/* 몬스터 이름 칸 + 수집 상태 아이콘 */}
+                        <div className="bg-gray-800 border border-gray-700 rounded p-1 text-center h-11 flex flex-col justify-center">
+                          <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                            <p className="text-[9px] font-bold text-gray-300 truncate">
+                              {(rareUnlocked || rareReleaseCount > 0 || legendaryUnlocked || legendaryReleaseCount > 0) ? monsterName : '???'}
+                            </p>
+                            {/* 수집 상태 아이콘 */}
+                            {rareUnlocked && (
+                              <span className="text-[8px]" title="레어 수집">💎</span>
+                            )}
+                            {legendaryUnlocked && (
+                              <span className="text-[8px]" title="전설 수집">👑</span>
+                            )}
+                          </div>
                           {/* 펭귄 아이콘 표시 */}
                           <div className="flex items-center justify-center gap-0.5">
                             {/* 레어 펭귄 */}
@@ -224,73 +289,28 @@ const Collection = () => {
                           </div>
                         </div>
 
-                        {/* 레어 / 전설 2칸 */}
-                        <div className="flex gap-0.5">
-                          {/* 레어 칸 */}
-                          <div className="flex-1 flex flex-col gap-0.5">
-                            <div className={`flex-1 border rounded p-0.5 text-center ${
-                              rareUnlocked ? 'bg-purple-900 border-purple-500' :
-                              rareReleaseCount > 0 ? 'bg-purple-900/50 border-purple-600' :
-                              'bg-gray-900 border-gray-700'
-                            }`}>
-                              <div className="flex items-center justify-center gap-0.5">
-                                <p className={`text-[8px] font-bold ${
-                                  rareUnlocked ? 'text-purple-400' :
-                                  rareReleaseCount > 0 ? 'text-purple-300' :
-                                  'text-gray-600'
-                                }`}>
-                                  {rareUnlocked ? '레어' : rareReleaseCount > 0 ? '방생' : '-'}
-                                </p>
-                                {rareReleaseCount > 0 && (
-                                  <span className="text-[10px]">
-                                    {'🐧'.repeat(rareReleaseCount)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            {canReleaseRare && (
-                              <button
-                                onClick={() => handleReleaseClick(rareId, monsterName, 'rare')}
-                                className="w-full bg-purple-600 hover:bg-purple-700 border border-purple-500 rounded flex items-center justify-center text-[9px] py-0.5 transition-transform hover:scale-105"
-                                title={`레어 방생 (${rareReleaseCount + 1}/3회) (+5% 데미지, +5%p 드랍)`}
-                              >
-                                🕊️
-                              </button>
-                            )}
-                          </div>
-
-                          {/* 전설 칸 */}
-                          <div className="flex-1 flex flex-col gap-0.5">
-                            <div className={`flex-1 border rounded p-0.5 text-center ${
-                              legendaryUnlocked ? 'bg-orange-900 border-orange-500' :
-                              legendaryReleaseCount > 0 ? 'bg-orange-900/50 border-orange-600' :
-                              'bg-gray-900 border-gray-700'
-                            }`}>
-                              <div className="flex items-center justify-center gap-0.5">
-                                <p className={`text-[8px] font-bold ${
-                                  legendaryUnlocked ? 'text-orange-400' :
-                                  legendaryReleaseCount > 0 ? 'text-orange-300' :
-                                  'text-gray-600'
-                                }`}>
-                                  {legendaryUnlocked ? '전설' : legendaryReleaseCount > 0 ? '방생' : '-'}
-                                </p>
-                                {legendaryReleaseCount > 0 && (
-                                  <span className="text-[10px]">
-                                    {'🐧'.repeat(legendaryReleaseCount)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            {canReleaseLegendary && (
-                              <button
-                                onClick={() => handleReleaseClick(legendaryId, monsterName, 'legendary')}
-                                className="w-full bg-orange-600 hover:bg-orange-700 border border-orange-500 rounded flex items-center justify-center text-[9px] py-0.5 transition-transform hover:scale-105"
-                                title={`전설 방생 (${legendaryReleaseCount + 1}/3회) (+20% 데미지, +20%p 드랍)`}
-                              >
-                                🕊️
-                              </button>
-                            )}
-                          </div>
+                        {/* 방생 버튼 통합 - 고정 높이 */}
+                        <div className="flex flex-col gap-0.5 h-12">
+                          {canReleaseLegendary && (
+                            <button
+                              onClick={() => handleReleaseClick(legendaryId, monsterName, 'legendary')}
+                              className="w-full bg-orange-600 hover:bg-orange-700 border border-orange-500 rounded flex items-center justify-center gap-1 text-[10px] font-bold py-1 transition-transform hover:scale-105"
+                              title={`전설 방생 (${legendaryReleaseCount + 1}/3회) (+20% 데미지, +20%p 드랍)`}
+                            >
+                              <span className="text-orange-300">⭐</span>
+                              <span>방생</span>
+                            </button>
+                          )}
+                          {canReleaseRare && (
+                            <button
+                              onClick={() => handleReleaseClick(rareId, monsterName, 'rare')}
+                              className="w-full bg-purple-600 hover:bg-purple-700 border border-purple-500 rounded flex items-center justify-center gap-1 text-[10px] font-bold py-1 transition-transform hover:scale-105"
+                              title={`레어 방생 (${rareReleaseCount + 1}/3회) (+5% 데미지, +5%p 드랍)`}
+                            >
+                              <span className="text-purple-300">●</span>
+                              <span>방생</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -467,6 +487,96 @@ const Collection = () => {
                 🕊️ 방생하기
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 몬스터 선택 모달 */}
+      {selectionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 overflow-y-auto" onClick={() => setSelectionModal(false)}>
+          <div className="bg-gray-800 border-2 border-orange-500 rounded-lg p-6 max-w-4xl w-full mx-4 my-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-bold text-orange-400 mb-4 text-center">📜 몬스터 도감 선택</h3>
+            <p className="text-sm text-center text-gray-300 mb-4">원하는 몬스터를 선택하면 도감에 등록됩니다</p>
+
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+              {Object.entries(FLOOR_RANGES).map(([floorStart, data]) => {
+                const floor = parseInt(floorStart);
+                return (
+                  <div key={floor} className="bg-gray-900 border border-gray-700 rounded-lg p-3">
+                    <h4 className="text-sm font-bold text-cyan-400 mb-2">{data.name}</h4>
+                    <div className="grid grid-cols-5 gap-2">
+                      {data.monsters.map((monsterName, idx) => {
+                        const rareId = `rare_${floor}_${idx}`;
+                        const legendaryId = `legendary_${floor}_${idx}`;
+                        const rareUnlocked = collection.rareMonsters?.[rareId]?.unlocked;
+                        const legendaryUnlocked = collection.legendaryMonsters?.[legendaryId]?.unlocked;
+
+                        return (
+                          <div key={idx} className="space-y-1">
+                            <div className="bg-gray-800 border border-gray-700 rounded p-2 text-center">
+                              <p className="text-[10px] font-bold text-gray-300 mb-1">{monsterName}</p>
+                              <div className="flex flex-col gap-1">
+                                <button
+                                  onClick={() => handleMonsterSelect(rareId, 'rare', monsterName)}
+                                  disabled={rareUnlocked}
+                                  className={`w-full text-[9px] py-1 rounded font-bold ${
+                                    rareUnlocked
+                                      ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                                      : 'bg-purple-600 hover:bg-purple-700 text-white'
+                                  }`}
+                                >
+                                  {rareUnlocked ? '💎 보유중' : '💎 레어'}
+                                </button>
+                                <button
+                                  onClick={() => handleMonsterSelect(legendaryId, 'legendary', monsterName)}
+                                  disabled={legendaryUnlocked}
+                                  className={`w-full text-[9px] py-1 rounded font-bold ${
+                                    legendaryUnlocked
+                                      ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                                      : 'bg-orange-600 hover:bg-orange-700 text-white'
+                                  }`}
+                                >
+                                  {legendaryUnlocked ? '👑 보유중' : '👑 전설'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => setSelectionModal(false)}
+              className="w-full mt-4 py-2 rounded font-bold bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 선택 결과 모달 */}
+      {selectionResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={() => setSelectionResult(null)}>
+          <div className={`bg-gray-800 border-2 rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl ${
+            selectionResult.success ? 'border-green-500' : 'border-red-500'
+          }`} onClick={(e) => e.stopPropagation()}>
+            <h3 className={`text-xl font-bold mb-4 text-center ${
+              selectionResult.success ? 'text-green-400' : 'text-red-400'
+            }`}>
+              {selectionResult.success ? '✅ 등록 완료!' : '❌ 등록 실패'}
+            </h3>
+            <p className="text-center text-white mb-4">{selectionResult.message}</p>
+            <button
+              onClick={() => setSelectionResult(null)}
+              className="w-full py-2 rounded font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+            >
+              확인
+            </button>
           </div>
         </div>
       )}

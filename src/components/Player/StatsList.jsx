@@ -50,6 +50,8 @@ const StatsList = () => {
   let equipmentAttack = 0;
   let equipmentCritChance = 0;
   let equipmentCritDmg = 0;
+  let equipmentAccuracy = 0;
+  let equipmentPenetration = 0;
   let equipmentGoldBonus = 0;
   let equipmentDropRate = 0;
   let equipmentExpBonus = 0;
@@ -67,6 +69,10 @@ const StatsList = () => {
           equipmentCritChance += stat.value * enhancementBonus;
         } else if (stat.id === 'critDmg') {
           equipmentCritDmg += stat.value * enhancementBonus;
+        } else if (stat.id === 'accuracy') {
+          equipmentAccuracy += stat.value * enhancementBonus;
+        } else if (stat.id === 'penetration') {
+          equipmentPenetration += stat.value * enhancementBonus;
         } else if (stat.id === 'goldBonus') {
           equipmentGoldBonus += stat.value * enhancementBonus;
         } else if (stat.id === 'dropRate') {
@@ -112,6 +118,8 @@ const StatsList = () => {
     { icon: '💥', name: '치명타 확률', value: formatPercent(totalCritChance), color: 'text-rose-400' },
     { icon: '🎯', name: '치명타 데미지', value: formatPercent(totalCritDmg), color: 'text-rose-400' },
     { icon: '⚡', name: '전투력', value: formatNumber(combatPower), color: 'text-rose-400' },
+    { icon: '🔍', name: '명중률', value: formatPercent(equipmentAccuracy), color: 'text-rose-400', hide: equipmentAccuracy === 0 },
+    { icon: '💠', name: '관통', value: formatPercent(equipmentPenetration), color: 'text-rose-400', hide: equipmentPenetration === 0 },
     { icon: '👑', name: '보스 데미지', value: '+' + formatPercent(equipmentBossDamageIncrease), color: 'text-rose-400' },
     { icon: '🗡️', name: '일반몹 데미지', value: '+' + formatPercent(equipmentNormalMonsterDamageIncrease), color: 'text-rose-400' },
 
@@ -123,9 +131,23 @@ const StatsList = () => {
     { icon: '🔥', name: '도트 데미지', value: formatPercent(heroBuffs.dotDmgPercent), color: 'text-yellow-400', hide: heroBuffs.dotDmgPercent === 0 },
     { icon: '⏭️', name: '스킵 확률', value: formatPercent(heroBuffs.stageSkipChance), color: 'text-yellow-400', hide: heroBuffs.stageSkipChance === 0 },
 
-    // 방생 보너스 (연보라색)
-    { icon: '🕊️', name: '방생 데미지', value: '+' + formatPercent(releaseBonus.damageBonus), color: 'text-purple-300', hide: releaseBonus.damageBonus === 0 },
-    { icon: '🕊️', name: '방생 드랍', value: '+' + formatPercent(releaseBonus.dropRateBonus), color: 'text-purple-300', hide: releaseBonus.dropRateBonus === 0 },
+    // 방생 보너스 (연보라색) - 현재 구간에만 적용됨
+    {
+      icon: '🕊️',
+      name: '방생 데미지',
+      value: '+' + formatPercent(releaseBonus.damageBonus),
+      color: 'text-purple-300',
+      hide: releaseBonus.damageBonus === 0,
+      tooltip: `${rangeStart}~${rangeStart+4}층 구간에 적용`
+    },
+    {
+      icon: '🕊️',
+      name: '방생 드랍',
+      value: '+' + formatPercent(releaseBonus.dropRateBonus),
+      color: 'text-purple-300',
+      hide: releaseBonus.dropRateBonus === 0,
+      tooltip: `${rangeStart}~${rangeStart+4}층 구간에 적용`
+    },
 
     // 몬스터 감소 (맨 아래, 초록색) - 장비 + 도감 보너스
     {
@@ -141,7 +163,11 @@ const StatsList = () => {
       <h3 className="text-base font-bold text-gray-100 mb-2">스탯</h3>
       <div className="grid grid-cols-2 gap-1.5 flex-1 content-start">
         {stats.filter(stat => !stat.hide).map((stat, index) => (
-          <div key={index} className="flex items-center justify-between bg-gray-800 rounded p-1.5 border border-gray-700">
+          <div
+            key={index}
+            className="flex items-center justify-between bg-gray-800 rounded p-1.5 border border-gray-700"
+            title={stat.tooltip || ''}
+          >
             <div className="flex items-center gap-1">
               <span className="text-sm">{stat.icon}</span>
               <span className="text-xs text-gray-200 font-semibold">{stat.name}</span>

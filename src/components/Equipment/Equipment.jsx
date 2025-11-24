@@ -52,10 +52,30 @@ const Equipment = () => {
     );
   };
 
+  const getEnhancementSuccessRate = (slot) => {
+    const currentLevel = slotEnhancements[slot] || 0;
+    const { baseSuccessRate, successRateDecayPerLevel, minSuccessRate } = EQUIPMENT_CONFIG.enhancement;
+    return Math.max(
+      minSuccessRate,
+      baseSuccessRate - (currentLevel * successRateDecayPerLevel)
+    );
+  };
+
+  const getEnhancementGlow = (level) => {
+    if (level < 10) return '';
+    if (level < 15) return 'ring-2 ring-green-500 shadow-lg shadow-green-500/50'; // 10-14: 초록
+    if (level < 20) return 'ring-2 ring-blue-500 shadow-lg shadow-blue-500/50'; // 15-19: 파랑
+    if (level < 25) return 'ring-2 ring-purple-500 shadow-lg shadow-purple-500/50'; // 20-24: 보라
+    if (level < 30) return 'ring-2 ring-yellow-500 shadow-lg shadow-yellow-500/50'; // 25-29: 노랑
+    return 'ring-2 ring-red-500 shadow-lg shadow-red-500/50 animate-pulse'; // 30+: 빨강 + 펄스
+  };
+
   const handleEnhance = (slot) => {
     const result = enhanceSlot(slot);
-    if (!result.success) {
-      showNotification('강화 실패', result.message, 'error');
+    if (result.success) {
+      showNotification('✨ 강화 성공!', `+${result.newLevel} 달성! (확률: ${result.successRate.toFixed(1)}%)`, 'success');
+    } else {
+      showNotification('💔 강화 실패', `${result.message} (확률: ${result.successRate.toFixed(1)}%)`, 'warning');
     }
   };
 
@@ -167,7 +187,9 @@ const Equipment = () => {
             const item = equipment[slot];
             const enhancementLevel = slotEnhancements[slot] || 0;
             const enhancementCost = getEnhancementCost(slot);
-            const canEnhance = enhancementLevel < EQUIPMENT_CONFIG.enhancement.maxLevel && player.gold >= enhancementCost;
+            const successRate = getEnhancementSuccessRate(slot);
+            const canEnhance = player && player.gold >= enhancementCost;
+            const glowClass = getEnhancementGlow(enhancementLevel);
 
             return (
               <div key={slot} className="bg-game-panel border border-game-border rounded-lg p-3">
@@ -182,7 +204,7 @@ const Equipment = () => {
                 </div>
 
                 {item ? (
-                  <div className={`border-2 ${getRarityColor(item.rarity)} ${getRarityBg(item.rarity)} rounded p-2 mb-2`}>
+                  <div className={`border-2 ${getRarityColor(item.rarity)} ${getRarityBg(item.rarity)} ${glowClass} rounded p-2 mb-2 transition-all duration-300`}>
                     <p className={`text-xs font-bold ${getRarityColor(item.rarity)} text-center mb-2`}>
                       {RARITIES[item.rarity]?.name || ''}
                     </p>
@@ -238,18 +260,29 @@ const Equipment = () => {
                 )}
 
                 {/* 강화 버튼 */}
-                <button
-                  onClick={() => handleEnhance(slot)}
-                  disabled={!canEnhance}
-                  className={`w-full py-1 rounded text-xs font-bold transition-all ${
-                    canEnhance
-                      ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white'
-                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                  }`}
-                  title={`강화 비용: ${formatNumber(enhancementCost)} 골드`}
-                >
-                  {enhancementLevel >= EQUIPMENT_CONFIG.enhancement.maxLevel ? 'MAX' : `강화 (${formatNumber(enhancementCost)})`}
-                </button>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[9px]">
+                    <span className="text-gray-400">비용</span>
+                    <span className="text-yellow-400 font-bold">{formatNumber(enhancementCost)}G</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[9px]">
+                    <span className="text-gray-400">성공률</span>
+                    <span className={`font-bold ${successRate >= 70 ? 'text-green-400' : successRate >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                      {successRate.toFixed(1)}%
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleEnhance(slot)}
+                    disabled={!canEnhance}
+                    className={`w-full py-1 rounded text-xs font-bold transition-all ${
+                      canEnhance
+                        ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white'
+                        : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    강화 +{enhancementLevel + 1}
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -415,7 +448,7 @@ const Equipment = () => {
                                   {rarityData.name}
                                 </p>
                                 <p className="text-gray-300 text-[10px]">
-                                  {Math.floor(range.min)} - {Math.floor(range.max)}
+                                  {range.min.toFixed(1)} - {range.max.toFixed(1)}
                                 </p>
                               </div>
                             );
@@ -469,7 +502,7 @@ const Equipment = () => {
                                   {rarityData.name}
                                 </p>
                                 <p className="text-gray-300 text-[10px]">
-                                  {Math.floor(range.min)} - {Math.floor(range.max)}
+                                  {range.min.toFixed(1)} - {range.max.toFixed(1)}
                                 </p>
                               </div>
                             );
@@ -485,7 +518,9 @@ const Equipment = () => {
               <div className="bg-gradient-to-r from-purple-900 to-blue-900 border border-purple-500 rounded-lg p-4">
                 <h4 className="text-sm font-bold text-yellow-400 mb-2">ℹ️ 참고 사항</h4>
                 <div className="text-xs text-gray-200 space-y-1">
-                  <p>• 모든 스탯 수치는 현재 층수에 따라 2%씩 증가합니다</p>
+                  <p>• 위 수치는 1층 기준 기본값입니다</p>
+                  <p>• <span className="text-cyan-400 font-bold">50층마다 모든 장비 스탯이 1.2배씩 증가합니다</span></p>
+                  <p className="text-gray-400 text-[10px] ml-3">예: 51층 = x1.2, 101층 = x1.44, 151층 = x1.73...</p>
                   <p>• 장비 슬롯 강화 시 해당 슬롯의 모든 스탯이 5%씩 증가합니다</p>
                   <p>• 기어 코어(⚙️)를 사용하면 개별 옵션을 최대치로 강화할 수 있습니다</p>
                   <p>• 오브(🔮)를 사용하면 장비 옵션을 재조정할 수 있습니다</p>

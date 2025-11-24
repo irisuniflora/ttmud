@@ -8,6 +8,11 @@ import Consumables from './components/Inventory/Consumables';
 import SkillTree from './components/SkillTree/SkillTree';
 import Collection from './components/Collection/Collection';
 import CombatLog from './components/Combat/CombatLog';
+import SealedZone from './components/SealedZone/SealedZone';
+import InscriptionManagement from './components/SealedZone/InscriptionManagement';
+import BossCoinShop from './components/SealedZone/BossCoinShop';
+import WorldBoss from './components/WorldBoss/WorldBoss';
+import Auction from './components/WorldBoss/Auction';
 
 const GameContent = () => {
   const { gameState, isRunning, togglePause, saveGame, resetGame, prestige } = useGame();
@@ -141,6 +146,56 @@ const GameContent = () => {
               >
                 📋 로그
               </button>
+              <button
+                onClick={() => setActiveTab('sealedZone')}
+                className={`px-4 py-2 rounded font-bold transition-all ${
+                  activeTab === 'sealedZone'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
+                }`}
+              >
+                🔒 봉인구역
+              </button>
+              <button
+                onClick={() => setActiveTab('inscriptions')}
+                className={`px-4 py-2 rounded font-bold transition-all ${
+                  activeTab === 'inscriptions'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
+                }`}
+              >
+                📿 문양
+              </button>
+              <button
+                onClick={() => setActiveTab('bossShop')}
+                className={`px-4 py-2 rounded font-bold transition-all ${
+                  activeTab === 'bossShop'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
+                }`}
+              >
+                🪙 보스상점
+              </button>
+              <button
+                onClick={() => setActiveTab('worldBoss')}
+                className={`px-4 py-2 rounded font-bold transition-all ${
+                  activeTab === 'worldBoss'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
+                }`}
+              >
+                👹 월드보스
+              </button>
+              <button
+                onClick={() => setActiveTab('auction')}
+                className={`px-4 py-2 rounded font-bold transition-all ${
+                  activeTab === 'auction'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
+                }`}
+              >
+                🔨 경매
+              </button>
             </div>
 
             {/* 탭 컨텐츠 - 이 영역만 스크롤 */}
@@ -151,6 +206,11 @@ const GameContent = () => {
               {activeTab === 'skills' && <SkillTree />}
               {activeTab === 'collection' && <Collection />}
               {activeTab === 'logs' && <CombatLog />}
+              {activeTab === 'sealedZone' && <SealedZone />}
+              {activeTab === 'inscriptions' && <InscriptionManagement />}
+              {activeTab === 'bossShop' && <BossCoinShop />}
+              {activeTab === 'worldBoss' && <WorldBoss />}
+              {activeTab === 'auction' && <Auction />}
             </div>
           </div>
         </div>

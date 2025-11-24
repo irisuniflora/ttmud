@@ -141,7 +141,7 @@ export const HERO_CONFIG = {
 
 // ===== 층(Floor) 시스템 =====
 export const FLOOR_CONFIG = {
-  // 한 층당 일반 몬스터 수
+  // 한 층당 일반 몬스터 수 (기본값 - 1~100층)
   monstersPerFloor: 40,
 
   // 보스 타이머
@@ -149,6 +149,18 @@ export const FLOOR_CONFIG = {
 
   // 보스 체력 배수
   bossHPMultiplier: 20,
+};
+
+/**
+ * 층수에 따른 몬스터 수 계산
+ * 100층 구간마다 10마리씩 증가
+ * 1-100층: 40마리, 101-200층: 50마리, 201-300층: 60마리, ...
+ * @param {number} floor - 층수
+ * @returns {number} 해당 층의 몬스터 수
+ */
+export const getMonstersPerFloor = (floor) => {
+  const hundredBlock = Math.floor((floor - 1) / 100); // 0: 1-100층, 1: 101-200층, ...
+  return FLOOR_CONFIG.monstersPerFloor + (hundredBlock * 10);
 };
 
 // ===== 몬스터 시스템 =====
@@ -175,21 +187,33 @@ export const EQUIPMENT_CONFIG = {
   // 장비 슬롯
   slots: ['weapon', 'armor', 'gloves', 'boots', 'necklace', 'ring'],
 
-  // 장비 레어리티
+  // 장비 레어리티 (스탯 배수 범위)
   rarities: {
-    common: { name: '일반', color: '#9CA3AF', weight: 50 },
-    rare: { name: '레어', color: '#3B82F6', weight: 30 },
-    epic: { name: '에픽', color: '#A855F7', weight: 15 },
-    legendary: { name: '전설', color: '#F97316', weight: 4 },
-    mythic: { name: '신화', color: '#EF4444', weight: 1 },
+    common: { name: '일반', color: '#9CA3AF', weight: 50, statMin: 0.50, statMax: 1.00 },
+    rare: { name: '희귀', color: '#3B82F6', weight: 30, statMin: 1.00, statMax: 1.50 },
+    epic: { name: '레어', color: '#A855F7', weight: 15, statMin: 1.50, statMax: 2.00 },
+    unique: { name: '유니크', color: '#EAB308', weight: 8, statMin: 2.00, statMax: 3.00 },
+    legendary: { name: '전설', color: '#F97316', weight: 4, statMin: 3.00, statMax: 5.00 },
+    mythic: { name: '신화', color: '#EF4444', weight: 2, statMin: 5.00, statMax: 9.00 },
+    dark: { name: '다크', color: '#1F2937', weight: 1, statMin: 9.00, statMax: 15.00 },
+  },
+
+  // 티어 시스템 (50층 단위로 장비 성능 상승)
+  tierSystem: {
+    floorInterval: 50, // 50층마다 티어 증가
+    tierMultiplier: 1.2, // 티어당 1.2배 증가
   },
 
   // 슬롯 강화 시스템
   enhancement: {
-    maxLevel: 20, // 최대 강화 레벨
     baseCost: 1000, // 기본 강화 비용
     costMultiplier: 1.5, // 레벨당 비용 증가 배수
     statBonusPerLevel: 5, // 레벨당 스탯 증가 (%)
+    baseSuccessRate: 100, // 기본 성공률 (%)
+    successRateDecayPerLevel: 2, // 레벨당 성공률 감소 (%)
+    minSuccessRate: 10, // 최소 성공률 (%)
+    // 크리티컬 관련 스탯은 강화 효과 미적용
+    excludedStats: ['critChance', 'critDmg']
   },
 
   // 장비 스탯 범위 (등급별로 min~max 범위 내에서 랜덤)

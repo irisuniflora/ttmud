@@ -1,0 +1,837 @@
+import React, { useState, useEffect } from 'react';
+import { useGame } from '../../store/GameContext';
+import { RAID_BOSSES, RAID_DIFFICULTIES, calculateRaidBossStats, INSCRIPTION_SLOT_CONFIG, checkBossUnlock } from '../../data/raidBosses';
+import { INSCRIPTIONS, calculateInscriptionStats } from '../../data/inscriptions';
+import { formatNumber, formatPercent } from '../../utils/formatter';
+
+const SealedZone = () => {
+  const { gameState, setGameState } = useGame();
+  const { player, sealedZone = {} } = gameState;
+
+  const [selectedBoss, setSelectedBoss] = useState(null);
+  const [selectedDifficulty, setSelectedDifficulty] = useState('normal');
+  const [activeInscriptions, setActiveInscriptions] = useState([]); // 문양 배열
+  const [inBattle, setInBattle] = useState(false);
+  const [battleTimer, setBattleTimer] = useState(30);
+  const [bossHP, setBossHP] = useState(100);
+  const [battleLog, setBattleLog] = useState([]);
+
+  // 전투 상태 추가
+  const [battleState, setBattleState] = useState({
+    totalAttacks: 0,
+    totalMisses: 0,
+    lastMissed: false,
+    guaranteedCritNext: false
+  });
+
+  // 보스 패턴 상태 추가
+  const [bossPatternState, setBossPatternState] = useState({
+    hasShield: false,
+    shieldHP: 0,
+    maxShieldHP: 0,
+    isRegenerating: false,
+    regenAmount: 0,
+    equipmentDestroyed: false,
+    healReduction: 0 // 치유 감소 %
+  });
+
+  // 데미지 계산 함수 (문양 능력 전부 적용)
+  const calculateDamage = (inscriptionStats, bossStats, currentBossHP) => {
+    const bossData = RAID_BOSSES[selectedBoss];
+    const inscription = INSCRIPTIONS[inscriptionStats.id];
+
+    // 기본 공격력
+    let baseDamage = inscriptionStats.attack;
+
+    // 공격력 % 증가
+    if (inscriptionStats.attackPercent) {
+      baseDamage *= (1 + inscriptionStats.attackPercent / 100);
+    }
+
+    // 어빌리티: true_hit (필중 - 회피 무시)
+    const hasTrueHit = inscription?.abilities?.some(a => a.type === 'true_hit');
+
+    // 명중률 체크 (보스 회피율 vs 문양 명중률)
+    const bossEvasion = bossData.pattern?.evasionRate || 0;
+    let hitChance = 100;
+
+    if (!hasTrueHit) {
+      hitChance = Math.max(10, 100 - bossEvasion + (inscriptionStats.accuracy || 0));
+    }
+
+    const isHit = Math.random() * 100 < hitChance;
+
+    // 미스 처리
+    if (!isHit) {
+      return { damage: 0, isMiss: true, isCrit: false, shieldDamage: 0 };
+    }
+
+    // 치명타 판정
+    let isCrit = false;
+    const critChance = inscriptionStats.critChance || 0;
+
+    // 파괴의 문양: 이전 공격 실패 시 무조건 치명타
+    if (battleState.guaranteedCritNext) {
+      isCrit = true;
+    } else {
+      isCrit = Math.random() * 100 < critChance;
+    }
+
+    // 치명타 데미지 적용
+    if (isCrit) {
+      const critDamage = 150 + (inscriptionStats.critDamage || 0); // 기본 150%
+      baseDamage *= (critDamage / 100);
+    }
+
+    // 관통 (방어 무시)
+    const penetration = inscriptionStats.penetration || 0;
+    const effectiveDefense = Math.max(0, bossStats.defense * (1 - penetration / 100));
+    const defenseReduction = effectiveDefense / (effectiveDefense + 100);
+    baseDamage *= (1 - defenseReduction);
+
+    // 특수 능력 적용
+    const specialAbility = INSCRIPTIONS[inscriptionStats.id]?.specialAbility;
+
+    if (specialAbility) {
+      switch (specialAbility.type) {
+        case 'hp_percent_damage': // 갈증의 문양: 보스 최대 HP 5% 추가 피해
+          baseDamage += bossStats.maxHp * (specialAbility.value / 100);
+          break;
+
+        case 'hp_execute': // 영원의 문양: 보스 HP 20% 이하시 데미지 2배
+          if (currentBossHP <= bossStats.maxHp * 0.2) {
+            baseDamage *= 2;
+          }
+          break;
+      }
+    }
+
+    // 어빌리티 적용
+    const abilities = inscription?.abilities || [];
+    let shieldDamage = 0;
+    let bypassShield = false;
+
+    abilities.forEach(ability => {
+      switch (ability.type) {
+        case 'shield_break': // 보호막에 추가 피해
+          if (bossPatternState.hasShield) {
+            shieldDamage = baseDamage * (ability.value / 100);
+          }
+          break;
+
+        case 'shield_penetration': // 보호막 무시
+          bypassShield = true;
+          break;
+
+        case 'crit_chance_boost': // 치명타 확률 증가
+          // 이미 critChance에 반영되어 있음
+          break;
+
+        case 'crit_damage_boost': // 치명타 데미지 증가
+          // 이미 critDamage에 반영되어 있음
+          break;
+
+        case 'attack_boost': // 공격력 증가
+          // 이미 attack에 반영되어 있음
+          break;
+
+        case 'accuracy_boost': // 명중률 증가
+          // 이미 accuracy에 반영되어 있음
+          break;
+
+        case 'penetration': // 방어 관통
+          // 이미 penetration에 반영되어 있음
+          break;
+
+        case 'penetration_boost': // 추가 방어 관통
+          // 이미 penetration에 반영되어 있음
+          break;
+      }
+    });
+
+    return {
+      damage: Math.floor(baseDamage),
+      isMiss: false,
+      isCrit,
+      shieldDamage: Math.floor(shieldDamage),
+      bypassShield
+    };
+  };
+
+  // 보스 패턴 활성화 함수
+  const activateBossPattern = () => {
+    const bossData = RAID_BOSSES[selectedBoss];
+    const pattern = bossData.pattern;
+
+    if (!pattern) return;
+
+    setBossPatternState(prev => {
+      const newState = { ...prev };
+
+      // 보호막 생성 (네페론)
+      if (pattern.shieldRegenRate && Math.random() < 0.3) { // 30% 확률로 보호막 생성
+        const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty, player.floor);
+        const shieldAmount = bossStats.hp * 0.2; // 최대 HP의 20%
+        newState.hasShield = true;
+        newState.shieldHP = shieldAmount;
+        newState.maxShieldHP = shieldAmount;
+        setBattleLog(log => [...log.slice(-5), `🛡️ ${bossData.name}이(가) 보호막을 생성했습니다!`]);
+      }
+
+      // 재생 활성화 (로타르)
+      if (pattern.regenRate && Math.random() < 0.25) { // 25% 확률로 재생 시작
+        const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty, player.floor);
+        const regenAmount = bossStats.hp * (pattern.regenRate / 100);
+        newState.isRegenerating = true;
+        newState.regenAmount = regenAmount;
+        setBattleLog(log => [...log.slice(-5), `♻️ ${bossData.name}이(가) 재생을 시작했습니다!`]);
+      }
+
+      // 장비 파괴 (베크타)
+      if (pattern.equipmentBreakChance && Math.random() * 100 < pattern.equipmentBreakChance) {
+        // 장비 파괴 면역 체크
+        const hasEquipmentImmunity = activeInscriptions.some(inscId => {
+          const inscription = ownedInscriptions.find(i => i.id === inscId);
+          if (!inscription) return false;
+          const inscData = INSCRIPTIONS[inscription.inscriptionId];
+          return inscData?.abilities?.some(a => a.type === 'equipment_immunity');
+        });
+
+        if (!hasEquipmentImmunity) {
+          newState.equipmentDestroyed = true;
+          setBattleLog(log => [...log.slice(-5), `⚠️ ${bossData.name}이(가) 장비를 파괴했습니다!`]);
+        }
+      }
+
+      return newState;
+    });
+  };
+
+  // 봉인구역 상태 초기화
+  const {
+    tickets = 0,
+    ownedInscriptions = [],
+    unlockedBosses = ['vecta'], // 기본적으로 베크타만 해금
+    unlockedInscriptionSlots = 1 // 기본 1슬롯
+  } = sealedZone;
+
+  // 문양 선택/해제 토글
+  const toggleInscriptionSelection = (inscriptionId) => {
+    setActiveInscriptions(prev => {
+      if (prev.includes(inscriptionId)) {
+        // 이미 선택된 문양이면 해제
+        return prev.filter(id => id !== inscriptionId);
+      } else {
+        // 새로 선택
+        if (prev.length >= unlockedInscriptionSlots) {
+          alert(`최대 ${unlockedInscriptionSlots}개까지 선택할 수 있습니다!`);
+          return prev;
+        }
+        return [...prev, inscriptionId];
+      }
+    });
+  };
+
+  // 전투 시작
+  const startBattle = () => {
+    if (tickets <= 0) {
+      alert('도전권이 부족합니다!');
+      return;
+    }
+
+    if (activeInscriptions.length === 0) {
+      alert('문양을 최소 1개 선택해주세요!');
+      return;
+    }
+
+    // 도전권 차감
+    setGameState(prev => ({
+      ...prev,
+      sealedZone: {
+        ...prev.sealedZone,
+        tickets: (prev.sealedZone?.tickets || 0) - 1
+      }
+    }));
+
+    const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty, player.floor);
+    setBossHP(bossStats.hp);
+    setBattleTimer(30);
+    setBattleLog([]);
+    setBattleState({
+      totalAttacks: 0,
+      totalMisses: 0,
+      lastMissed: false,
+      guaranteedCritNext: false
+    });
+    setBossPatternState({
+      hasShield: false,
+      shieldHP: 0,
+      maxShieldHP: 0,
+      isRegenerating: false,
+      regenAmount: 0,
+      equipmentDestroyed: false,
+      healReduction: 0
+    });
+    setInBattle(true);
+  };
+
+  // 전투 타이머
+  useEffect(() => {
+    if (!inBattle) return;
+
+    const interval = setInterval(() => {
+      setBattleTimer(prev => {
+        if (prev <= 1) {
+          endBattle(false); // 시간 초과 패배
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [inBattle]);
+
+  // 보스 패턴 활성화 타이머
+  useEffect(() => {
+    if (!inBattle) return;
+
+    const patternInterval = setInterval(() => {
+      activateBossPattern();
+    }, 5000); // 5초마다 패턴 발동 시도
+
+    return () => clearInterval(patternInterval);
+  }, [inBattle, selectedBoss, selectedDifficulty]);
+
+  // 보스 재생 처리
+  useEffect(() => {
+    if (!inBattle || !bossPatternState.isRegenerating) return;
+
+    const regenInterval = setInterval(() => {
+      const bossData = RAID_BOSSES[selectedBoss];
+
+      // 치유 감소 어빌리티 체크
+      const hasHealReduction = activeInscriptions.some(inscId => {
+        const inscription = ownedInscriptions.find(i => i.id === inscId);
+        if (!inscription) return false;
+        const inscData = INSCRIPTIONS[inscription.inscriptionId];
+        return inscData?.abilities?.some(a => a.type === 'heal_reduction');
+      });
+
+      setBossHP(prevHP => {
+        const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty, player.floor);
+        let regenAmount = bossPatternState.regenAmount;
+
+        // 치유 감소 적용
+        if (hasHealReduction) {
+          regenAmount *= 0.3; // 70% 감소
+          setBattleLog(log => [...log.slice(-5), `🚫 치유 감소! ${Math.floor(regenAmount).toLocaleString()} 회복`]);
+        } else {
+          setBattleLog(log => [...log.slice(-5), `♻️ ${bossData.name} 재생: ${Math.floor(regenAmount).toLocaleString()}`]);
+        }
+
+        const newHP = Math.min(bossStats.hp, prevHP + regenAmount);
+        return newHP;
+      });
+    }, 2000); // 2초마다 재생
+
+    return () => clearInterval(regenInterval);
+  }, [inBattle, bossPatternState.isRegenerating]);
+
+  // 전투 종료
+  const endBattle = (victory) => {
+    setInBattle(false);
+
+    if (victory) {
+      // 보상 계산 (calculateRaidBossStats 사용)
+      const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty, player.floor);
+      const rewards = bossStats.rewards;
+
+      setGameState(prev => ({
+        ...prev,
+        player: {
+          ...prev.player,
+          gold: prev.player.gold + rewards.gold,
+          exp: prev.player.exp + rewards.exp
+        },
+        sealedZone: {
+          ...prev.sealedZone,
+          bossCoins: (prev.sealedZone?.bossCoins || 0) + rewards.bossCoins
+        }
+      }));
+
+      alert(`승리! 골드 +${formatNumber(rewards.gold)}, 경험치 +${formatNumber(rewards.exp)}, 보스 코인 +${rewards.bossCoins}`);
+    } else {
+      alert('시간 초과! 패배했습니다.');
+    }
+  };
+
+  // 문양 공격 (여러 문양 동시 공격)
+  useEffect(() => {
+    if (!inBattle || activeInscriptions.length === 0) return;
+
+    const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty, player.floor);
+
+    const intervals = activeInscriptions.map(inscriptionId => {
+      const inscription = ownedInscriptions.find(i => i.id === inscriptionId);
+      if (!inscription) return null;
+
+      const inscriptionStats = calculateInscriptionStats(inscription.inscriptionId, inscription.grade);
+      const attackInterval = 1000; // 1초마다 공격
+
+      return setInterval(() => {
+        setBossHP(prevHP => {
+          // 데미지 계산 (모든 문양 능력 적용)
+          const result = calculateDamage(inscriptionStats, bossStats, prevHP);
+
+          // 전투 상태 업데이트
+          setBattleState(prev => ({
+            totalAttacks: prev.totalAttacks + 1,
+            totalMisses: prev.totalMisses + (result.isMiss ? 1 : 0),
+            lastMissed: result.isMiss,
+            // 파괴의 문양: 미스 시 다음 공격 무조건 치명타
+            guaranteedCritNext: result.isMiss && inscriptionStats.id === 'destruction'
+          }));
+
+          // 보호막 처리
+          let actualDamage = result.damage;
+
+          if (!result.isMiss) {
+            setBossPatternState(prev => {
+              let newState = { ...prev };
+
+              // 보호막이 있고 무시하지 않는 경우
+              if (prev.hasShield && !result.bypassShield) {
+                const totalShieldDamage = result.damage + result.shieldDamage;
+
+                if (prev.shieldHP > totalShieldDamage) {
+                  // 보호막이 데미지를 흡수
+                  newState.shieldHP = prev.shieldHP - totalShieldDamage;
+                  actualDamage = 0;
+                  setBattleLog(log => [...log.slice(-5), `🛡️ 보호막 흡수: ${totalShieldDamage.toLocaleString()}`]);
+                } else {
+                  // 보호막 파괴 후 남은 데미지는 본체에
+                  actualDamage = totalShieldDamage - prev.shieldHP;
+                  newState.hasShield = false;
+                  newState.shieldHP = 0;
+                  setBattleLog(log => [...log.slice(-5), `💥 보호막 파괴! 관통 ${actualDamage.toLocaleString()}`]);
+                }
+              } else if (result.bypassShield) {
+                // 보호막 무시
+                setBattleLog(log => [...log.slice(-5), `⚡ 보호막 관통: ${result.damage.toLocaleString()}`]);
+              }
+
+              return newState;
+            });
+          }
+
+          // 로그 추가
+          if (result.isMiss) {
+            setBattleLog(log => [...log.slice(-5), `📿 ${inscriptionStats.name} - Miss!`]);
+          } else if (result.isCrit && actualDamage > 0) {
+            setBattleLog(log => [...log.slice(-5), `📿 ${inscriptionStats.name} - ${actualDamage.toLocaleString()} 💥 치명타!`]);
+          } else if (actualDamage > 0) {
+            setBattleLog(log => [...log.slice(-5), `📿 ${inscriptionStats.name} - ${actualDamage.toLocaleString()} 데미지`]);
+          }
+
+          const newHP = Math.max(0, prevHP - actualDamage);
+
+          if (newHP <= 0) {
+            endBattle(true);
+          }
+
+          return newHP;
+        });
+      }, attackInterval);
+    }).filter(Boolean);
+
+    return () => {
+      intervals.forEach(interval => clearInterval(interval));
+    };
+  }, [inBattle, activeInscriptions, battleState]);
+
+  if (inBattle) {
+    // 전투 화면
+    const bossData = RAID_BOSSES[selectedBoss];
+    const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty, player.floor);
+    const hpPercent = (bossHP / bossStats.hp) * 100;
+
+    return (
+      <div className="bg-game-panel border border-game-border rounded-lg p-4 shadow-md">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-100">{bossData.name}</h2>
+          <div className="text-2xl font-bold text-red-400">⏱️ {battleTimer}초</div>
+        </div>
+
+        {/* 보스 HP 바 */}
+        <div className="mb-4">
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-gray-300">HP</span>
+            <span className="text-gray-300">{formatNumber(bossHP)} / {formatNumber(bossStats.hp)}</span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-6 overflow-hidden">
+            <div
+              className="h-full bg-red-500 transition-all duration-200"
+              style={{ width: `${hpPercent}%` }}
+            />
+          </div>
+        </div>
+
+        {/* 보스 패턴 상태 표시 */}
+        {(bossPatternState.hasShield || bossPatternState.isRegenerating || bossPatternState.equipmentDestroyed) && (
+          <div className="mb-4 flex gap-2 flex-wrap">
+            {bossPatternState.hasShield && (
+              <div className="bg-blue-900 border border-blue-500 rounded px-3 py-1 text-sm">
+                <span className="text-blue-400">🛡️ 보호막: {formatNumber(Math.floor(bossPatternState.shieldHP))} / {formatNumber(Math.floor(bossPatternState.maxShieldHP))}</span>
+              </div>
+            )}
+            {bossPatternState.isRegenerating && (
+              <div className="bg-green-900 border border-green-500 rounded px-3 py-1 text-sm">
+                <span className="text-green-400">♻️ 재생 중 ({Math.floor(bossPatternState.regenAmount).toLocaleString()}/2초)</span>
+              </div>
+            )}
+            {bossPatternState.equipmentDestroyed && (
+              <div className="bg-red-900 border border-red-500 rounded px-3 py-1 text-sm">
+                <span className="text-red-400">⚠️ 장비 파괴됨!</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 보스 패턴 설명 */}
+        <div className="bg-gray-800 border border-gray-700 rounded p-3 mb-4">
+          <div className="text-sm text-gray-300">
+            <div className="font-bold text-orange-400 mb-1">{bossData.pattern.icon} {bossData.pattern.name}</div>
+            <div>{bossData.pattern.description}</div>
+          </div>
+        </div>
+
+        {/* 버프/디버프 상태창 */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          {/* 보스 버프/디버프 */}
+          <div className="bg-gray-800 border border-gray-700 rounded p-3">
+            <h4 className="text-xs font-bold text-red-400 mb-2">👹 보스 상태</h4>
+            <div className="space-y-1">
+              {bossPatternState.hasShield && (
+                <div
+                  className="flex items-center gap-1 text-xs cursor-help"
+                  title="보스의 보호막이 활성화되어 있습니다. 보호막을 먼저 파괴해야 본체에 데미지를 입힐 수 있습니다."
+                >
+                  <span className="text-blue-400">🛡️</span>
+                  <span className="text-blue-300">보호막 ({Math.floor((bossPatternState.shieldHP / bossPatternState.maxShieldHP) * 100)}%)</span>
+                </div>
+              )}
+              {bossPatternState.isRegenerating && (
+                <div
+                  className="flex items-center gap-1 text-xs cursor-help"
+                  title={`보스가 재생 중입니다. 2초마다 ${Math.floor(bossPatternState.regenAmount).toLocaleString()} HP를 회복합니다.`}
+                >
+                  <span className="text-green-400">♻️</span>
+                  <span className="text-green-300">재생 중</span>
+                </div>
+              )}
+              {bossData.pattern?.evasionRate > 0 && (
+                <div
+                  className="flex items-center gap-1 text-xs cursor-help"
+                  title={`보스가 ${bossData.pattern.evasionRate}% 확률로 공격을 회피합니다. 명중률이나 필중 효과로 대응하세요.`}
+                >
+                  <span className="text-purple-400">💨</span>
+                  <span className="text-purple-300">회피 {bossData.pattern.evasionRate}%</span>
+                </div>
+              )}
+              {/* 치유 감소 디버프 체크 */}
+              {(() => {
+                const hasHealReduction = activeInscriptions.some(inscId => {
+                  const inscription = ownedInscriptions.find(i => i.id === inscId);
+                  if (!inscription) return false;
+                  const inscData = INSCRIPTIONS[inscription.inscriptionId];
+                  return inscData?.abilities?.some(a => a.type === 'heal_reduction');
+                });
+                return hasHealReduction && bossPatternState.isRegenerating && (
+                  <div
+                    className="flex items-center gap-1 text-xs cursor-help"
+                    title="부패의 문양 효과: 보스의 재생 효과가 70% 감소합니다."
+                  >
+                    <span className="text-purple-400">🚫</span>
+                    <span className="text-purple-300">치유 감소 -70%</span>
+                  </div>
+                );
+              })()}
+              {!bossPatternState.hasShield && !bossPatternState.isRegenerating && bossData.pattern?.evasionRate === 0 && (
+                <div className="text-xs text-gray-500">효과 없음</div>
+              )}
+            </div>
+          </div>
+
+          {/* 내 버프/디버프 */}
+          <div className="bg-gray-800 border border-gray-700 rounded p-3">
+            <h4 className="text-xs font-bold text-blue-400 mb-2">⚔️ 내 상태</h4>
+            <div className="space-y-1">
+              {/* 장비 파괴 디버프 */}
+              {bossPatternState.equipmentDestroyed && (
+                <div
+                  className="flex items-center gap-1 text-xs cursor-help"
+                  title="장비가 일시적으로 파괴되어 장비의 모든 효과(공격력, 방어력, 옵션)가 무효화됩니다. 전투가 끝나면 자동으로 복구됩니다."
+                >
+                  <span className="text-red-400">⚠️</span>
+                  <span className="text-red-300">장비 파괴됨</span>
+                </div>
+              )}
+
+              {/* 활성화된 문양 어빌리티 표시 */}
+              {activeInscriptions.map(inscId => {
+                const inscription = ownedInscriptions.find(i => i.id === inscId);
+                if (!inscription) return null;
+                const inscData = INSCRIPTIONS[inscription.inscriptionId];
+
+                // 주요 어빌리티만 표시
+                const hasShieldPenetration = inscData?.abilities?.some(a => a.type === 'shield_penetration');
+                const hasTrueHit = inscData?.abilities?.some(a => a.type === 'true_hit');
+                const hasEquipmentImmunity = inscData?.abilities?.some(a => a.type === 'equipment_immunity');
+
+                return (
+                  <React.Fragment key={inscId}>
+                    {hasShieldPenetration && (
+                      <div
+                        className="flex items-center gap-1 text-xs cursor-help"
+                        title="심판의 문양 효과: 보스의 보호막을 무시하고 직접 본체에 데미지를 입힐 수 있습니다."
+                      >
+                        <span className="text-yellow-400">⚡</span>
+                        <span className="text-yellow-300">보호막 관통</span>
+                      </div>
+                    )}
+                    {hasTrueHit && (
+                      <div
+                        className="flex items-center gap-1 text-xs cursor-help"
+                        title="유성의 문양 효과: 모든 공격이 적중하여 보스의 회피를 무시합니다."
+                      >
+                        <span className="text-orange-400">🎯</span>
+                        <span className="text-orange-300">필중</span>
+                      </div>
+                    )}
+                    {hasEquipmentImmunity && (
+                      <div
+                        className="flex items-center gap-1 text-xs cursor-help"
+                        title="수호의 문양 효과: 보스의 장비 파괴 공격에 면역이 되어 장비가 절대 파괴되지 않습니다."
+                      >
+                        <span className="text-green-400">🔰</span>
+                        <span className="text-green-300">장비 파괴 면역</span>
+                      </div>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+
+              {/* 파괴의 문양 - 다음 공격 치명타 보장 */}
+              {battleState.guaranteedCritNext && (
+                <div
+                  className="flex items-center gap-1 text-xs cursor-help"
+                  title="파괴의 문양 효과: 다음 공격이 100% 확률로 치명타로 적중합니다. 공격 후 효과가 소멸됩니다."
+                >
+                  <span className="text-red-400">💥</span>
+                  <span className="text-red-300">다음 공격 치명타!</span>
+                </div>
+              )}
+
+              {!bossPatternState.equipmentDestroyed &&
+               !battleState.guaranteedCritNext &&
+               activeInscriptions.length === 0 && (
+                <div className="text-xs text-gray-500">효과 없음</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 전투 로그 */}
+        <div className="bg-gray-900 border border-gray-700 rounded p-2 h-32 overflow-y-auto">
+          {battleLog.map((log, i) => (
+            <div key={i} className="text-xs text-gray-400">{log}</div>
+          ))}
+        </div>
+
+        <button
+          onClick={() => endBattle(false)}
+          className="mt-4 w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded"
+        >
+          포기
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-game-panel border border-game-border rounded-lg p-4 shadow-md">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold text-gray-100">🔒 봉인구역</h2>
+        <div className="text-sm text-gray-300">
+          도전권: <span className="text-yellow-400 font-bold">{tickets}</span>
+        </div>
+      </div>
+
+      {/* 보스 선택 */}
+      <div className="mb-4">
+        <h3 className="text-sm font-bold text-gray-200 mb-2">죄수 선택</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {Object.entries(RAID_BOSSES).map(([bossId, boss]) => {
+            // 플레이어 층수에 따라 자동 해금
+            const unlocked = checkBossUnlock(bossId, player.floor);
+
+            return (
+              <button
+                key={bossId}
+                onClick={() => unlocked && setSelectedBoss(bossId)}
+                disabled={!unlocked}
+                className={`p-3 rounded border ${
+                  selectedBoss === bossId
+                    ? 'bg-blue-900 border-blue-500'
+                    : unlocked
+                    ? 'bg-gray-800 border-gray-700 hover:bg-gray-700'
+                    : 'bg-gray-900 border-gray-800 opacity-50 cursor-not-allowed'
+                }`}
+              >
+                <div className="text-2xl mb-1">{boss.icon}</div>
+                <div className="text-xs font-bold text-gray-200">{boss.name}</div>
+                {!unlocked && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    🔒 {boss.unlockFloor}층에 해금
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {selectedBoss && (
+        <>
+          {/* 난이도 선택 */}
+          <div className="mb-4">
+            <h3 className="text-sm font-bold text-gray-200 mb-2">난이도 선택</h3>
+            <div className="grid grid-cols-4 gap-2">
+              {Object.entries(RAID_DIFFICULTIES).map(([diffId, diff]) => (
+                <button
+                  key={diffId}
+                  onClick={() => setSelectedDifficulty(diffId)}
+                  className={`p-2 rounded border text-xs ${
+                    selectedDifficulty === diffId
+                      ? 'bg-blue-900 border-blue-500'
+                      : 'bg-gray-800 border-gray-700 hover:bg-gray-700'
+                  }`}
+                >
+                  <div className={`font-bold ${diff.color}`}>{diff.name}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 보스 정보 */}
+          <div className="bg-gray-800 border border-gray-700 rounded p-3 mb-4">
+            <div className="text-sm">
+              <div className="font-bold text-orange-400 mb-2">
+                {RAID_BOSSES[selectedBoss].pattern.icon} {RAID_BOSSES[selectedBoss].pattern.name}
+              </div>
+              <div className="text-gray-300 mb-2">{RAID_BOSSES[selectedBoss].pattern.description}</div>
+              <div className="text-xs text-gray-400">
+                {(() => {
+                  const stats = calculateRaidBossStats(selectedBoss, selectedDifficulty, player.floor);
+                  return `HP: ${formatNumber(stats.hp)}`;
+                })()}
+              </div>
+            </div>
+          </div>
+
+          {/* 문양 슬롯 해금 상태 */}
+          <div className="mb-2 bg-gray-800 border border-gray-700 rounded p-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-300">
+                문양 슬롯: {activeInscriptions.length}/{unlockedInscriptionSlots} (최대 {INSCRIPTION_SLOT_CONFIG.maxSlots})
+              </span>
+              {unlockedInscriptionSlots < INSCRIPTION_SLOT_CONFIG.maxSlots && (
+                <button
+                  onClick={() => {
+                    const nextSlot = unlockedInscriptionSlots + 1;
+                    const cost = INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${nextSlot}`];
+                    if (player.gold >= cost) {
+                      if (confirm(`${nextSlot}번째 슬롯을 ${formatNumber(cost)} 골드로 해금하시겠습니까?`)) {
+                        setGameState(prev => ({
+                          ...prev,
+                          player: {
+                            ...prev.player,
+                            gold: prev.player.gold - cost
+                          },
+                          sealedZone: {
+                            ...prev.sealedZone,
+                            unlockedInscriptionSlots: nextSlot
+                          }
+                        }));
+                      }
+                    } else {
+                      alert('골드가 부족합니다!');
+                    }
+                  }}
+                  className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 rounded"
+                >
+                  🔓 다음 슬롯 해금 ({formatNumber(INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${unlockedInscriptionSlots + 1}`])} 골드)
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 문양 선택 */}
+          <div className="mb-4">
+            <h3 className="text-sm font-bold text-gray-200 mb-2">문양 선택 (클릭하여 선택/해제)</h3>
+            {ownedInscriptions.length === 0 ? (
+              <div className="text-xs text-gray-500 text-center py-4">
+                보유한 문양이 없습니다
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {ownedInscriptions.map(inscription => {
+                  const inscriptionData = calculateInscriptionStats(inscription.inscriptionId, inscription.grade);
+                  const isSelected = activeInscriptions.includes(inscription.id);
+                  return (
+                    <button
+                      key={inscription.id}
+                      onClick={() => toggleInscriptionSelection(inscription.id)}
+                      className={`p-2 rounded border relative ${
+                        isSelected
+                          ? 'bg-blue-900 border-blue-500 ring-2 ring-blue-400'
+                          : 'bg-gray-800 border-gray-700 hover:bg-gray-700'
+                      }`}
+                    >
+                      {isSelected && (
+                        <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1 rounded">
+                          {activeInscriptions.indexOf(inscription.id) + 1}
+                        </div>
+                      )}
+                      <div className="text-xl mb-1">📿</div>
+                      <div className={`text-xs font-bold ${inscriptionData.gradeColor}`}>
+                        {inscriptionData.gradeName}
+                      </div>
+                      <div className="text-xs text-gray-300">{inscriptionData.name}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 도전 버튼 */}
+          <button
+            onClick={startBattle}
+            disabled={tickets <= 0 || activeInscriptions.length === 0}
+            className={`w-full py-3 rounded font-bold ${
+              tickets <= 0 || activeInscriptions.length === 0
+                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                : 'bg-red-600 hover:bg-red-700 text-white'
+            }`}
+          >
+            도전하기 (도전권 -1)
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
+
+export default SealedZone;

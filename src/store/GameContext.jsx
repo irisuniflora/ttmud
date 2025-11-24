@@ -207,6 +207,48 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
+  const unlockMonsterWithTicket = (monsterId, type, monsterName) => {
+    const result = engineRef.current.unlockMonsterWithTicket(monsterId, type, monsterName);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  // ===== 월드보스 시스템 =====
+  const startWorldBossBattle = () => {
+    const result = engineRef.current.startWorldBossBattle();
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const toggleWorldBoss = (forceState = null) => {
+    const result = engineRef.current.toggleWorldBoss(forceState);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const distributeWorldBossRewards = () => {
+    const result = engineRef.current.distributeWorldBossRewards();
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  // ===== 경매 시스템 =====
+  const placeBid = (itemId, amount, playerId, playerName) => {
+    const result = engineRef.current.placeBid(itemId, amount, playerId, playerName);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
   // 보스 타이머 업데이트 (1초마다)
   useEffect(() => {
     const timerInterval = setInterval(() => {
@@ -245,9 +287,14 @@ export const GameProvider = ({ children }) => {
       useGearCore,
       useOrb,
       releaseMonster,
+      unlockMonsterWithTicket,
       prestige,
       upgradeSkill,
       enterBossBattle,
+      startWorldBossBattle,
+      toggleWorldBoss,
+      distributeWorldBossRewards,
+      placeBid,
       engine: engineRef.current
     }}>
       {children}
