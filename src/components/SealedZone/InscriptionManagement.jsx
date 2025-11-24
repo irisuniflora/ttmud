@@ -85,20 +85,25 @@ const InscriptionManagement = () => {
         {/* 확률 표시 */}
         <div className="mt-2 bg-gray-800 border border-gray-700 rounded p-2">
           <div className="text-xs text-gray-400 mb-1">등급별 확률</div>
-          <div className="grid grid-cols-3 gap-1 text-xs">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
             {Object.entries(INSCRIPTION_GRADES).map(([gradeId, grade]) => (
-              <div key={gradeId} className="flex justify-between">
-                <span className={grade.color}>{grade.name}</span>
-                <span className="text-gray-400">
+              <div key={gradeId} className="flex items-center justify-between gap-1">
+                <span className={`${grade.color} font-bold whitespace-nowrap`}>{grade.name}:</span>
+                <span className="text-gray-300 font-bold">
                   {gradeId === 'common' ? '50%' :
                    gradeId === 'rare' ? '30%' :
                    gradeId === 'epic' ? '15%' :
                    gradeId === 'unique' ? '4%' :
                    gradeId === 'legendary' ? '0.9%' :
-                   '0.1%'}
+                   gradeId === 'mythic' ? '0.1%' :
+                   '0.01%'}
                 </span>
               </div>
             ))}
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-red-600 font-bold whitespace-nowrap">다크:</span>
+              <span className="text-gray-300 font-bold">0.01%</span>
+            </div>
           </div>
         </div>
       </div>

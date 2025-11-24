@@ -119,7 +119,7 @@ const StatsList = () => {
     { icon: '🎯', name: '치명타 데미지', value: formatPercent(totalCritDmg), color: 'text-rose-400' },
     { icon: '⚡', name: '전투력', value: formatNumber(combatPower), color: 'text-rose-400' },
     { icon: '🔍', name: '명중률', value: formatPercent(equipmentAccuracy), color: 'text-rose-400', hide: equipmentAccuracy === 0 },
-    { icon: '💠', name: '관통', value: formatPercent(equipmentPenetration), color: 'text-rose-400', hide: equipmentPenetration === 0 },
+    { icon: '🔱', name: '관통', value: formatPercent(equipmentPenetration), color: 'text-rose-400', hide: equipmentPenetration === 0 },
     { icon: '👑', name: '보스 데미지', value: '+' + formatPercent(equipmentBossDamageIncrease), color: 'text-rose-400' },
     { icon: '🗡️', name: '일반몹 데미지', value: '+' + formatPercent(equipmentNormalMonsterDamageIncrease), color: 'text-rose-400' },
 

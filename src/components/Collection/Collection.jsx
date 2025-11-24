@@ -188,8 +188,9 @@ const Collection = () => {
 
             // 보너스 계산
             const rareBonus = getCollectionBonus(rareCollected, 10);
+            // 전설 보너스: 2셋 -2, 5셋 -5, 10셋 -13 (누적: 2셋 -2, 5셋 -7, 10셋 -20)
             const legendaryBonus = {
-              monsterReduction: legendaryCollected >= 10 ? 10 : legendaryCollected >= 5 ? 5 : legendaryCollected >= 2 ? 2 : legendaryCollected
+              monsterReduction: legendaryCollected >= 10 ? 20 : legendaryCollected >= 5 ? 7 : legendaryCollected >= 2 ? 2 : 0
             };
 
             // 방생 보너스 계산
@@ -220,16 +221,24 @@ const Collection = () => {
                     )}
                   </div>
                   <div className="text-xs text-right space-y-1">
-                    <p className="text-gray-400 text-[9px]">
-                      몬스터 감소:
-                      <span className="text-purple-400 font-bold ml-1">레어 -{rareBonus.monsterReduction}</span>
-                      <span className="text-orange-400 font-bold ml-1">전설 -{legendaryBonus.monsterReduction}</span>
-                    </p>
+                    <div className="text-[9px] text-gray-400">
+                      <div className="flex items-center justify-end gap-1 mb-0.5">
+                        <span className="text-purple-400 font-bold">레어 -{rareBonus.monsterReduction}</span>
+                        {rareCollected >= 10 && <span className="text-green-400">✓</span>}
+                      </div>
+                      <div className="flex items-center justify-end gap-1">
+                        <span className="text-orange-400 font-bold">전설 -{legendaryBonus.monsterReduction}</span>
+                        {legendaryCollected >= 10 && <span className="text-green-400">✓</span>}
+                      </div>
+                    </div>
                     <p className="text-green-400 font-bold text-[10px]">
                       총 감소: -{rareBonus.monsterReduction + legendaryBonus.monsterReduction}
                     </p>
                     <p className="text-gray-500 text-[8px]">
-                      (2셋: -1, 5셋: -3, 10셋: -8)
+                      (레어: 2/5/10셋 = -1/-3/-8)
+                    </p>
+                    <p className="text-gray-500 text-[8px]">
+                      (전설: 2/5/10셋 = -2/-7/-20)
                     </p>
                   </div>
                 </div>

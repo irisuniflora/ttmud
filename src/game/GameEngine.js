@@ -1313,7 +1313,14 @@ export class GameEngine {
     const collectionBonus = this.calculateCollectionBonus();
 
     const baseMonstersPerFloor = getMonstersPerFloor(player.floor);
-    const actualMonstersPerFloor = Math.max(5, baseMonstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction);
+    const totalReduction = equipmentMonsterReduction + collectionBonus.monsterReduction;
+    const actualMonstersPerFloor = Math.max(1, baseMonstersPerFloor - totalReduction);
+
+    // 몬스터 감소가 스테이지 몬스터 수보다 크면 바로 보스방
+    if (totalReduction >= baseMonstersPerFloor) {
+      // 바로 보스방으로 진입 가능
+      player.monstersKilledInFloor = actualMonstersPerFloor;
+    }
 
     // 보스방 입장 가능 조건: 필요한 몬스터 수 처치
     if (player.monstersKilledInFloor < actualMonstersPerFloor) {
@@ -1590,8 +1597,14 @@ export class GameEngine {
     // 희귀 보너스 계산
     const rareBonus = getCollectionBonus(rareCollectedCount, totalCount);
 
-    // 전설 보너스 계산 (희귀와 동일한 로직)
-    const legendaryBonus = getCollectionBonus(legendaryCollectedCount, totalCount);
+    // 전설 보너스 계산 (2셋 -2, 5셋 -7, 10셋 -20)
+    const legendaryBonus = {
+      monsterReduction: legendaryCollectedCount >= 10 ? 20 : legendaryCollectedCount >= 5 ? 7 : legendaryCollectedCount >= 2 ? 2 : 0,
+      attack: 0,
+      goldBonus: 0,
+      expBonus: 0,
+      dropRate: 0
+    };
 
     // 희귀 + 전설 보너스 합산
     totalBonus.monsterReduction = rareBonus.monsterReduction + legendaryBonus.monsterReduction;

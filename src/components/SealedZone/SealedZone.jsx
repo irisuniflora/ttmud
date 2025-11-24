@@ -751,27 +751,25 @@ const SealedZone = () => {
                   onClick={() => {
                     const nextSlot = unlockedInscriptionSlots + 1;
                     const cost = INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${nextSlot}`];
-                    if (player.gold >= cost) {
-                      if (confirm(`${nextSlot}번째 슬롯을 ${formatNumber(cost)} 골드로 해금하시겠습니까?`)) {
+                    const bossCoins = sealedZone.bossCoins || 0;
+                    if (bossCoins >= cost) {
+                      if (confirm(`${nextSlot}번째 슬롯을 ${formatNumber(cost)} 보스코인으로 해금하시겠습니까?`)) {
                         setGameState(prev => ({
                           ...prev,
-                          player: {
-                            ...prev.player,
-                            gold: prev.player.gold - cost
-                          },
                           sealedZone: {
                             ...prev.sealedZone,
+                            bossCoins: (prev.sealedZone.bossCoins || 0) - cost,
                             unlockedInscriptionSlots: nextSlot
                           }
                         }));
                       }
                     } else {
-                      alert('골드가 부족합니다!');
+                      alert('보스코인이 부족합니다!');
                     }
                   }}
                   className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 rounded"
                 >
-                  🔓 다음 슬롯 해금 ({formatNumber(INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${unlockedInscriptionSlots + 1}`])} 골드)
+                  🔓 다음 슬롯 해금 ({formatNumber(INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${unlockedInscriptionSlots + 1}`])} 🪙)
                 </button>
               )}
             </div>

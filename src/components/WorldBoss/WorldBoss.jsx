@@ -75,7 +75,10 @@ const WorldBoss = () => {
       return;
     }
 
-    startWorldBossBattle();
+    const result = startWorldBossBattle();
+    if (!result.success) {
+      alert(result.message || '전투 시작에 실패했습니다!');
+    }
   };
 
   // 내 랭킹 찾기
