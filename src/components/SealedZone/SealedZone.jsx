@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../../store/GameContext';
 import { RAID_BOSSES, RAID_DIFFICULTIES, calculateRaidBossStats, INSCRIPTION_SLOT_CONFIG, checkBossUnlock } from '../../data/raidBosses';
-import { INSCRIPTIONS, INSCRIPTION_GRADES, INSCRIPTION_ABILITIES, calculateInscriptionStats } from '../../data/inscriptions';
+import { INSCRIPTIONS, INSCRIPTION_GRADES, INSCRIPTION_ABILITIES, calculateInscriptionStats, migrateGrade } from '../../data/inscriptions';
 import { formatNumber, formatPercent } from '../../utils/formatter';
 
 const SealedZone = () => {

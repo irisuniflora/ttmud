@@ -4,13 +4,14 @@ import { FLOOR_RANGES, getCollectionBonus } from '../../data/monsters';
 import { formatNumberWithCommas } from '../../utils/formatter';
 
 const Collection = () => {
-  const { gameState, releaseMonster, unlockMonsterWithTicket, engine } = useGame();
+  const { gameState, releaseMonster, releaseAllMonsters, unlockMonsterWithTicket, engine } = useGame();
   const { collection, statistics, consumables = {} } = gameState;
   const [activeTab, setActiveTab] = useState('monsters');
   const [releaseModal, setReleaseModal] = useState(null); // { monsterId, monsterName, type }
   const [resultModal, setResultModal] = useState(null); // { success, message, damageBonus, dropRateBonus }
   const [selectionModal, setSelectionModal] = useState(false); // 선택권 사용 모달
   const [selectionResult, setSelectionResult] = useState(null); // 선택 결과 모달
+  const [releaseAllModal, setReleaseAllModal] = useState(false); // 모두 방생 확인 모달
 
   // 방생 확인 모달 열기
   const handleReleaseClick = (monsterId, monsterName, type) => {
@@ -33,6 +34,13 @@ const Collection = () => {
     const result = unlockMonsterWithTicket(monsterId, type, monsterName);
     setSelectionModal(false);
     setSelectionResult(result);
+  };
+
+  // 모두 방생 실행
+  const confirmReleaseAll = () => {
+    const result = releaseAllMonsters();
+    setReleaseAllModal(false);
+    setResultModal(result);
   };
 
   // 방생 정보 가져오기
@@ -109,7 +117,7 @@ const Collection = () => {
       {/* 방생 시스템 안내 */}
       {activeTab === 'monsters' && (
         <div className="space-y-3">
-          {/* 몬스터 선택권 버튼 */}
+          {/* 몬스터 선택권 버튼 (있는 경우에만) */}
           {consumables.monster_selection_ticket > 0 && (
             <div className="bg-gradient-to-r from-orange-900 to-yellow-900 border border-orange-500 rounded-lg p-3">
               <div className="flex items-center justify-between">
@@ -127,15 +135,24 @@ const Collection = () => {
             </div>
           )}
 
+          {/* 방생 시스템 박스 + 모두 방생 버튼 통합 */}
           <div className="bg-gradient-to-r from-purple-900 to-orange-900 border border-purple-500 rounded-lg p-3">
-            <h4 className="text-sm font-bold text-yellow-400 mb-2">🐧 방생 시스템</h4>
-            <div className="text-xs text-gray-200 space-y-1">
-              <p>• <span className="text-purple-400 font-bold">💎 레어</span>와 <span className="text-orange-400 font-bold">👑 전설</span> 몬스터를 수집하면 이름 옆에 아이콘이 표시됩니다</p>
-              <p>• 각 몬스터는 레어와 전설 각각 <span className="text-yellow-400 font-bold">최대 3회</span>까지 방생 가능</p>
-              <p>• 방생하면 해당 구간에서 <span className="text-red-400 font-bold">데미지</span>와 <span className="text-green-400 font-bold">드랍율</span>이 영구 증가</p>
-              <p>• 레어: 1회당 <span className="text-purple-400">+5%</span> (최대 +15%) | 전설: 1회당 <span className="text-orange-400">+20%</span> (최대 +60%)</p>
-              <p>• 방생 횟수는 펭귄(🐧)으로 표시됩니다</p>
-              <p>• 전설이 수집되어 있으면 전설을 먼저 방생해야 레어 방생 가능</p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1">
+                <h4 className="text-sm font-bold text-yellow-400 mb-2">🐧 방생 시스템</h4>
+                <div className="text-xs text-gray-200 space-y-1">
+                  <p>• <span className="text-purple-400 font-bold">💎 레어</span>와 <span className="text-orange-400 font-bold">👑 전설</span> 몬스터를 수집하면 이름 옆에 아이콘이 표시됩니다</p>
+                  <p>• 각 몬스터는 레어와 전설 각각 <span className="text-yellow-400 font-bold">최대 3회</span>까지 방생 가능</p>
+                  <p>• 방생하면 해당 구간에서 <span className="text-red-400 font-bold">데미지</span>와 <span className="text-green-400 font-bold">드랍율</span>이 영구 증가</p>
+                  <p>• 레어: 1회당 <span className="text-purple-400">+5%</span> (최대 +15%) | 전설: 1회당 <span className="text-orange-400">+20%</span> (최대 +60%)</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setReleaseAllModal(true)}
+                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 border border-yellow-400 rounded font-bold text-white transition-colors shadow-lg whitespace-nowrap"
+              >
+                🕊️ 모두 방생
+              </button>
             </div>
           </div>
         </div>
@@ -202,7 +219,7 @@ const Collection = () => {
                 <div className="flex items-center justify-between mb-2">
                   <div>
                     <h4 className="text-sm font-bold text-cyan-400">
-                      {data.name}
+                      {data.name} <span className="text-gray-400 font-normal">({floor}~{floor + 4}층)</span>
                     </h4>
                     <div className="flex items-center gap-3">
                       {/* 레어 도감 */}
@@ -335,7 +352,7 @@ const Collection = () => {
       {activeTab === 'bosses' && (
         <div className="space-y-4">
           <p className="text-gray-300 text-sm font-bold">
-            보스 도감 (희귀 🌸 / 전설 ⭐)
+            보스 도감 (레어 🌸 / 전설 ⭐)
           </p>
 
           <div className="grid grid-cols-4 gap-2">
@@ -349,7 +366,7 @@ const Collection = () => {
 
               return (
                 <div key={floor} className="bg-game-panel border border-game-border rounded p-2">
-                  <p className="text-[10px] text-cyan-400 font-bold mb-1">{data.name}</p>
+                  <p className="text-[10px] text-cyan-400 font-bold mb-1">{data.name} <span className="text-gray-500 font-normal">({floor}~{floor + 4}층)</span></p>
                   <p className="text-[9px] text-gray-300 font-bold mb-1 truncate">{data.boss}</p>
 
                   <div className="space-y-0.5">
@@ -630,6 +647,52 @@ const Collection = () => {
             >
               확인
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 모두 방생 확인 모달 */}
+      {releaseAllModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={() => setReleaseAllModal(false)}>
+          <div className="bg-gray-800 border-2 border-yellow-500 rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-bold text-yellow-400 mb-4 text-center">🕊️ 모두 방생 확인</h3>
+
+            <div className="bg-gray-900 rounded-lg p-4 mb-4 border border-gray-700">
+              <p className="text-sm text-gray-300 text-center mb-3">
+                방생 가능한 <span className="text-yellow-400 font-bold">모든 몬스터</span>를 한번에 방생합니다.
+              </p>
+              <p className="text-sm text-gray-300 text-center mb-3">
+                각 몬스터당 1회씩 방생되며, 전설이 우선 방생됩니다.
+              </p>
+              <div className="bg-gradient-to-r from-purple-900 to-pink-900 rounded-lg p-3 border border-purple-500">
+                <p className="text-center text-xs text-gray-300 mb-2">예상 보너스</p>
+                <div className="flex justify-center gap-6">
+                  <div className="text-center">
+                    <p className="text-xs text-gray-300">레어 1마리당</p>
+                    <p className="text-sm font-bold text-purple-400">+5% / +5%p</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-300">전설 1마리당</p>
+                    <p className="text-sm font-bold text-orange-400">+20% / +20%p</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setReleaseAllModal(false)}
+                className="flex-1 py-2 rounded font-bold bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmReleaseAll}
+                className="flex-1 py-2 rounded font-bold bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white transition-colors shadow-lg"
+              >
+                🕊️ 모두 방생
+              </button>
+            </div>
           </div>
         </div>
       )}

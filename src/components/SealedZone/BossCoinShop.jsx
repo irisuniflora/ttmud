@@ -16,8 +16,8 @@ const SHOP_ITEMS = [
   {
     id: 'stat_max_item',
     name: '완벽의 정수',
-    description: '장비의 현재 옵션을 최대치로 고정',
-    icon: '🔷',
+    description: '장비 옵션 1개를 극옵으로 변경',
+    icon: '⚙️',
     cost: 2000,
     maxPurchase: 99,
     rarity: 'mythic'
@@ -28,15 +28,6 @@ const SHOP_ITEMS = [
     description: '장비 옵션을 재굴림',
     icon: '🔮',
     cost: 500,
-    maxPurchase: 999,
-    rarity: 'epic'
-  },
-  {
-    id: 'gear_core',
-    name: '기어 코어',
-    description: '장비 옵션을 최대치로 강화',
-    icon: '⚙️',
-    cost: 800,
     maxPurchase: 999,
     rarity: 'epic'
   }
@@ -101,9 +92,6 @@ const BossCoinShop = () => {
           break;
         case 'gear_orb':
           newState.orbs = (prev.orbs || 0) + amount;
-          break;
-        case 'gear_core':
-          newState.gearCores = (prev.gearCores || 0) + amount;
           break;
       }
 

@@ -6,8 +6,8 @@ import { formatNumber } from '../../utils/formatter';
 import NotificationModal from '../UI/NotificationModal';
 
 const Inventory = () => {
-  const { gameState, equipItem, unequipItem, autoEquipAll, enhanceSlot, autoSellItems, updateSettings, useGearCore } = useGame();
-  const { equipment, inventory, slotEnhancements = {}, player, settings = {}, gearCores = 0 } = gameState;
+  const { gameState, equipItem, unequipItem, autoEquipAll, enhanceSlot, autoSellItems, updateSettings, usePerfectEssence } = useGame();
+  const { equipment, inventory, slotEnhancements = {}, player, settings = {}, consumables = {} } = gameState;
 
   // localStorage에서 마지막 선택한 레어리티 불러오기
   const [sellRarity, setSellRarity] = React.useState(() => {
@@ -59,17 +59,18 @@ const Inventory = () => {
     }
   };
 
-  const handleUseGearCore = (slot, statIndex) => {
-    if (gearCores < 1) {
-      showNotification('기어 코어 부족', '기어 코어가 없습니다', 'warning');
+  const handleUsePerfectEssence = (slot, statIndex) => {
+    const essenceCount = consumables.stat_max_item || 0;
+    if (essenceCount < 1) {
+      showNotification('완벽의 정수 부족', '완벽의 정수가 없습니다', 'warning');
       return;
     }
 
-    const result = useGearCore(slot, statIndex);
+    const result = usePerfectEssence(slot, statIndex);
     if (result.success) {
-      showNotification('⚙️ 강화 성공!', result.message, 'success');
+      showNotification('⚙️ 극옵화 성공!', result.message, 'success');
     } else {
-      showNotification('강화 실패', result.message, 'error');
+      showNotification('극옵화 실패', result.message, 'error');
     }
   };
 
@@ -157,11 +158,11 @@ const Inventory = () => {
                           <span className="truncate flex-1 text-left">
                             {stat.name} +{stat.value}{stat.suffix}
                           </span>
-                          {gearCores > 0 && (
+                          {(consumables.stat_max_item || 0) > 0 && (
                             <button
-                              onClick={() => handleUseGearCore(slot, idx)}
-                              className="bg-orange-600 hover:bg-orange-700 text-white text-[8px] px-1 rounded"
-                              title="기어 코어로 최대치 강화"
+                              onClick={() => handleUsePerfectEssence(slot, idx)}
+                              className="bg-cyan-600 hover:bg-cyan-700 text-white text-[8px] px-1 rounded"
+                              title="완벽의 정수로 극옵화"
                             >
                               ⚙️
                             </button>
@@ -278,18 +279,18 @@ const Inventory = () => {
                   <h4 className="text-sm font-bold text-cyan-400 mb-2">
                     {slotName} ({items.length})
                   </h4>
-                  <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                  <div className="flex flex-wrap gap-3">
                     {items.map(item => (
                       <div
                         key={item.id}
-                        className={`border-2 ${getRarityColor(item.rarity)} ${getRarityBg(item.rarity)} rounded p-1 cursor-pointer hover:scale-105 transition-all min-h-[88px] flex flex-col`}
+                        className={`border-2 ${getRarityColor(item.rarity)} ${getRarityBg(item.rarity)} rounded p-2 cursor-pointer hover:scale-105 transition-all min-h-[110px] w-[140px] flex flex-col`}
                         onClick={() => equipItem(item)}
                         title={`${item.name} - 클릭하여 장착`}
                       >
-                        <p className={`text-[10px] font-bold ${getRarityColor(item.rarity)} text-center mb-1`}>
+                        <p className={`text-xs font-bold ${getRarityColor(item.rarity)} text-center mb-1`}>
                           {RARITIES[item.rarity]?.name || ''}
                         </p>
-                        <div className="text-[9px] text-gray-200 text-center space-y-0.5 flex-1 overflow-hidden">
+                        <div className="text-[11px] text-gray-200 text-left space-y-1 flex-1 overflow-hidden">
                           {item.stats.map((stat, idx) => (
                             <div key={idx} className="truncate">
                               {stat.name} +{stat.value}{stat.suffix}

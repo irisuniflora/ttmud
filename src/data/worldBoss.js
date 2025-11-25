@@ -151,18 +151,30 @@ export const isWorldBossActive = (currentTime = new Date(), manualOverride = nul
 export const getTimeUntilNextBoss = (currentTime = new Date()) => {
   const koreaTime = new Date(currentTime.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
   const currentHour = koreaTime.getHours();
+  const currentMinute = koreaTime.getMinutes();
+  const currentSecond = koreaTime.getSeconds();
 
-  if (currentHour < WORLD_BOSS_CONFIG.defaultSchedule.startHour) {
-    // 오늘 자정까지
-    const hoursUntil = WORLD_BOSS_CONFIG.defaultSchedule.startHour - currentHour;
-    return hoursUntil * 60 * 60 * 1000;
-  } else if (currentHour >= WORLD_BOSS_CONFIG.defaultSchedule.endHour) {
-    // 내일 자정까지
-    const hoursUntil = 24 - currentHour + WORLD_BOSS_CONFIG.defaultSchedule.startHour;
-    return hoursUntil * 60 * 60 * 1000;
-  } else {
-    // 현재 활성화 중
+  // 현재 총 초 계산
+  const currentTotalSeconds = currentHour * 3600 + currentMinute * 60 + currentSecond;
+
+  // 다음 월드보스 시작 시간 (총 초)
+  const startHour = WORLD_BOSS_CONFIG.defaultSchedule.startHour; // 0시
+  const endHour = WORLD_BOSS_CONFIG.defaultSchedule.endHour; // 12시
+
+  if (currentHour >= endHour) {
+    // 현재 12시 이후 -> 내일 0시(자정)까지 계산
+    const targetTotalSeconds = 24 * 3600; // 내일 0시 = 오늘 24시
+    const remainingSeconds = targetTotalSeconds - currentTotalSeconds;
+    return remainingSeconds * 1000;
+  } else if (currentHour >= startHour && currentHour < endHour) {
+    // 현재 0시~12시 사이 -> 활성화 중
     return 0;
+  } else {
+    // 이 경우는 startHour가 0이면 발생하지 않음
+    // 하지만 startHour가 0이 아닌 경우를 대비
+    const targetTotalSeconds = startHour * 3600;
+    const remainingSeconds = targetTotalSeconds - currentTotalSeconds;
+    return remainingSeconds * 1000;
   }
 };
 

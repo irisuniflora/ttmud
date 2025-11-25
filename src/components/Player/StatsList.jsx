@@ -50,8 +50,6 @@ const StatsList = () => {
   let equipmentAttack = 0;
   let equipmentCritChance = 0;
   let equipmentCritDmg = 0;
-  let equipmentAccuracy = 0;
-  let equipmentPenetration = 0;
   let equipmentGoldBonus = 0;
   let equipmentDropRate = 0;
   let equipmentExpBonus = 0;
@@ -69,10 +67,6 @@ const StatsList = () => {
           equipmentCritChance += stat.value * enhancementBonus;
         } else if (stat.id === 'critDmg') {
           equipmentCritDmg += stat.value * enhancementBonus;
-        } else if (stat.id === 'accuracy') {
-          equipmentAccuracy += stat.value * enhancementBonus;
-        } else if (stat.id === 'penetration') {
-          equipmentPenetration += stat.value * enhancementBonus;
         } else if (stat.id === 'goldBonus') {
           equipmentGoldBonus += stat.value * enhancementBonus;
         } else if (stat.id === 'dropRate') {
@@ -97,29 +91,20 @@ const StatsList = () => {
     heroBuffs.attack
   );
 
-  // 방생 보너스 계산
-  const rangeStart = Math.floor((player.floor - 1) / 5) * 5 + 1;
+  // 방생 보너스 계산 (101층 이상은 1-100층으로 매핑)
+  const baseFloor = player.floor > 100 ? ((player.floor - 1) % 100) + 1 : player.floor;
+  const rangeStart = Math.floor((baseFloor - 1) / 5) * 5 + 1;
   const releaseBonus = engine ? engine.calculateReleaseBonus(rangeStart) : { damageBonus: 0, dropRateBonus: 0 };
 
   // 총 크리티컬 확률과 데미지
   const totalCritChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroBuffs.critChance;
   const totalCritDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroBuffs.critDmg;
 
-  // 전투력 계산 (30초간 허수아비 타격 기대 데미지)
-  // 평균 데미지 = 공격력 × (1 + 크리확률 × 크리데미지)
-  const critChanceMultiplier = Math.min(totalCritChance, 100) / 100; // 최대 100%
-  const avgDamagePerHit = totalAttack * (1 + critChanceMultiplier * (totalCritDmg / 100));
-  // 30초간 기대 데미지 (초당 10회 공격 가정)
-  const combatPower = Math.floor(avgDamagePerHit * 10 * 30);
-
   const stats = [
     // DPS 관련 스탯 (와인색)
     { icon: '⚔️', name: '공격력', value: formatNumber(totalAttack), color: 'text-rose-400' },
     { icon: '💥', name: '치명타 확률', value: formatPercent(totalCritChance), color: 'text-rose-400' },
     { icon: '🎯', name: '치명타 데미지', value: formatPercent(totalCritDmg), color: 'text-rose-400' },
-    { icon: '⚡', name: '전투력', value: formatNumber(combatPower), color: 'text-rose-400' },
-    { icon: '🔍', name: '명중률', value: formatPercent(equipmentAccuracy), color: 'text-rose-400', hide: equipmentAccuracy === 0 },
-    { icon: '🔱', name: '관통', value: formatPercent(equipmentPenetration), color: 'text-rose-400', hide: equipmentPenetration === 0 },
     { icon: '👑', name: '보스 데미지', value: '+' + formatPercent(equipmentBossDamageIncrease), color: 'text-rose-400' },
     { icon: '🗡️', name: '일반몹 데미지', value: '+' + formatPercent(equipmentNormalMonsterDamageIncrease), color: 'text-rose-400' },
 
@@ -155,6 +140,15 @@ const StatsList = () => {
       name: '몬스터 감소',
       value: `${Math.floor(equipmentMonstersPerStageReduction) + (engine ? engine.calculateCollectionBonus().monsterReduction : 0)}`,
       color: 'text-green-400'
+    },
+
+    // 환생 횟수 (핑크색)
+    {
+      icon: '🔄',
+      name: '환생 횟수',
+      value: `${player.totalPrestiges || 0}회`,
+      color: 'text-pink-400',
+      hide: (player.totalPrestiges || 0) === 0
     },
   ];
 

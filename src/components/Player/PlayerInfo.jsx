@@ -1,12 +1,64 @@
 import React from 'react';
 import { useGame } from '../../store/GameContext';
 import { formatNumber, formatNumberWithCommas, getHPPercent } from '../../utils/formatter';
+import { getTotalSkillEffects } from '../../data/skills';
+import { getHeroById, getHeroStats } from '../../data/heroes';
+import { EQUIPMENT_CONFIG, getMonstersPerFloor } from '../../data/gameBalance';
 
 const PlayerInfo = () => {
-  const { gameState, enterBossBattle, engine } = useGame();
-  const { player, currentMonster, gearCores = 0, orbs = 0, upgradeCoins = 0, equipment = {} } = gameState;
+  const { gameState, enterBossBattle, toggleFloorLock, goDownFloor, engine } = useGame();
+  const { player, currentMonster, orbs = 0, upgradeCoins = 0, equipment = {}, skillLevels = {}, slotEnhancements = {}, heroes = {} } = gameState;
 
   const hpPercent = getHPPercent(currentMonster.hp, currentMonster.maxHp);
+
+  // 전투력 계산
+  const calculateCombatPower = () => {
+    const skillEffects = getTotalSkillEffects(skillLevels);
+
+    // 영웅 버프 계산
+    let heroAttack = 0;
+    let heroCritChance = 0;
+    let heroCritDmg = 0;
+
+    Object.keys(heroes || {}).forEach(heroId => {
+      const heroState = heroes[heroId];
+      if (heroState && heroState.inscribed) {
+        const heroData = getHeroById(heroId);
+        if (heroData) {
+          const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
+          if (stats.attack) heroAttack += stats.attack;
+          if (stats.critChance) heroCritChance += stats.critChance;
+          if (stats.critDmg) heroCritDmg += stats.critDmg;
+        }
+      }
+    });
+
+    // 장비 스탯 계산
+    let equipmentAttack = 0;
+    let equipmentCritChance = 0;
+    let equipmentCritDmg = 0;
+
+    Object.entries(equipment).forEach(([slot, item]) => {
+      if (item) {
+        const enhancementBonus = 1 + ((slotEnhancements[slot] || 0) * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        item.stats.forEach(stat => {
+          if (stat.id === 'attack') equipmentAttack += stat.value * enhancementBonus;
+          else if (stat.id === 'critChance') equipmentCritChance += stat.value * enhancementBonus;
+          else if (stat.id === 'critDmg') equipmentCritDmg += stat.value * enhancementBonus;
+        });
+      }
+    });
+
+    const totalAttack = Math.floor(player.stats.baseAtk + equipmentAttack + heroAttack);
+    const totalCritChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroCritChance;
+    const totalCritDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroCritDmg;
+
+    const critChanceMultiplier = Math.min(totalCritChance, 100) / 100;
+    const avgDamagePerHit = totalAttack * (1 + critChanceMultiplier * (totalCritDmg / 100));
+    return Math.floor(avgDamagePerHit * 10 * 30);
+  };
+
+  const combatPower = calculateCombatPower();
 
   // 장비로 인한 몬스터 감소 계산
   let equipmentMonsterReduction = 0;
@@ -23,7 +75,8 @@ const PlayerInfo = () => {
   // 도감 보너스 계산
   const collectionBonus = engine ? engine.calculateCollectionBonus() : { monsterReduction: 0 };
 
-  const actualMonstersPerFloor = Math.max(5, 40 - equipmentMonsterReduction - collectionBonus.monsterReduction);
+  const baseMonstersPerFloor = getMonstersPerFloor(player.floor);
+  const actualMonstersPerFloor = Math.max(5, baseMonstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction);
 
   // 보스방 입장 가능 여부
   const canEnterBoss = player.monstersKilledInFloor >= actualMonstersPerFloor && player.floorState !== 'boss_battle';
@@ -33,7 +86,12 @@ const PlayerInfo = () => {
       {/* 플레이어 기본 정보 */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-100">플레이어</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-gray-100">플레이어</h2>
+            <span className="text-rose-400 font-bold text-sm" title="전투력 (30초간 허수아비 기대 데미지)">
+              ⚡ {formatNumber(combatPower)}
+            </span>
+          </div>
           <p className="text-gray-300">
             <span className="text-blue-400 font-bold">Lv.{player.level}</span> (최고 층: {player.highestFloor}층)
           </p>
@@ -43,60 +101,103 @@ const PlayerInfo = () => {
             💰 {formatNumber(player.gold)}
           </p>
           {player.totalPrestiges > 0 && (
-            <>
-              <p className="text-purple-400 font-bold">
-                🌟 PP: {player.prestigePoints}
-              </p>
-              <p className="text-pink-400 font-bold" title="유물 조각&#10;환생 시 획득&#10;환생유물 탭에서 사용">
-                💎 {gameState.relicFragments || 0}
-              </p>
-            </>
+            <p className="text-pink-400 font-bold" title="유물 조각&#10;환생 시 획득&#10;환생유물 탭에서 사용">
+              💎 {gameState.relicFragments || 0}
+            </p>
           )}
           <p className="text-blue-400 font-bold" title="스킬 포인트&#10;레벨업 시 1개씩 획득&#10;스킬 탭에서 사용 가능">
             📘 SP: {player.skillPoints || 0}
           </p>
-          <div className="flex gap-2 justify-end text-sm">
-            <p className="text-orange-400 font-bold" title="기어 코어 - 장비 옵션을 최대치로 강화">
-              ⚙️ {gearCores}
-            </p>
-            <p className="text-purple-300 font-bold" title="오브 - 장비 옵션을 재조정">
-              🔮 {orbs}
-            </p>
-          </div>
+          <p className="text-purple-300 font-bold text-sm" title="오브 - 장비 옵션을 재조정">
+            🔮 {orbs}
+          </p>
         </div>
       </div>
 
       {/* 현재 층 정보 */}
       <div className="bg-gray-800 rounded p-2 border border-gray-700">
         <div className="flex items-center justify-between mb-1">
-          <p className="text-sm text-gray-300 font-semibold">현재 층</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-gray-300 font-semibold">현재 층</p>
+            {player.floorLocked && (
+              <span className="text-xs text-yellow-400 font-bold">🔒 고정</span>
+            )}
+          </div>
           <p className="text-sm text-cyan-400 font-bold">
             {player.floorState === 'boss_battle' ? '⚔️ 보스 전투 중' :
-             player.floorState === 'boss_ready' ? '✅ 보스 도전 가능' :
-             `몬스터: ${player.monstersKilledInFloor} / ${actualMonstersPerFloor}`}
+             `남은 몬스터: ${Math.max(0, actualMonstersPerFloor - player.monstersKilledInFloor)} / ${actualMonstersPerFloor}`}
           </p>
         </div>
-        <p className="text-xl font-bold">
-          {player.floor}층 -
-          <span className={
-            currentMonster.isLegendary ? 'text-orange-400' :
-            currentMonster.isRare ? 'text-purple-400' :
-            'text-gray-100'
-          }>
-            {currentMonster.name}
-          </span>
-          {currentMonster.isBoss && <span className="text-red-400 ml-2">👑 BOSS</span>}
-        </p>
 
-        {/* 보스 타이머 또는 버튼 영역 - 고정 높이 */}
-        <div className="mt-2 h-10 flex items-center">
+        {/* 층 정보 + 버튼들 */}
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xl font-bold flex-1">
+            {player.floor}층 -
+            <span className={
+              currentMonster.isLegendary ? 'text-orange-400' :
+              currentMonster.isRare ? 'text-purple-400' :
+              'text-gray-100'
+            }>
+              {currentMonster.name}
+            </span>
+            {currentMonster.isBoss && <span className="text-red-400 ml-2">👑 BOSS</span>}
+          </p>
+
+          {/* 층 컨트롤 버튼들 */}
+          {player.floorState !== 'boss_battle' && (
+            <div className="flex items-center gap-1">
+              {/* 층 고정 토글 */}
+              <button
+                onClick={toggleFloorLock}
+                className={`px-2 py-1.5 rounded font-bold text-xs transition-all ${
+                  player.floorLocked
+                    ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                    : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+                }`}
+                title={player.floorLocked ? '층 고정 해제' : '층 고정'}
+              >
+                {player.floorLocked ? '🔒' : '🔓'}
+              </button>
+
+              {/* 내려가기 버튼 */}
+              <button
+                onClick={goDownFloor}
+                disabled={player.floor <= 1}
+                className={`px-2 py-1.5 rounded font-bold text-xs transition-all ${
+                  player.floor > 1
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                }`}
+                title="이전 층으로"
+              >
+                ⬇️
+              </button>
+
+              {/* 보스 도전 버튼 */}
+              <button
+                onClick={enterBossBattle}
+                disabled={!canEnterBoss}
+                className={`px-3 py-1.5 rounded font-bold text-sm transition-all whitespace-nowrap ${
+                  canEnterBoss
+                    ? 'bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white shadow-lg'
+                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                🔥 보스 도전
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 보스 타이머 또는 레어/전설 몬스터 타이머 영역 */}
+        <div className="mt-2 h-6 flex items-center">
           {player.floorState === 'boss_battle' && (
-            <div className="w-full space-y-1">
+            <div className="w-full space-y-0.5">
               <div className="flex justify-between items-center px-1">
                 <span className="text-xs text-red-600 font-bold">⏰ 보스 타이머</span>
                 <span className="text-xs text-red-600 font-bold">{player.bossTimer}초</span>
               </div>
-              <div className="w-full bg-red-200 rounded-full h-4 overflow-hidden border-2 border-red-500">
+              <div className="w-full bg-red-200 rounded-full h-3 overflow-hidden border-2 border-red-500">
                 <div
                   className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-1000"
                   style={{ width: `${(player.bossTimer / 20) * 100}%` }}
@@ -114,7 +215,7 @@ const PlayerInfo = () => {
               if (remainingTime > 0) {
                 const isLegendary = currentMonster.isLegendary;
                 return (
-                  <div className="w-full space-y-1">
+                  <div className="w-full space-y-0.5">
                     <div className="flex justify-between items-center px-1">
                       <span className={`text-xs font-bold ${isLegendary ? 'text-orange-600' : 'text-purple-600'}`}>
                         ⏰ {isLegendary ? '전설' : '레어'} 몬스터!
@@ -123,7 +224,7 @@ const PlayerInfo = () => {
                         {remainingTime}초
                       </span>
                     </div>
-                    <div className={`w-full rounded-full h-4 overflow-hidden border-2 ${
+                    <div className={`w-full rounded-full h-3 overflow-hidden border-2 ${
                       isLegendary ? 'bg-orange-200 border-orange-500' : 'bg-purple-200 border-purple-500'
                     }`}>
                       <div
@@ -140,15 +241,6 @@ const PlayerInfo = () => {
               }
               return null;
             })()
-          )}
-
-          {canEnterBoss && (
-            <button
-              onClick={enterBossBattle}
-              className="w-full h-full py-2 rounded font-bold bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white transition-all shadow-lg"
-            >
-              🔥 보스 도전하기
-            </button>
           )}
         </div>
       </div>

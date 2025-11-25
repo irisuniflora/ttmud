@@ -1,13 +1,24 @@
 // 봉인구역 전용 문양 시스템
 
-// 문양 등급
+// 문양 등급 (동료 등급 색상과 통일)
 export const INSCRIPTION_GRADES = {
-  common: { name: '일반', color: 'text-gray-400', statMultiplier: 1 },
-  rare: { name: '희귀', color: 'text-green-400', statMultiplier: 1.5 },
-  epic: { name: '레어', color: 'text-blue-400', statMultiplier: 2 },
-  unique: { name: '유니크', color: 'text-purple-400', statMultiplier: 3 },
-  legendary: { name: '레전드', color: 'text-orange-400', statMultiplier: 5 },
-  mythic: { name: '신화', color: 'text-red-400', statMultiplier: 8 }
+  common: { name: '일반', color: 'text-gray-400', statMultiplier: 1, sellDust: 1 },
+  uncommon: { name: '희귀', color: 'text-blue-400', statMultiplier: 1.5, sellDust: 3 },
+  rare: { name: '레어', color: 'text-purple-400', statMultiplier: 2, sellDust: 8 },
+  unique: { name: '유니크', color: 'text-yellow-400', statMultiplier: 3, sellDust: 20 },
+  legendary: { name: '레전드', color: 'text-orange-400', statMultiplier: 5, sellDust: 50 },
+  mythic: { name: '신화', color: 'text-red-400', statMultiplier: 8, sellDust: 150 }
+};
+
+// 문양 강화 설정
+export const INSCRIPTION_UPGRADE_CONFIG = {
+  maxLevel: 10,
+  // 레벨당 강화 비용 (문양가루)
+  getCost: (currentLevel) => Math.floor(10 * Math.pow(1.5, currentLevel - 1)),
+  // 레벨당 스탯 배율 (레벨 1 = 1.0, 레벨 10 = 2.0)
+  getStatMultiplier: (level) => 1 + (level - 1) * 0.11,
+  // 강화 성공률 (항상 100%)
+  getSuccessRate: (currentLevel) => 100
 };
 
 // 문양 특수 능력
@@ -334,18 +345,46 @@ export const INSCRIPTIONS = {
   }
 };
 
+// 구 등급 -> 신 등급 마이그레이션 맵
+const GRADE_MIGRATION = {
+  'rare': 'uncommon',    // 구: rare(희귀) -> 신: uncommon(희귀)
+  'epic': 'rare',        // 구: epic(레어) -> 신: rare(레어)
+  // common, unique, legendary, mythic은 그대로
+};
+
+// 등급 마이그레이션 함수
+export const migrateGrade = (grade) => {
+  return GRADE_MIGRATION[grade] || grade;
+};
+
 // 등급별 문양 스탯 계산
 export const calculateInscriptionStats = (inscriptionId, grade) => {
   const inscription = INSCRIPTIONS[inscriptionId];
-  const gradeData = INSCRIPTION_GRADES[grade];
 
-  if (!inscription || !gradeData) return null;
+  // 구 등급 마이그레이션
+  const migratedGrade = migrateGrade(grade);
+  const gradeData = INSCRIPTION_GRADES[migratedGrade];
+
+  if (!inscription || !gradeData) {
+    // 폴백: 기본값 반환
+    return {
+      name: '알 수 없는 문양',
+      gradeName: '알 수 없음',
+      gradeColor: 'text-gray-400',
+      attack: 0,
+      critChance: 0,
+      accuracy: 0,
+      attackPercent: 0,
+      critDamage: 0,
+      penetration: 0
+    };
+  }
 
   const multiplier = gradeData.statMultiplier;
 
   return {
     ...inscription,
-    grade,
+    grade: migratedGrade,
     gradeName: gradeData.name,
     gradeColor: gradeData.color,
     attack: Math.floor(inscription.baseStats.attack * multiplier),
@@ -397,22 +436,22 @@ export const getInscriptionDropRate = (floor) => {
   return Math.min(dropRate, 0.80);
 };
 
-// 문양 뽑기 확률 (가챠용)
-export const INSCRIPTION_GACHA_RATES = {
-  common: 0.50,    // 50%
-  rare: 0.30,      // 30%
-  epic: 0.15,      // 15%
-  unique: 0.04,    // 4%
+// 문양 드랍 확률 (등급별)
+export const INSCRIPTION_DROP_RATES = {
+  common: 0.50,     // 50%
+  uncommon: 0.30,   // 30%
+  rare: 0.15,       // 15%
+  unique: 0.04,     // 4%
   legendary: 0.009, // 0.9%
-  mythic: 0.001    // 0.1%
+  mythic: 0.001     // 0.1%
 };
 
-// 문양 뽑기 (등급 결정)
+// 문양 등급 롤 (드랍 시 등급 결정)
 export const rollInscriptionGrade = () => {
   const roll = Math.random();
   let cumulative = 0;
 
-  for (const [grade, rate] of Object.entries(INSCRIPTION_GACHA_RATES)) {
+  for (const [grade, rate] of Object.entries(INSCRIPTION_DROP_RATES)) {
     cumulative += rate;
     if (roll <= cumulative) return grade;
   }

@@ -15,14 +15,38 @@ import PrestigeRelics from './components/Prestige/PrestigeRelics';
 const GameContent = () => {
   const { gameState, isRunning, togglePause, saveGame, resetGame, prestige } = useGame();
   const [activeTab, setActiveTab] = useState('heroes');
+  const { combatLog = [] } = gameState;
+
+  // 최근 로그 2개 가져오기
+  const recentLogs = combatLog.slice(0, 2);
+
+  const getLogColor = (log) => {
+    if (log.type === 'gear_core') return 'text-orange-400 font-bold';
+    if (log.type === 'rare_monster') return 'text-pink-400 font-bold';
+    if (log.type === 'sold') return 'text-yellow-400';
+    if (log.rarity === 'dark') return 'text-white font-bold';
+    if (log.rarity === 'mythic') return 'text-red-400';
+    if (log.rarity === 'legendary') return 'text-orange-400';
+    if (log.rarity === 'unique') return 'text-yellow-400';
+    if (log.rarity === 'epic') return 'text-purple-400';
+    if (log.rarity === 'rare') return 'text-blue-400';
+    return 'text-gray-400';
+  };
 
   const handlePrestige = () => {
-    if (gameState.player.stage < 50) {
-      alert('환생하려면 스테이지 50 이상 도달해야 합니다!');
+    if (gameState.player.floor < 50) {
+      alert('환생하려면 50층 이상 도달해야 합니다!');
       return;
     }
-    
-    if (window.confirm(`환생하시겠습니까?\n\n획득할 PP: ${Math.floor(gameState.player.stage / 10)}\n\n게임이 처음부터 시작되지만 더 강해집니다!`)) {
+
+    // 유물 조각 획득 공식 계산
+    const floor = gameState.player.floor;
+    const baseFragments = 5;
+    const floorBonus = Math.floor(floor / 20);
+    const highFloorBonus = floor > 100 ? Math.floor((floor - 100) / 10) : 0;
+    const fragmentsGained = baseFragments + floorBonus + highFloorBonus;
+
+    if (window.confirm(`환생하시겠습니까?\n\n획득할 유물 조각: 💎 ${fragmentsGained}개\n\n게임이 처음부터 시작되지만 더 강해집니다!`)) {
       prestige();
     }
   };
@@ -32,10 +56,22 @@ const GameContent = () => {
       {/* 상단 헤더 */}
       <header className="bg-game-panel border border-game-border rounded-lg p-4 mb-4 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
               Abyss Walker
             </h1>
+            {/* 최근 로그 표시 */}
+            <div className="flex flex-col gap-0.5 text-xs max-w-md">
+              {recentLogs.length > 0 ? (
+                recentLogs.map((log) => (
+                  <span key={log.id} className={`truncate ${getLogColor(log)}`}>
+                    {log.message}
+                  </span>
+                ))
+              ) : (
+                <span className="text-gray-500">아이템 로그가 여기에 표시됩니다</span>
+              )}
+            </div>
           </div>
           <div className="flex gap-2">
             <button

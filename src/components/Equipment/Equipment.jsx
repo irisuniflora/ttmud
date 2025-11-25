@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
-import { ITEM_SLOT_NAMES, RARITIES, STAT_RANGES, DAMAGE_STATS, UTILITY_STATS, calculateStatPercentage, getStatColorByPercentage } from '../../data/items';
+import { ITEM_SLOT_NAMES, RARITIES, STAT_RANGES, DAMAGE_STATS, UTILITY_STATS, calculateStatPercentage, getStatColorByPercentage, getItemPrice, getDiamondGrade, getDiamondColor } from '../../data/items';
 import { EQUIPMENT_CONFIG } from '../../data/gameBalance';
 import { formatNumber, formatStatValue } from '../../utils/formatter';
 import NotificationModal from '../UI/NotificationModal';
@@ -16,8 +16,8 @@ const SLOT_ICONS = {
 };
 
 const Equipment = () => {
-  const { gameState, unequipItem, enhanceSlot, useGearCore, useOrb, equipItem, autoEquipAll, autoSellItems, updateSettings } = useGame();
-  const { equipment, slotEnhancements = {}, player, gearCores = 0, orbs = 0, inventory = [], settings = {} } = gameState;
+  const { gameState, unequipItem, enhanceSlot, usePerfectEssence, useOrb, equipItem, autoEquipAll, autoSellItems, sellItem, updateSettings } = useGame();
+  const { equipment, slotEnhancements = {}, player, orbs = 0, inventory = [], settings = {}, consumables = {} } = gameState;
 
   const [sellRarity, setSellRarity] = React.useState(() => {
     const saved = localStorage.getItem('ttmud_sellRarity');
@@ -35,6 +35,7 @@ const Equipment = () => {
     message: '',
     type: 'info'
   });
+  const [sellPopup, setSellPopup] = useState(null); // { x, y, gold, id }
 
   const showNotification = (title, message, type = 'info') => {
     setNotification({ isOpen: true, title, message, type });
@@ -62,20 +63,23 @@ const Equipment = () => {
   };
 
   const getEnhancementGlow = (level) => {
-    if (level < 10) return '';
-    if (level < 15) return 'ring-2 ring-green-500 shadow-lg shadow-green-500/50'; // 10-14: 초록
-    if (level < 20) return 'ring-2 ring-blue-500 shadow-lg shadow-blue-500/50'; // 15-19: 파랑
-    if (level < 25) return 'ring-2 ring-purple-500 shadow-lg shadow-purple-500/50'; // 20-24: 보라
-    if (level < 30) return 'ring-2 ring-yellow-500 shadow-lg shadow-yellow-500/50'; // 25-29: 노랑
-    return 'ring-2 ring-red-500 shadow-lg shadow-red-500/50 animate-pulse'; // 30+: 빨강 + 펄스
+    // 강화 수치 효과 비활성화
+    return '';
   };
 
   const handleEnhance = (slot) => {
     const result = enhanceSlot(slot);
     if (result.success) {
-      showNotification('✨ 강화 성공!', `+${result.newLevel} 달성! (확률: ${result.successRate.toFixed(1)}%)`, 'success');
+      // 20강 이상에서만 성공 메시지 표시
+      if (result.newLevel >= 20) {
+        showNotification('✨ 강화 성공!', `+${result.newLevel} 달성! (확률: ${result.successRate.toFixed(1)}%)`, 'success');
+      }
     } else {
-      showNotification('💔 강화 실패', `${result.message} (확률: ${result.successRate.toFixed(1)}%)`, 'warning');
+      // 20강 이상에서만 실패 메시지 표시
+      const currentLevel = slotEnhancements[slot] || 0;
+      if (currentLevel >= 19) {
+        showNotification('💔 강화 실패', `${result.message} (확률: ${result.successRate.toFixed(1)}%)`, 'warning');
+      }
     }
   };
 
@@ -99,17 +103,18 @@ const Equipment = () => {
       });
   });
 
-  const handleUseGearCore = (slot, statIndex) => {
-    if (gearCores < 1) {
-      showNotification('기어 코어 부족', '기어 코어가 없습니다', 'warning');
+  const handleUsePerfectEssence = (slot, statIndex) => {
+    const essenceCount = consumables.stat_max_item || 0;
+    if (essenceCount < 1) {
+      showNotification('완벽의 정수 부족', '완벽의 정수가 없습니다', 'warning');
       return;
     }
 
-    const result = useGearCore(slot, statIndex);
+    const result = usePerfectEssence(slot, statIndex);
     if (result.success) {
-      showNotification('⚙️ 강화 성공!', result.message, 'success');
+      showNotification('⚙️ 극옵화 성공!', result.message, 'success');
     } else {
-      showNotification('강화 실패', result.message, 'error');
+      showNotification('극옵화 실패', result.message, 'error');
     }
   };
 
@@ -171,14 +176,28 @@ const Equipment = () => {
       <div className="space-y-4">
         {/* 헤더 */}
         <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold text-white">⚔️ 장착 중인 장비</h3>
-          <button
-            onClick={() => setShowInfoModal(true)}
-            className="px-3 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-bold rounded transition-all shadow-lg text-sm"
-            title="장비 정보 보기"
-          >
-            📊 장비 정보
-          </button>
+          <div className="flex items-center gap-3">
+            <h3 className="text-xl font-bold text-white">⚔️ 장착 중인 장비</h3>
+            <span className="text-xs text-gray-300 bg-gray-800 px-2 py-1 rounded">
+              장비옵션 예시 : <span className="text-yellow-400">0.5%</span><span className="text-green-400">(+0.3%)</span> <span className="text-gray-500">[80%]</span> = 기본값 <span className="text-green-400">(+강화)</span> <span className="text-gray-500">[완성도]</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={autoEquipAll}
+              className="px-3 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold rounded transition-all shadow-lg text-sm"
+              title="모든 슬롯에 최적 장비 장착"
+            >
+              ⚡ 자동 장착
+            </button>
+            <button
+              onClick={() => setShowInfoModal(true)}
+              className="px-3 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-bold rounded transition-all shadow-lg text-sm"
+              title="장비 정보 보기"
+            >
+              📊 장비 정보
+            </button>
+          </div>
         </div>
 
         {/* 장비 슬롯 */}
@@ -208,27 +227,42 @@ const Equipment = () => {
                     <p className={`text-xs font-bold ${getRarityColor(item.rarity)} text-center mb-2`}>
                       {RARITIES[item.rarity]?.name || ''}
                     </p>
-                    <div className="text-[10px] space-y-1">
+                    <div className="text-xs space-y-1">
                       {item.stats.map((stat, idx) => {
                         const percentage = calculateStatPercentage(stat);
                         const colorClass = getStatColorByPercentage(percentage);
-                        const formattedValue = formatStatValue(stat.value, stat.suffix);
+                        const diamondGrade = getDiamondGrade(percentage);
+                        const diamondColorClass = getDiamondColor(percentage);
+                        const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
+                        const bonusValue = isExcluded ? 0 : stat.value * (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+                        const formattedBaseValue = formatStatValue(stat.value, stat.suffix);
+                        const formattedBonusValue = formatStatValue(bonusValue, stat.suffix);
+                        const essenceCount = consumables.stat_max_item || 0;
 
                         return (
                           <div key={idx} className="flex items-center justify-between gap-1">
-                            <span className={`truncate flex-1 text-left font-bold ${colorClass} ${percentage >= 100 ? 'animate-pulse' : ''}`}>
-                              {stat.name} +{formattedValue}{stat.suffix}
-                              <span className="text-[8px] ml-1 opacity-70">({percentage.toFixed(0)}%)</span>
+                            <span className={`truncate font-bold ${colorClass}`}>
+                              {stat.name.substring(0, 2)} {formattedBaseValue}{stat.suffix}
+                              {enhancementLevel > 0 && !isExcluded && bonusValue > 0 && (
+                                <span className="text-green-400 text-[10px]">(+{formattedBonusValue})</span>
+                              )}
                             </span>
-                            {gearCores > 0 && percentage < 100 && (
-                              <button
-                                onClick={() => handleUseGearCore(slot, idx)}
-                                className="bg-orange-600 hover:bg-orange-700 text-white text-[8px] px-1 py-0.5 rounded"
-                                title="기어 코어로 최대치 강화"
-                              >
-                                ⚙️
-                              </button>
-                            )}
+                            <div className="flex items-center gap-0.5">
+                              {/* 다이아몬드 등급 표시 */}
+                              <span className={`text-[10px] font-bold ${diamondColorClass}`}>
+                                {'◆'.repeat(diamondGrade.count)}
+                              </span>
+                              {/* 완벽의 정수 버튼 (극옵 아닌 경우만) */}
+                              {essenceCount > 0 && percentage < 100 && (
+                                <button
+                                  onClick={() => handleUsePerfectEssence(slot, idx)}
+                                  className="bg-cyan-600 hover:bg-cyan-700 text-white text-[8px] px-0.5 rounded ml-0.5"
+                                  title="완벽의 정수로 극옵화"
+                                >
+                                  ⚙
+                                </button>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
@@ -294,14 +328,6 @@ const Equipment = () => {
             <h3 className="text-lg font-bold text-white">
               🎒 인벤토리 ({inventory.length})
             </h3>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={autoEquipAll}
-                className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold rounded text-sm"
-              >
-                ⚡ 자동 장착
-              </button>
-            </div>
           </div>
 
           {/* 일괄 판매 */}
@@ -377,26 +403,50 @@ const Equipment = () => {
                         return (
                           <div
                             key={item.id}
-                            className={`border-2 ${getRarityColor(item.rarity)} ${getRarityBg(item.rarity)} rounded p-1 cursor-pointer hover:scale-105 transition-all min-h-[70px] flex flex-col`}
-                            onClick={() => equipItem(item)}
-                            title={`${item.name} - 클릭하여 장착`}
+                            className={`border-2 ${getRarityColor(item.rarity)} ${getRarityBg(item.rarity)} rounded p-1 hover:scale-105 transition-all min-h-[70px] flex flex-col relative group`}
                           >
-                            <p className={`text-[9px] font-bold ${getRarityColor(item.rarity)} text-center mb-0.5`}>
-                              {RARITIES[item.rarity]?.name || ''}
-                            </p>
-                            <div className="text-[8px] text-center space-y-0 flex-1 overflow-hidden">
-                              {item.stats.map((stat, idx) => {
-                                const percentage = calculateStatPercentage(stat);
-                                const colorClass = getStatColorByPercentage(percentage);
-                                const formattedValue = formatStatValue(stat.value, stat.suffix);
+                            <div
+                              className="cursor-pointer flex-1"
+                              onClick={() => equipItem(item)}
+                              title={`${item.name} - 클릭하여 장착`}
+                            >
+                              <p className={`text-[9px] font-bold ${getRarityColor(item.rarity)} text-center mb-0.5`}>
+                                {RARITIES[item.rarity]?.name || ''}
+                              </p>
+                              <div className="text-[8px] text-center space-y-0 overflow-hidden">
+                                {item.stats.map((stat, idx) => {
+                                  const percentage = calculateStatPercentage(stat);
+                                  const colorClass = getStatColorByPercentage(percentage);
+                                  const diamondGrade = getDiamondGrade(percentage);
+                                  const diamondColorClass = getDiamondColor(percentage);
+                                  const formattedValue = formatStatValue(stat.value, stat.suffix);
 
-                                return (
-                                  <div key={idx} className={`truncate font-bold ${colorClass}`}>
-                                    {stat.name.substring(0, 3)} +{formattedValue}{stat.suffix}
-                                  </div>
-                                );
-                              })}
+                                  return (
+                                    <div key={idx} className={`truncate font-bold ${colorClass} flex items-center justify-center gap-0.5`}>
+                                      <span>{stat.name.substring(0, 3)} +{formattedValue}{stat.suffix}</span>
+                                      <span className={`${diamondColorClass} text-[7px]`}>
+                                        {'◆'.repeat(diamondGrade.count)}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
+                            {/* 개별 판매 버튼 */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const price = getItemPrice(item);
+                                sellItem(item.id);
+                                setSellPopup({ x: rect.left, y: rect.top, gold: price, id: Date.now() });
+                                setTimeout(() => setSellPopup(null), 1500);
+                              }}
+                              className="absolute top-0 right-0 bg-red-600 hover:bg-red-700 text-white text-[8px] px-1 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="판매"
+                            >
+                              💰
+                            </button>
                           </div>
                         );
                       })}
@@ -522,12 +572,25 @@ const Equipment = () => {
                   <p>• <span className="text-cyan-400 font-bold">50층마다 모든 장비 스탯이 1.2배씩 증가합니다</span></p>
                   <p className="text-gray-400 text-[10px] ml-3">예: 51층 = x1.2, 101층 = x1.44, 151층 = x1.73...</p>
                   <p>• 장비 슬롯 강화 시 해당 슬롯의 모든 스탯이 5%씩 증가합니다</p>
-                  <p>• 기어 코어(⚙️)를 사용하면 개별 옵션을 최대치로 강화할 수 있습니다</p>
+                  <p>• 다이아몬드 등급: <span className="text-gray-500">◆(하옵)</span> <span className="text-blue-400">◆◆(중옵)</span> <span className="text-yellow-400">◆◆◆(상옵)</span> <span className="text-cyan-400">💎💎💎(극옵)</span></p>
+                  <p>• 완벽의 정수(⚙️)를 사용하면 개별 옵션을 극옵으로 변경할 수 있습니다</p>
                   <p>• 오브(🔮)를 사용하면 장비 옵션을 재조정할 수 있습니다</p>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 판매 팝업 */}
+      {sellPopup && (
+        <div
+          className="fixed pointer-events-none z-50 animate-bounce"
+          style={{ left: sellPopup.x - 20, top: sellPopup.y - 30 }}
+        >
+          <span className="text-yellow-400 font-bold text-sm bg-gray-900 px-2 py-1 rounded border border-yellow-500 shadow-lg">
+            +{formatNumber(sellPopup.gold)}💰
+          </span>
         </div>
       )}
     </>

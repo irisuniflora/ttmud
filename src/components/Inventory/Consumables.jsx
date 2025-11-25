@@ -3,8 +3,8 @@ import { useGame } from '../../store/GameContext';
 
 const Consumables = () => {
   const { gameState } = useGame();
-  const { gearCores = 0, orbs = 0, sealedZone = {}, consumables = {} } = gameState;
-  const { tickets = 0, inscriptionTokens = 0, bossCoins = 0 } = sealedZone;
+  const { orbs = 0, sealedZone = {}, consumables = {} } = gameState;
+  const { tickets = 0, bossCoins = 0 } = sealedZone;
 
   return (
       <div className="space-y-4">
@@ -23,17 +23,6 @@ const Consumables = () => {
               <p className="text-xs text-gray-400">봉인구역에 도전할 수 있는 티켓</p>
             </div>
 
-            {/* 문양 각인권 */}
-            <div
-              className="bg-gray-800 border border-purple-500 rounded-lg p-3 text-center cursor-help"
-              title="획득: 봉인구역 보스 처치 보상"
-            >
-              <div className="text-3xl mb-2">📿</div>
-              <p className="text-sm font-bold text-purple-400 mb-1">문양 각인권</p>
-              <p className="text-xl font-bold text-white mb-2">{inscriptionTokens}</p>
-              <p className="text-xs text-gray-400">문양을 뽑을 수 있는 티켓</p>
-            </div>
-
             {/* 보스 코인 */}
             <div
               className="bg-gray-800 border border-yellow-500 rounded-lg p-3 text-center cursor-help"
@@ -45,21 +34,10 @@ const Consumables = () => {
               <p className="text-xs text-gray-400">보스 전용 상점에서 사용</p>
             </div>
 
-            {/* 기어 코어 */}
-            <div
-              className="bg-gray-800 border border-orange-500 rounded-lg p-3 text-center cursor-help"
-              title="획득: 보스 코인 상점에서 구매 (500코인)"
-            >
-              <div className="text-3xl mb-2">⚙️</div>
-              <p className="text-sm font-bold text-orange-400 mb-1">기어 코어</p>
-              <p className="text-xl font-bold text-white mb-2">{gearCores}</p>
-              <p className="text-xs text-gray-400">장비 옵션을 최대치로 강화</p>
-            </div>
-
             {/* 오브 */}
             <div
               className="bg-gray-800 border border-purple-500 rounded-lg p-3 text-center cursor-help"
-              title="획득: 보스 코인 상점에서 구매 (500코인)"
+              title="획득: 보스 코인 상점 구매 또는 몬스터 드롭"
             >
               <div className="text-3xl mb-2">🔮</div>
               <p className="text-sm font-bold text-purple-400 mb-1">오브</p>
@@ -80,13 +58,13 @@ const Consumables = () => {
 
             {/* 완벽의 정수 */}
             <div
-              className="bg-gray-800 border border-red-500 rounded-lg p-3 text-center cursor-help"
-              title="획득: 보스 코인 상점에서 구매 (2000코인)"
+              className="bg-gray-800 border border-cyan-500 rounded-lg p-3 text-center cursor-help"
+              title="획득: 보스 코인 상점 구매 또는 몬스터 드롭"
             >
-              <div className="text-3xl mb-2">🔷</div>
-              <p className="text-sm font-bold text-red-400 mb-1">완벽의 정수</p>
+              <div className="text-3xl mb-2">⚙️</div>
+              <p className="text-sm font-bold text-cyan-400 mb-1">완벽의 정수</p>
               <p className="text-xl font-bold text-white mb-2">{consumables.stat_max_item || 0}</p>
-              <p className="text-xs text-gray-400">장비 옵션을 최대치로 고정</p>
+              <p className="text-xs text-gray-400">장비 옵션 1개를 극옵으로 변경</p>
             </div>
           </div>
         </div>

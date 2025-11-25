@@ -22,45 +22,36 @@ const PrestigeRelics = () => {
   const totalRelicEffects = getTotalRelicEffects(prestigeRelics);
   const relicUpgradeCostReduction = totalRelicEffects.relicUpgradeCostReduction || 0;
 
-  // 유물 뽑기 (등급 없음, 단순히 랜덤 유물 획득)
+  // 아직 보유하지 않은 유물 목록
+  const unownedRelicIds = Object.keys(PRESTIGE_RELICS).filter(id => !prestigeRelics[id]);
+  const hasAllRelics = unownedRelicIds.length === 0;
+
+  // 유물 뽑기 (중복 없이 랜덤 획득)
   const gachaRelic = () => {
+    if (hasAllRelics) {
+      alert('모든 유물을 보유하고 있습니다!');
+      return;
+    }
+
     if (relicFragments < currentGachaCost) {
       alert(`유물 조각이 부족합니다! (필요: ${currentGachaCost}개)`);
       return;
     }
 
-    const relicKeys = Object.keys(PRESTIGE_RELICS);
-    const randomRelicId = relicKeys[Math.floor(Math.random() * relicKeys.length)];
+    // 보유하지 않은 유물 중 랜덤 선택
+    const randomRelicId = unownedRelicIds[Math.floor(Math.random() * unownedRelicIds.length)];
     const relic = PRESTIGE_RELICS[randomRelicId];
 
     setGameState(prev => {
       const newRelics = { ...prev.prestigeRelics };
 
-      // 이미 보유한 유물이면 레벨만 1 증가
-      if (newRelics[randomRelicId]) {
-        const currentLevel = newRelics[randomRelicId].level;
-        const maxLevel = relic.maxLevel;
+      // 새로운 유물 획득
+      newRelics[randomRelicId] = {
+        relicId: randomRelicId,
+        level: 1
+      };
 
-        if (maxLevel && currentLevel >= maxLevel) {
-          alert(`${relic.icon} ${relic.name}은(는) 이미 최대 레벨입니다! 다른 유물을 획득했습니다.`);
-          return prev; // 변경 없음
-        }
-
-        newRelics[randomRelicId] = {
-          ...newRelics[randomRelicId],
-          level: currentLevel + 1
-        };
-
-        alert(`${relic.icon} ${relic.name} 레벨 업! (Lv.${currentLevel + 1})`);
-      } else {
-        // 새로운 유물 획득
-        newRelics[randomRelicId] = {
-          relicId: randomRelicId,
-          level: 1
-        };
-
-        alert(`${relic.icon} ${relic.name} 획득!`);
-      }
+      alert(`${relic.icon} ${relic.name} 획득!`);
 
       return {
         ...prev,
@@ -130,39 +121,33 @@ const PrestigeRelics = () => {
     }));
 
   return (
-    <div className="space-y-4">
-      {/* 헤더 */}
-      <div className="bg-gradient-to-r from-purple-900 to-pink-900 border border-purple-500 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-2xl font-bold text-purple-300">환생 유물</h2>
-            <p className="text-sm text-gray-300">유물 조각으로 강력한 유물을 획득하세요</p>
+    <div className="space-y-3">
+      {/* 헤더 + 소환 합친 컴팩트 UI */}
+      <div className="bg-gradient-to-r from-purple-900 to-pink-900 border border-purple-500 rounded-lg p-3">
+        <div className="flex items-center justify-between gap-3">
+          {/* 왼쪽: 제목 + 보유 조각 */}
+          <div className="flex items-center gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-purple-300">환생 유물</h2>
+              <p className="text-xs text-gray-400">미보유: {unownedRelicIds.length} / {Object.keys(PRESTIGE_RELICS).length}</p>
+            </div>
+            <div className="text-2xl font-bold text-pink-400">💎 {relicFragments}</div>
           </div>
-          <div className="text-right">
-            <div className="text-sm text-gray-300">보유 조각</div>
-            <div className="text-3xl font-bold text-pink-400">💎 {relicFragments}</div>
-          </div>
-        </div>
-      </div>
 
-      {/* 가챠 */}
-      <div className="bg-game-panel border border-game-border rounded-lg p-4">
-        <h3 className="text-lg font-bold text-white mb-3">유물 소환</h3>
-        <button
-          onClick={gachaRelic}
-          disabled={relicFragments < currentGachaCost}
-          className={`w-full py-3 rounded font-bold text-lg transition-all ${
-            relicFragments < currentGachaCost
-              ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-              : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg'
-          }`}
-        >
-          유물 소환 (💎 {currentGachaCost}개)
-        </button>
-
-        {/* 다음 가챠 비용 미리보기 */}
-        <div className="mt-2 text-xs text-gray-400 text-center">
-          다음 소환 비용: {getRelicGachaCost(relicGachaCount + 1)}개 | 중복 유물은 자동으로 레벨업됩니다
+          {/* 오른쪽: 소환 버튼 */}
+          <button
+            onClick={gachaRelic}
+            disabled={relicFragments < currentGachaCost || hasAllRelics}
+            className={`px-4 py-2 rounded font-bold text-sm transition-all whitespace-nowrap ${
+              hasAllRelics
+                ? 'bg-green-800 text-green-300 cursor-not-allowed'
+                : relicFragments < currentGachaCost
+                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg'
+            }`}
+          >
+            {hasAllRelics ? '✓ 모두 보유' : `소환 (💎 ${currentGachaCost})`}
+          </button>
         </div>
       </div>
 

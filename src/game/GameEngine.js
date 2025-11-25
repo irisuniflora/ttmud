@@ -1,6 +1,6 @@
 import { getMonsterForStage, getCollectionBonus, RARE_MONSTER_COLLECTION_CHANCE, LEGENDARY_MONSTER_COLLECTION_CHANCE } from '../data/monsters.js';
 import { HEROES, getHeroById, getHeroStats, getNextGrade, getUpgradeCost, getStarUpgradeCost } from '../data/heroes.js';
-import { generateItem, GEAR_CORE_DROP_RATE, upgradeItemStatToMax, rerollItemWithOrb } from '../data/items.js';
+import { generateItem, rerollItemWithOrb, perfectSingleStat, calculateStatPercentage } from '../data/items.js';
 import { getTotalSkillEffects } from '../data/skills.js';
 import { getTotalRelicEffects } from '../data/prestigeRelics.js';
 import {
@@ -24,12 +24,13 @@ export class GameEngine {
     this.tickInterval = null;
     this.tickRate = GAME_CONFIG.tickRate;
 
-    // 데이터 마이그레이션: orbs와 gearCores 초기화
+    // 데이터 마이그레이션: orbs 초기화
     if (this.state.orbs === undefined || this.state.orbs === null || isNaN(this.state.orbs)) {
       this.state.orbs = 0;
     }
-    if (this.state.gearCores === undefined || this.state.gearCores === null || isNaN(this.state.gearCores)) {
-      this.state.gearCores = 0;
+    // gearCores 삭제 (완벽의 정수로 통합)
+    if (this.state.gearCores !== undefined) {
+      delete this.state.gearCores;
     }
     if (!this.state.consumables) {
       this.state.consumables = {};
@@ -71,6 +72,7 @@ export class GameEngine {
         floorState: 'farming', // 'farming', 'boss_ready', 'boss_battle'
         bossTimer: 0, // 보스 타이머 (초)
         hasFailedBoss: false, // 이번 층에서 보스 실패한 적 있는지
+        floorLocked: false, // 층 고정 여부
         stats: {
           baseAtk: PLAYER_BASE_STATS.baseAtk,
           critChance: PLAYER_BASE_STATS.critChance,
@@ -101,7 +103,6 @@ export class GameEngine {
       },
       inventory: [],
       upgradeCoins: 5000, // 등급업 코인 (테스트용 5000개)
-      gearCores: 0, // 기어 코어 (장비 옵션 최대치 강화 아이템)
       orbs: 0, // 오브 (아이템 옵션 재조정 아이템)
       skillLevels: {},
       settings: {
@@ -147,7 +148,11 @@ export class GameEngine {
         rareMonstersMet: 0, // 만난 희귀 몬스터 수
         rareMonstersCaptured: 0 // 수집한 희귀 몬스터 수
       },
-      lastDailyRecharge: null // 마지막 일일 충전 시간 (Date.now())
+      lastDailyRecharge: null, // 마지막 일일 충전 시간 (Date.now())
+      // 환생 유물 시스템
+      relicFragments: 500, // 테스트용 유물 조각 500개
+      relicGachaCount: 0,
+      prestigeRelics: {}
     };
   }
 
@@ -290,8 +295,10 @@ export class GameEngine {
     // 영웅 공격력 추가
     let totalDmg = playerDmg + heroBuffs.attack;
 
-    // 방생 보너스 곱연산 적용
-    const releaseBonus = this.calculateReleaseBonus(Math.floor((player.floor - 1) / 5) * 5 + 1);
+    // 방생 보너스 곱연산 적용 (101층 이상은 1-100층으로 매핑)
+    const baseFloor = player.floor > 100 ? ((player.floor - 1) % 100) + 1 : player.floor;
+    const rangeStart = Math.floor((baseFloor - 1) / 5) * 5 + 1;
+    const releaseBonus = this.calculateReleaseBonus(rangeStart);
     if (releaseBonus.damageBonus > 0) {
       totalDmg *= (1 + releaseBonus.damageBonus / 100);
     }
@@ -481,9 +488,6 @@ export class GameEngine {
     // 등급업 코인 드랍
     this.tryDropUpgradeCoin();
 
-    // 기어 코어 드랍
-    this.tryDropGearCore();
-
     // 오브 드랍
     this.tryDropOrb();
 
@@ -649,17 +653,21 @@ export class GameEngine {
 
     // 층 시스템 처리
     if (player.floorState === 'boss_battle') {
-      // 보스 처치 성공 -> 다음 층으로 진행
-      player.floor++;
-      if (player.floor > player.highestFloor) {
-        player.highestFloor = player.floor;
+      // 보스 처치 성공
+      if (!player.floorLocked) {
+        // 층 고정이 아니면 다음 층으로 진행
+        player.floor++;
+        if (player.floor > player.highestFloor) {
+          player.highestFloor = player.floor;
+        }
       }
+      // 층 고정이든 아니든 상태 초기화
       player.monstersKilledInFloor = 0;
       player.floorState = 'farming';
       player.bossTimer = 0;
       player.hasFailedBoss = false; // 새 층 시작 시 초기화
 
-      // 새 층의 일반 몬스터 생성
+      // 현재 층의 일반 몬스터 생성
       this.state.currentMonster = this.spawnMonster(player.floor, false, false, false, collection);
       this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
     } else {
@@ -738,8 +746,10 @@ export class GameEngine {
 
     let dropChance = player.stats.dropRate + equipmentDropRate + (skillEffects.dropRate || 0) + heroDropRateBonus;
 
-    // 방생 보너스 곱연산 적용
-    const releaseBonus = this.calculateReleaseBonus(Math.floor((player.floor - 1) / 5) * 5 + 1);
+    // 방생 보너스 곱연산 적용 (101층 이상은 1-100층으로 매핑)
+    const baseFloorForDrop = player.floor > 100 ? ((player.floor - 1) % 100) + 1 : player.floor;
+    const rangeStartForDrop = Math.floor((baseFloorForDrop - 1) / 5) * 5 + 1;
+    const releaseBonus = this.calculateReleaseBonus(rangeStartForDrop);
     if (releaseBonus.dropRateBonus > 0) {
       dropChance *= (1 + releaseBonus.dropRateBonus / 100);
     }
@@ -772,8 +782,7 @@ export class GameEngine {
           const price = Math.floor(basePrice + statBonus);
 
           player.gold += price;
-          // 자동 판매된 아이템은 인벤토리에 추가하지 않음
-          this.addCombatLog(`${item.name} 자동 판매 +${price.toLocaleString()}G`, 'sold', item.rarity);
+          // 자동 판매된 아이템은 인벤토리에 추가하지 않음 (로그 없음)
         } else {
           // 설정한 등급보다 높으면 인벤토리에 추가
           inventory.push(item);
@@ -977,17 +986,6 @@ export class GameEngine {
     return 0;
   }
 
-  // 기어 코어 드랍 시도
-  tryDropGearCore() {
-    // 0.003% 확률
-    if (Math.random() * 100 < GEAR_CORE_DROP_RATE) {
-      this.state.gearCores += 1;
-      this.addCombatLog('⚙️ 기어 코어 획득!', 'gear_core');
-      return true;
-    }
-    return false;
-  }
-
   // 오브 드랍 시도
   tryDropOrb() {
     // 0.5% 확률
@@ -1002,9 +1000,9 @@ export class GameEngine {
   // 완벽의 정수 드랍 시도 (글로벌 드랍)
   tryDropStatMaxItem() {
     const { player } = this.state;
-    // 기본 확률: 0.0001%
+    // 기본 확률: 0.00001%
     // 층수에 따른 가중치: sqrt(floor)
-    const baseRate = 0.0001; // 0.0001%
+    const baseRate = 0.00001; // 0.00001%
     const floorWeight = Math.sqrt(player.floor);
     const dropRate = baseRate * floorWeight;
 
@@ -1051,19 +1049,19 @@ export class GameEngine {
     };
 
     const rollInscriptionGrade = () => {
-      const INSCRIPTION_GACHA_RATES = {
-        common: 0.50,
-        rare: 0.30,
-        epic: 0.15,
-        unique: 0.04,
-        legendary: 0.009,
-        mythic: 0.001
+      const INSCRIPTION_DROP_RATES = {
+        common: 0.50,     // 50%
+        uncommon: 0.30,   // 30% (희귀)
+        rare: 0.15,       // 15% (레어)
+        unique: 0.04,     // 4%
+        legendary: 0.009, // 0.9%
+        mythic: 0.001     // 0.1%
       };
 
       const roll = Math.random();
       let cumulative = 0;
 
-      for (const [grade, rate] of Object.entries(INSCRIPTION_GACHA_RATES)) {
+      for (const [grade, rate] of Object.entries(INSCRIPTION_DROP_RATES)) {
         cumulative += rate;
         if (roll <= cumulative) return grade;
       }
@@ -1091,6 +1089,31 @@ export class GameEngine {
       // 문양 등급 결정
       const grade = rollInscriptionGrade();
 
+      const INSCRIPTION_GRADES = {
+        common: { name: '일반', color: 'text-gray-400', sellDust: 1 },
+        uncommon: { name: '희귀', color: 'text-blue-400', sellDust: 3 },
+        rare: { name: '레어', color: 'text-purple-400', sellDust: 8 },
+        unique: { name: '유니크', color: 'text-yellow-400', sellDust: 20 },
+        legendary: { name: '레전드', color: 'text-orange-400', sellDust: 50 },
+        mythic: { name: '신화', color: 'text-red-400', sellDust: 150 }
+      };
+      const GRADE_ORDER = ['common', 'uncommon', 'rare', 'unique', 'legendary', 'mythic'];
+
+      // 자동판매 설정 체크
+      const autoSellGrade = this.state.sealedZone?.autoSellGrade;
+      if (autoSellGrade) {
+        const autoSellIndex = GRADE_ORDER.indexOf(autoSellGrade);
+        const droppedIndex = GRADE_ORDER.indexOf(grade);
+        if (droppedIndex <= autoSellIndex) {
+          // 자동판매 - 문양가루 획득
+          const dustAmount = INSCRIPTION_GRADES[grade]?.sellDust || 1;
+          this.state.sealedZone.inscriptionDust = (this.state.sealedZone.inscriptionDust || 0) + dustAmount;
+          const gradeName = INSCRIPTION_GRADES[grade]?.name || '일반';
+          this.addCombatLog(`📿 ${dropInfo.name}의 문양 (${gradeName}) → 자동판매 +${dustAmount}✨`, 'inscription');
+          return true;
+        }
+      }
+
       // 문양 인스턴스 생성
       const newInscription = {
         id: `inscription_${Date.now()}_${Math.random()}`,
@@ -1104,15 +1127,6 @@ export class GameEngine {
         ...(this.state.sealedZone.ownedInscriptions || []),
         newInscription
       ];
-
-      const INSCRIPTION_GRADES = {
-        common: { name: '일반', color: 'text-gray-400' },
-        rare: { name: '희귀', color: 'text-green-400' },
-        epic: { name: '레어', color: 'text-blue-400' },
-        unique: { name: '유니크', color: 'text-purple-400' },
-        legendary: { name: '레전드', color: 'text-orange-400' },
-        mythic: { name: '신화', color: 'text-red-400' }
-      };
 
       const gradeName = INSCRIPTION_GRADES[grade]?.name || '일반';
       this.addCombatLog(`📿 ${dropInfo.name}의 문양 (${gradeName}) 획득!`, 'inscription');
@@ -1325,10 +1339,23 @@ export class GameEngine {
     player.prestigePoints += ppGained;
     player.totalPrestiges++;
 
+    // 유물 조각 획득 공식: 기본 5 + floor / 20 + (floor > 100 ? (floor - 100) / 10 : 0)
+    // 50층: 5 + 2 = 7개
+    // 100층: 5 + 5 = 10개
+    // 200층: 5 + 10 + 10 = 25개
+    // 500층: 5 + 25 + 40 = 70개
+    const baseFragments = 5;
+    const floorBonus = Math.floor(player.floor / 20);
+    const highFloorBonus = player.floor > 100 ? Math.floor((player.floor - 100) / 10) : 0;
+    const fragmentsGained = baseFragments + floorBonus + highFloorBonus;
+
     // 리셋 (일부 제외)
     const newState = this.getDefaultState();
     newState.player.prestigePoints = player.prestigePoints;
     newState.player.totalPrestiges = player.totalPrestiges;
+    newState.relicFragments = (this.state.relicFragments || 0) + fragmentsGained;
+    newState.relicGachaCount = this.state.relicGachaCount || 0;
+    newState.prestigeRelics = this.state.prestigeRelics || {};
     newState.skillLevels = { ...this.state.skillLevels };
     // 컬렉션 복사하되 영웅 카드와 영웅 데이터는 초기화
     newState.collection = {
@@ -1531,7 +1558,6 @@ export class GameEngine {
     this.tryDropItem();
     this.tryDropHeroCard();
     this.tryDropUpgradeCoin();
-    this.tryDropGearCore();
     this.tryDropOrb();
     this.tryDropStatMaxItem();
 
@@ -1579,6 +1605,40 @@ export class GameEngine {
     // 일반 몬스터로 교체
     this.state.currentMonster = this.spawnMonster(player.floor, false, false, false, collection);
     this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
+  }
+
+  // 층 고정 토글
+  toggleFloorLock() {
+    const { player } = this.state;
+    player.floorLocked = !player.floorLocked;
+    return player.floorLocked;
+  }
+
+  // 이전 층으로 내려가기
+  goDownFloor() {
+    const { player, collection } = this.state;
+
+    // 1층이면 더 내려갈 수 없음
+    if (player.floor <= 1) {
+      return { success: false, message: '1층에서는 더 내려갈 수 없습니다' };
+    }
+
+    // 보스 전투 중이면 불가
+    if (player.floorState === 'boss_battle') {
+      return { success: false, message: '보스 전투 중에는 층을 이동할 수 없습니다' };
+    }
+
+    // 층 감소 및 상태 초기화
+    player.floor--;
+    player.monstersKilledInFloor = 0;
+    player.floorState = 'farming';
+    player.hasFailedBoss = false;
+
+    // 새 층의 일반 몬스터 생성
+    this.state.currentMonster = this.spawnMonster(player.floor, false, false, false, collection);
+    this.checkRareMonsterSpawn();
+
+    return { success: true, floor: player.floor };
   }
 
   // 슬롯 강화
@@ -1695,6 +1755,45 @@ export class GameEngine {
     };
   }
 
+  // 개별 아이템 판매
+  sellItem(itemId) {
+    const { inventory, player } = this.state;
+    const itemIndex = inventory.findIndex(item => item.id === itemId);
+
+    if (itemIndex === -1) {
+      return { success: false, message: '아이템을 찾을 수 없습니다' };
+    }
+
+    const item = inventory[itemIndex];
+
+    // 판매 가격 계산
+    const rarityPrices = {
+      common: 10,
+      rare: 50,
+      epic: 200,
+      unique: 800,
+      legendary: 3000,
+      mythic: 12000,
+      dark: 50000
+    };
+
+    const basePrice = rarityPrices[item.rarity] || 10;
+    const statBonus = item.stats.reduce((sum, stat) => sum + stat.value, 0) * 2;
+    const price = Math.floor(basePrice + statBonus);
+
+    // 인벤토리에서 제거
+    this.state.inventory.splice(itemIndex, 1);
+
+    // 골드 추가
+    player.gold += price;
+
+    return {
+      success: true,
+      message: `${item.name} 판매 완료!`,
+      gold: price
+    };
+  }
+
   // 설정 업데이트
   updateSettings(newSettings) {
     this.state.settings = {
@@ -1703,13 +1802,13 @@ export class GameEngine {
     };
   }
 
-  // 기어 코어 사용 (장비의 특정 옵션을 최대값으로 강화)
-  useGearCore(slot, statIndex) {
-    const { equipment } = this.state;
+  // 완벽의 정수 사용 (장비의 특정 옵션 1개를 극옵으로 변경)
+  usePerfectEssence(slot, statIndex) {
+    const { equipment, consumables = {}, player } = this.state;
 
-    // 기어 코어 소지 확인
-    if (this.state.gearCores < 1) {
-      return { success: false, message: '기어 코어가 부족합니다' };
+    // 완벽의 정수 소지 확인
+    if (!consumables.stat_max_item || consumables.stat_max_item < 1) {
+      return { success: false, message: '완벽의 정수가 부족합니다' };
     }
 
     // 장비 착용 확인
@@ -1723,18 +1822,25 @@ export class GameEngine {
       return { success: false, message: '잘못된 옵션입니다' };
     }
 
-    // 옵션 강화
-    const success = upgradeItemStatToMax(item, statIndex);
-    if (!success) {
-      return { success: false, message: '강화에 실패했습니다' };
+    // 이미 극옵인지 확인
+    const stat = item.stats[statIndex];
+    const currentPercentage = calculateStatPercentage(stat);
+    if (currentPercentage >= 100) {
+      return { success: false, message: '이미 극옵 상태입니다' };
     }
 
-    // 기어 코어 소모
-    this.state.gearCores -= 1;
+    // 옵션 극옵화
+    const success = perfectSingleStat(item, statIndex, player.floor);
+    if (!success) {
+      return { success: false, message: '극옵화에 실패했습니다 (몬스터 감소 옵션은 불가)' };
+    }
+
+    // 완벽의 정수 소모
+    this.state.consumables.stat_max_item -= 1;
 
     return {
       success: true,
-      message: `${item.stats[statIndex].name} 옵션을 최대치로 강화했습니다!`,
+      message: `${stat.name} 옵션을 극옵으로 변경했습니다!`,
       stat: item.stats[statIndex]
     };
   }
@@ -1988,6 +2094,113 @@ export class GameEngine {
     }
 
     return { success: false, message: '잘못된 몬스터 타입입니다' };
+  }
+
+  // 모두 방생 (방생 가능한 모든 몬스터 방생)
+  releaseAllMonsters() {
+    const { collection } = this.state;
+
+    // release 초기화
+    if (!collection.release) {
+      collection.release = {
+        releasedMonsters: {},
+        totalRareReleased: 0,
+        totalLegendaryReleased: 0,
+        legendaryScrolls: 0,
+        legendaryChoiceTokens: 0,
+        mysteryTokens: 0
+      };
+    }
+
+    let totalReleased = 0;
+    let totalDamageBonus = 0;
+    let totalDropRateBonus = 0;
+
+    // 전설 먼저 방생 (전설 우선 규칙 때문에)
+    if (collection.legendaryMonsters) {
+      Object.entries(collection.legendaryMonsters).forEach(([monsterId, data]) => {
+        if (data.unlocked) {
+          const releaseData = collection.release.releasedMonsters[monsterId];
+          const releaseCount = releaseData?.releaseCount || 0;
+
+          if (releaseCount < 3) {
+            // 방생 처리
+            data.unlocked = false;
+
+            if (!collection.release.releasedMonsters[monsterId]) {
+              collection.release.releasedMonsters[monsterId] = {
+                name: data.name,
+                releaseCount: 0,
+                releasedAt: Date.now()
+              };
+            }
+            collection.release.releasedMonsters[monsterId].releaseCount++;
+            collection.release.releasedMonsters[monsterId].releasedAt = Date.now();
+            collection.release.totalLegendaryReleased++;
+
+            totalReleased++;
+            totalDamageBonus += 20;
+            totalDropRateBonus += 20;
+          }
+        }
+      });
+    }
+
+    // 레어 방생
+    if (collection.rareMonsters) {
+      Object.entries(collection.rareMonsters).forEach(([monsterId, data]) => {
+        if (data.unlocked) {
+          const releaseData = collection.release.releasedMonsters[monsterId];
+          const releaseCount = releaseData?.releaseCount || 0;
+
+          // 전설 우선 방생 확인
+          const legendaryId = monsterId.replace('rare_', 'legendary_');
+          const legendaryCollected = collection.legendaryMonsters?.[legendaryId]?.unlocked || false;
+          const legendaryReleaseData = collection.release.releasedMonsters[legendaryId];
+          const legendaryReleaseCount = legendaryReleaseData?.releaseCount || 0;
+
+          // 전설이 없거나 전설 방생 횟수가 레어보다 많으면 방생 가능
+          const canRelease = releaseCount < 3 && (!legendaryCollected || legendaryReleaseCount > releaseCount);
+
+          if (canRelease) {
+            // 방생 처리
+            data.unlocked = false;
+
+            if (!collection.release.releasedMonsters[monsterId]) {
+              collection.release.releasedMonsters[monsterId] = {
+                name: data.name,
+                releaseCount: 0,
+                releasedAt: Date.now()
+              };
+            }
+            collection.release.releasedMonsters[monsterId].releaseCount++;
+            collection.release.releasedMonsters[monsterId].releasedAt = Date.now();
+            collection.release.totalRareReleased++;
+
+            totalReleased++;
+            totalDamageBonus += 5;
+            totalDropRateBonus += 5;
+          }
+        }
+      });
+    }
+
+    if (totalReleased === 0) {
+      return { success: false, message: '방생할 몬스터가 없습니다!' };
+    }
+
+    // 마일스톤 보상 체크
+    this.checkReleaseMilestones();
+
+    this.addCombatLog(`🕊️ ${totalReleased}마리를 방생했습니다!`, 'release');
+
+    return {
+      success: true,
+      message: `${totalReleased}마리를 방생했습니다!`,
+      totalReleased,
+      damageBonus: totalDamageBonus,
+      dropRateBonus: totalDropRateBonus
+    };
   }
 
   // 몬스터 선택권으로 몬스터 도감 등록

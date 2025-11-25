@@ -162,6 +162,20 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
+  const toggleFloorLock = () => {
+    const result = engineRef.current.toggleFloorLock();
+    setGameState({ ...engineRef.current.getState() });
+    return result;
+  };
+
+  const goDownFloor = () => {
+    const result = engineRef.current.goDownFloor();
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
   const enhanceSlot = (slot) => {
     const result = engineRef.current.enhanceSlot(slot);
     if (result.success) {
@@ -178,13 +192,21 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
+  const sellItem = (itemId) => {
+    const result = engineRef.current.sellItem(itemId);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
   const updateSettings = (newSettings) => {
     engineRef.current.updateSettings(newSettings);
     setGameState({ ...engineRef.current.getState() });
   };
 
-  const useGearCore = (slot, statIndex) => {
-    const result = engineRef.current.useGearCore(slot, statIndex);
+  const usePerfectEssence = (slot, statIndex) => {
+    const result = engineRef.current.usePerfectEssence(slot, statIndex);
     if (result.success) {
       setGameState({ ...engineRef.current.getState() });
     }
@@ -201,6 +223,14 @@ export const GameProvider = ({ children }) => {
 
   const releaseMonster = (monsterId, type) => {
     const result = engineRef.current.releaseMonster(monsterId, type);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const releaseAllMonsters = () => {
+    const result = engineRef.current.releaseAllMonsters();
     if (result.success) {
       setGameState({ ...engineRef.current.getState() });
     }
@@ -269,6 +299,7 @@ export const GameProvider = ({ children }) => {
   return (
     <GameContext.Provider value={{
       gameState,
+      setGameState,
       isRunning,
       togglePause,
       saveGame,
@@ -283,14 +314,18 @@ export const GameProvider = ({ children }) => {
       autoEquipAll,
       enhanceSlot,
       autoSellItems,
+      sellItem,
       updateSettings,
-      useGearCore,
+      usePerfectEssence,
       useOrb,
       releaseMonster,
+      releaseAllMonsters,
       unlockMonsterWithTicket,
       prestige,
       upgradeSkill,
       enterBossBattle,
+      toggleFloorLock,
+      goDownFloor,
       startWorldBossBattle,
       toggleWorldBoss,
       distributeWorldBossRewards,

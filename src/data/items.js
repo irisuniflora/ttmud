@@ -30,8 +30,6 @@ export const DAMAGE_STATS = {
   critChance: { id: 'critChance', name: '치명타 확률', suffix: '%' },
   critDmg: { id: 'critDmg', name: '치명타 데미지', suffix: '%' },
   attackPercent: { id: 'attackPercent', name: '공격력', suffix: '%' },
-  accuracy: { id: 'accuracy', name: '명중률', suffix: '%' },
-  penetration: { id: 'penetration', name: '관통', suffix: '%' },
   bossDamageIncrease: { id: 'bossDamageIncrease', name: '보스몹 추뎀', suffix: '%' },
   normalMonsterDamageIncrease: { id: 'normalMonsterDamageIncrease', name: '일반몹 추뎀', suffix: '%' }
 };
@@ -52,8 +50,6 @@ const BASE_VALUES = {
   critChance: 0.03, // 영웅 크리 확률 5%의 1/150 수준 (1/10로 감소)
   critDmg: 0.15, // 영웅 크리 데미지 20%의 1/130 수준 (1/10로 감소)
   attackPercent: 0.1, // 퍼센트 보너스 (1/10로 감소)
-  accuracy: 0.1, // 명중률
-  penetration: 0.1, // 관통
   skipChance: 0.015, // 영웅 스킵 확률 2%의 1/130 수준 (1/10로 감소)
   expBonus: 0.12, // 영웅 경험치 15%의 1/120 수준 (1/10로 감소)
   dropRate: 0.04, // 영웅 드랍율 5%의 1/120 수준 (1/10로 감소)
@@ -105,6 +101,8 @@ const calculateTierMultiplier = (floor) => {
 };
 
 // 아이템 생성
+// 옵션 등급: 하옵(0.8x), 중옵(1.0x), 상옵(1.2x), 극옵(1.5x)
+// 기본값을 중옵(1.0x)으로 두고, 0.8x~1.5x 범위에서 랜덤 결정
 export const generateItem = (slot, playerFloor = 1) => {
   const rarity = rollRarity();
   const statType = SLOT_STAT_TYPES[slot];
@@ -151,31 +149,36 @@ export const generateItem = (slot, playerFloor = 1) => {
         suffix: statDef.suffix
       });
     } else {
-      // 기본 스탯 값
+      // 기본 스탯 값 (등급 배수 적용)
       const baseValue = BASE_VALUES[statDef.id];
 
-      // min/max도 티어 배수 적용
-      const minValue = baseValue * statMultiplierMin * tierMultiplier;
-      const maxValue = baseValue * statMultiplierMax * tierMultiplier;
+      // 등급별 기본값 = BASE_VALUE × 등급배수 × 티어배수
+      // 이 기본값을 중옵(1.0x)으로 설정
+      const gradedBaseValue = baseValue * ((statMultiplierMin + statMultiplierMax) / 2) * tierMultiplier;
 
-      // 1/20 확률로 완벽한 100% 옵션
+      // 옵션 등급에 따른 min/max 계산
+      // 하옵(0.8x) ~ 극옵(1.5x)
+      const minValue = gradedBaseValue * OPTION_GRADE_MULTIPLIERS.low;  // 0.8x
+      const maxValue = gradedBaseValue * OPTION_GRADE_MULTIPLIERS.perfect; // 1.5x
+
+      // 1/20 확률로 극옵(1.5x)
       let finalValue;
       if (Math.random() < 0.05) {
-        // 5% 확률로 최대치
+        // 5% 확률로 극옵
         finalValue = maxValue;
       } else {
-        // 등급 범위 내에서 랜덤 배수 결정
-        const randomMultiplier = statMultiplierMin + Math.random() * (statMultiplierMax - statMultiplierMin);
-        // 최종 값 = 기본값 × 등급 배수 × 티어 배수
-        finalValue = baseValue * randomMultiplier * tierMultiplier;
+        // 0.8x ~ 1.5x 범위에서 랜덤 결정
+        const randomOptionMultiplier = OPTION_GRADE_MULTIPLIERS.low +
+          Math.random() * (OPTION_GRADE_MULTIPLIERS.perfect - OPTION_GRADE_MULTIPLIERS.low);
+        finalValue = gradedBaseValue * randomOptionMultiplier;
       }
 
       stats.push({
         id: statDef.id,
         name: statDef.name,
         value: finalValue,
-        minValue: minValue, // 최소값 저장 (% 계산용)
-        maxValue: maxValue, // 최대값 저장 (% 계산용)
+        minValue: minValue, // 최소값 저장 (% 계산용 - 하옵 0.8x)
+        maxValue: maxValue, // 최대값 저장 (% 계산용 - 극옵 1.5x)
         suffix: statDef.suffix
       });
     }
@@ -214,13 +217,44 @@ export const calculateStatPercentage = (stat) => {
   return Math.max(0, Math.min(100, percentage));
 };
 
-// 옵션 % 기준 색상 결정
+// 옵션 등급 배율 시스템 (기본값 = 중옵 1.0x 기준)
+// 하옵: 0.8x, 중옵: 1.0x, 상옵: 1.2x, 극옵: 1.5x
+export const OPTION_GRADE_MULTIPLIERS = {
+  low: 0.8,      // 하옵
+  mid: 1.0,      // 중옵 (기본값)
+  high: 1.2,     // 상옵
+  perfect: 1.5   // 극옵
+};
+
+// 다이아몬드 등급 계산 (배율 기준)
+// 하옵: 0.8x = 1다이아, 중옵: 1.0x = 2다이아, 상옵: 1.2x = 3다이아, 극옵: 1.5x = 반짝이는 3다이아
+export const getDiamondGrade = (percentage) => {
+  // percentage는 0~100 범위 (0.8x~1.5x를 0~100%로 환산)
+  if (percentage >= 100) return { count: 3, isPerfect: true, label: '극옵', multiplier: 1.5 };
+  if (percentage >= 57) return { count: 3, isPerfect: false, label: '상옵', multiplier: 1.2 }; // (1.2-0.8)/(1.5-0.8) = 57%
+  if (percentage >= 29) return { count: 2, isPerfect: false, label: '중옵', multiplier: 1.0 }; // (1.0-0.8)/(1.5-0.8) = 29%
+  return { count: 1, isPerfect: false, label: '하옵', multiplier: 0.8 };
+};
+
+// 다이아몬드 렌더링용 문자열 생성
+// 모든 등급에서 동일한 ◆ 모양 사용 (색상/애니메이션으로 구분)
+export const getDiamondDisplay = (percentage) => {
+  const grade = getDiamondGrade(percentage);
+  return '◆'.repeat(grade.count); // 모두 동일한 다이아 모양
+};
+
+// 다이아몬드 색상
+// 하옵~상옵: 회색, 극옵: 노란색 반짝임
+export const getDiamondColor = (percentage) => {
+  if (percentage >= 100) return 'text-yellow-400 animate-pulse'; // 극옵: 노란색 반짝임
+  return 'text-gray-400'; // 하옵~상옵: 모두 회색
+};
+
+// 옵션 % 기준 색상 결정 (스탯 값 자체의 색상)
+// 극옵만 노란색, 나머지는 흰색
 export const getStatColorByPercentage = (percentage) => {
-  if (percentage >= 100) return 'text-green-400'; // 100%: 초록색
-  if (percentage >= 95) return 'text-red-500'; // 95%+: 빨강
-  if (percentage >= 80) return 'text-orange-500'; // 80%+: 주황
-  if (percentage >= 50) return 'text-blue-400'; // 50%+: 파랑
-  return 'text-gray-400'; // 50% 미만: 회색
+  if (percentage >= 100) return 'text-yellow-400'; // 극옵: 노란색
+  return 'text-gray-100'; // 하옵~상옵: 흰색
 };
 
 // 아이템 가격 계산 (등급에 따라)
@@ -238,32 +272,9 @@ export const getItemPrice = (item) => {
   return rarityPrices[item.rarity] || 10;
 };
 
-// 기어 코어 드랍 확률
-export const GEAR_CORE_DROP_RATE = 0.003; // 0.003%
-
-// 기어 코어로 장비 옵션 최대치로 강화
-export const upgradeItemStatToMax = (item, statIndex, playerFloor = 1) => {
-  if (!item || !item.stats || !item.stats[statIndex]) {
-    return false;
-  }
-
-  const stat = item.stats[statIndex];
-  const range = STAT_RANGES[stat.id]?.[item.rarity];
-
-  if (!range) return false;
-
-  // 층수에 따른 보너스 적용
-  const floorMultiplier = 1 + (playerFloor * 0.02);
-  const maxValue = range.max * floorMultiplier;
-
-  // 최대값으로 설정
-  stat.value = maxValue;
-  stat.minValue = range.min * floorMultiplier;
-  stat.maxValue = maxValue;
-  return true;
-};
 
 // 오브로 아이템 옵션 재조정
+// 옵션 등급: 하옵(0.8x), 중옵(1.0x), 상옵(1.2x), 극옵(1.5x)
 export const rerollItemWithOrb = (item, playerFloor = 1) => {
   if (!item || !item.stats) {
     return false;
@@ -302,8 +313,6 @@ export const rerollItemWithOrb = (item, playerFloor = 1) => {
         suffix: statDef.suffix
       });
     } else {
-      const range = STAT_RANGES[statDef.id][item.rarity];
-
       // 티어 배수 계산
       const tierMultiplier = calculateTierMultiplier(playerFloor);
 
@@ -315,20 +324,25 @@ export const rerollItemWithOrb = (item, playerFloor = 1) => {
       // 기본 스탯 값
       const baseValue = BASE_VALUES[statDef.id];
 
-      // min/max도 티어 배수 적용
-      const minValue = baseValue * statMultiplierMin * tierMultiplier;
-      const maxValue = baseValue * statMultiplierMax * tierMultiplier;
+      // 등급별 기본값 = BASE_VALUE × 등급배수 × 티어배수
+      // 이 기본값을 중옵(1.0x)으로 설정
+      const gradedBaseValue = baseValue * ((statMultiplierMin + statMultiplierMax) / 2) * tierMultiplier;
 
-      // 1/20 확률로 완벽한 100% 옵션
+      // 옵션 등급에 따른 min/max 계산
+      // 하옵(0.8x) ~ 극옵(1.5x)
+      const minValue = gradedBaseValue * OPTION_GRADE_MULTIPLIERS.low;  // 0.8x
+      const maxValue = gradedBaseValue * OPTION_GRADE_MULTIPLIERS.perfect; // 1.5x
+
+      // 1/20 확률로 극옵(1.5x)
       let finalValue;
       if (Math.random() < 0.05) {
-        // 5% 확률로 최대치
+        // 5% 확률로 극옵
         finalValue = maxValue;
       } else {
-        // 등급 범위 내에서 랜덤 배수 결정
-        const randomMultiplier = statMultiplierMin + Math.random() * (statMultiplierMax - statMultiplierMin);
-        // 최종 값 = 기본값 × 등급 배수 × 티어 배수
-        finalValue = baseValue * randomMultiplier * tierMultiplier;
+        // 0.8x ~ 1.5x 범위에서 랜덤 결정
+        const randomOptionMultiplier = OPTION_GRADE_MULTIPLIERS.low +
+          Math.random() * (OPTION_GRADE_MULTIPLIERS.perfect - OPTION_GRADE_MULTIPLIERS.low);
+        finalValue = gradedBaseValue * randomOptionMultiplier;
       }
 
       item.stats.push({
@@ -345,42 +359,56 @@ export const rerollItemWithOrb = (item, playerFloor = 1) => {
   return true;
 };
 
-// 완벽의 정수로 장비의 모든 옵션을 최대치로 고정
-export const perfectItemStats = (item, playerFloor = 1) => {
-  if (!item || !item.stats) {
+// 완벽의 정수로 장비의 특정 옵션 1개를 극옵(최대치)으로 변경
+// 극옵 = 기본값 × 1.5x
+export const perfectSingleStat = (item, statIndex, playerFloor = 1) => {
+  if (!item || !item.stats || !item.stats[statIndex]) {
     return false;
   }
 
+  const stat = item.stats[statIndex];
+
+  // 몬스터 감소 옵션은 이미 고정값이므로 불가
+  if (stat.id === 'monstersPerStageReduction') {
+    return false;
+  }
+
+  // 이미 극옵(100%)이면 불가
+  const currentPercentage = calculateStatPercentage(stat);
+  if (currentPercentage >= 100) {
+    return false;
+  }
+
+  // maxValue가 이미 있으면 그걸 사용 (극옵 1.5x에 해당)
+  if (stat.maxValue) {
+    stat.value = stat.maxValue;
+    return true;
+  }
+
+  // maxValue가 없으면 새로 계산
   const statType = SLOT_STAT_TYPES[item.slot];
-  const statPool = statType === 'damage' ? DAMAGE_STATS : UTILITY_STATS;
 
   // 티어 배수 계산
   const tierMultiplier = calculateTierMultiplier(playerFloor);
 
   // 등급별 스탯 배수 범위 가져오기
   const rarityConfig = EQUIPMENT_CONFIG.rarities[item.rarity];
-  const statMultiplierMax = rarityConfig.statMax; // 최대치 사용
+  const statMultiplierMin = rarityConfig.statMin;
+  const statMultiplierMax = rarityConfig.statMax;
 
-  // 각 옵션을 최대치로 설정
-  item.stats.forEach(stat => {
-    const statDef = Object.values(statPool).find(s => s.id === stat.id);
+  // 기본 스탯 값
+  const baseValue = BASE_VALUES[stat.id];
 
-    if (!statDef) return;
+  // 등급별 기본값 = BASE_VALUE × 등급배수 × 티어배수
+  const gradedBaseValue = baseValue * ((statMultiplierMin + statMultiplierMax) / 2) * tierMultiplier;
 
-    // 몬스터 감소 옵션은 이미 최대치이므로 건드리지 않음
-    if (stat.id === 'monstersPerStageReduction') {
-      return;
-    }
+  // 극옵 값 = 기본값 × 1.5x
+  const maxValue = gradedBaseValue * OPTION_GRADE_MULTIPLIERS.perfect;
 
-    // 기본 스탯 값
-    const baseValue = BASE_VALUES[stat.id];
-
-    // 최대 값 = 기본값 × 등급 최대 배수 × 티어 배수
-    const maxValue = baseValue * statMultiplierMax * tierMultiplier;
-
-    // 옵션 값을 최대치로 설정
-    stat.value = Math.floor(maxValue * 100) / 100; // 소수점 둘째자리까지
-  });
+  // 옵션 값을 극옵으로 설정
+  stat.value = maxValue;
+  stat.minValue = gradedBaseValue * OPTION_GRADE_MULTIPLIERS.low;
+  stat.maxValue = maxValue;
 
   return true;
 };
