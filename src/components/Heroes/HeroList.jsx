@@ -281,7 +281,7 @@ const HeroList = () => {
                   {stats.stageSkipChance && <div className="text-cyan-400">⏭️ {stats.stageSkipChance.toFixed(1)}%</div>}
                   {stats.dropRate && <div className="text-green-400">🍀 {Math.floor(stats.dropRate)}%</div>}
                   {stats.goldBonus && <div className="text-yellow-300">💰 {Math.floor(stats.goldBonus)}%</div>}
-                  {stats.expBonus && <div className="text-purple-300">✨ {Math.floor(stats.expBonus)}%</div>}
+                  {stats.expBonus && <div className="text-purple-300">📚 {Math.floor(stats.expBonus)}%</div>}
                 </div>
 
                 {/* 버튼들 - 고정 높이 */}
@@ -308,6 +308,7 @@ const HeroList = () => {
                         <button
                           onClick={() => upgradeHeroGrade(hero.id)}
                           disabled={!hasEnoughCoins}
+                          title="등급업 효과:&#10;- 공격력 추가 증가 (+50)&#10;- 별을 새로 달 수 있음&#10;- 더 높은 등급의 별은 더 강력함"
                           className={`w-full py-1 rounded font-bold transition-all text-xs shadow-md ${
                             hasEnoughCoins
                               ? 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white'

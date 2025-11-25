@@ -7,10 +7,11 @@ export const SKILL_TREES = {
       {
         id: 'crit_chance',
         name: '치명타 강화',
-        description: '크리티컬 확률 증가',
+        description: '치명타 확률 증가',
         maxLevel: 20,
-        costPerLevel: 100,
+        costPerLevel: 1,
         costMultiplier: 1.5,
+        costType: 'sp',
         effect: (level) => ({ critChance: level * 1 })
       },
       {
@@ -18,8 +19,9 @@ export const SKILL_TREES = {
         name: '치명타 데미지',
         description: '크리티컬 데미지 증가',
         maxLevel: 20,
-        costPerLevel: 150,
+        costPerLevel: 1,
         costMultiplier: 1.5,
+        costType: 'sp',
         effect: (level) => ({ critDmg: level * 10 })
       },
       {
@@ -27,8 +29,9 @@ export const SKILL_TREES = {
         name: '공격력 증폭',
         description: '기본 공격력 증가',
         maxLevel: 30,
-        costPerLevel: 200,
+        costPerLevel: 1,
         costMultiplier: 1.5,
+        costType: 'sp',
         effect: (level) => ({ atkPercent: level * 5 })
       },
       {
@@ -36,8 +39,9 @@ export const SKILL_TREES = {
         name: '영웅 강화',
         description: '모든 영웅의 데미지 증가',
         maxLevel: 25,
-        costPerLevel: 300,
+        costPerLevel: 2,
         costMultiplier: 1.6,
+        costType: 'sp',
         effect: (level) => ({ heroDmgPercent: level * 10 })
       }
     ]
@@ -51,8 +55,9 @@ export const SKILL_TREES = {
         name: '골드 마스터',
         description: '골드 획득량 증가',
         maxLevel: 25,
-        costPerLevel: 100,
+        costPerLevel: 1,
         costMultiplier: 1.5,
+        costType: 'sp',
         effect: (level) => ({ goldPercent: level * 10 })
       },
       {
@@ -60,8 +65,9 @@ export const SKILL_TREES = {
         name: '보물 사냥꾼',
         description: '아이템 드랍률 증가',
         maxLevel: 20,
-        costPerLevel: 200,
+        costPerLevel: 1,
         costMultiplier: 1.5,
+        costType: 'sp',
         effect: (level) => ({ dropRate: level * 2 })
       },
       {
@@ -69,62 +75,29 @@ export const SKILL_TREES = {
         name: '빠른 성장',
         description: '경험치 획득량 증가',
         maxLevel: 20,
-        costPerLevel: 150,
+        costPerLevel: 1,
         costMultiplier: 1.5,
+        costType: 'sp',
         effect: (level) => ({ expPercent: level * 10 })
       }
     ]
   },
-  prestige: {
-    name: '환생',
-    color: 'purple',
-    skills: [
-      {
-        id: 'starting_gold',
-        name: '시작 골드',
-        description: '환생 시 시작 골드 증가',
-        maxLevel: 15,
-        costPerLevel: 1, // PP 사용
-        costMultiplier: 1,
-        costType: 'pp',
-        effect: (level) => ({ startingGold: level * 1000 })
-      },
-      {
-        id: 'starting_level',
-        name: '시작 레벨',
-        description: '환생 시 시작 레벨 증가',
-        maxLevel: 10,
-        costPerLevel: 2,
-        costMultiplier: 1,
-        costType: 'pp',
-        effect: (level) => ({ startingLevel: level * 5 })
-      },
-      {
-        id: 'permanent_damage',
-        name: '영구 데미지',
-        description: '영구적인 데미지 증가',
-        maxLevel: 50,
-        costPerLevel: 1,
-        costMultiplier: 1.2,
-        costType: 'pp',
-        effect: (level) => ({ permanentDmgPercent: level * 5 })
-      },
-      {
-        id: 'permanent_gold',
-        name: '영구 골드',
-        description: '영구적인 골드 증가',
-        maxLevel: 50,
-        costPerLevel: 1,
-        costMultiplier: 1.2,
-        costType: 'pp',
-        effect: (level) => ({ permanentGoldPercent: level * 5 })
-      }
-    ]
-  }
 };
 
 export const getSkillCost = (skill, currentLevel) => {
   const costType = skill.costType || 'gold';
+
+  // SP 스킬은 구간별 고정 비용
+  if (costType === 'sp') {
+    if (currentLevel < 5) return 1;
+    if (currentLevel < 10) return 2;
+    if (currentLevel < 15) return 3;
+    if (currentLevel < 20) return 4;
+    if (currentLevel < 25) return 5;
+    return 6;
+  }
+
+  // PP나 골드는 기존 방식 유지
   return Math.floor(
     skill.costPerLevel * Math.pow(skill.costMultiplier, currentLevel)
   );

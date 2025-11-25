@@ -216,7 +216,7 @@ export const calculateStatPercentage = (stat) => {
 
 // 옵션 % 기준 색상 결정
 export const getStatColorByPercentage = (percentage) => {
-  if (percentage >= 100) return 'text-dark'; // 100%: 다크 (검정 + 빛남)
+  if (percentage >= 100) return 'text-green-400'; // 100%: 초록색
   if (percentage >= 95) return 'text-red-500'; // 95%+: 빨강
   if (percentage >= 80) return 'text-orange-500'; // 80%+: 주황
   if (percentage >= 50) return 'text-blue-400'; // 50%+: 파랑

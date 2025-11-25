@@ -302,6 +302,79 @@ export const PRESTIGE_CONFIG = {
   ppPerStage: 10,
 };
 
+// ===== 환생 유물 시스템 =====
+export const RELIC_CONFIG = {
+  // 가챠 시스템
+  gacha: {
+    firstPullCost: 1, // 첫 번째 뽑기 비용
+    costMultiplier: 1.4, // 뽑기당 비용 증가 배수 (올림 적용)
+    // 비용 계산: Math.ceil(firstPullCost * Math.pow(costMultiplier, pullCount))
+  },
+
+  // 업그레이드 시스템
+  upgrade: {
+    baseCostFormula: (level) => Math.floor(1 + level * 0.5), // 레벨별 기본 비용
+    maxCostReduction: 90, // 최대 비용 감소 % (망각의 가면 유물)
+  },
+
+  // 등급별 스탯 배수
+  gradeMultipliers: {
+    common: 1,
+    rare: 1.5,
+    epic: 2,
+    unique: 3,
+    legendary: 5,
+    mythic: 8,
+  },
+
+  // 등급별 가챠 확률 (%)
+  gachaRates: {
+    common: 50.0,    // 50%
+    rare: 30.0,      // 30%
+    epic: 15.0,      // 15%
+    unique: 4.0,     // 4%
+    legendary: 0.9,  // 0.9%
+    mythic: 0.1,     // 0.1%
+  },
+
+  // 최대 레벨 제한이 있는 유물들
+  maxLevels: {
+    axe_of_carnage: 30,        // 살육의 도끼 (크리티컬 확률)
+    veil_of_shadow: 30,        // 암흑의 장막 (몬스터 수 감소)
+    hourglass_of_time: 50,     // 시간의 모래시계 (보스 시간)
+    lucky_egg: 50,             // 행운의 알 (희귀 몬스터 출현)
+    fox_spirit_orb: 50,        // 구미호의 구슬 (전설 몬스터 출현)
+    dimensional_gate: 30,      // 차원의 문 (보스 스킵)
+    chalice_of_miracle: 20,    // 기적의 성배 (골드 10배 확률)
+  },
+
+  // 유물별 레벨당 효과 증가 (등급별)
+  effectPerLevel: {
+    // 암흑의 장막 (몬스터 수 감소) - 단계별 증가
+    veil_of_shadow: {
+      common: 1,
+      rare: 2,
+      epic: 3,
+      legendary: 5,
+      mythic: 8,
+    },
+    // 시간의 모래시계 (보스 시간) - 단계별 증가
+    hourglass_of_time: {
+      common: 1,    // +1초
+      rare: 2,      // +2초
+      epic: 3,      // +3초
+      legendary: 5, // +5초
+      mythic: 8,    // +8초
+    },
+  },
+
+  // 환생당 유물 조각 획득량
+  relicFragments: {
+    basePerPrestige: 10, // 기본 획득량
+    bonusPerFloor: 0.1,  // 층당 추가 획득 %
+  },
+};
+
 // ===== 전투 시스템 =====
 export const COMBAT_CONFIG = {
   // 크리티컬 기본 데미지 배수 (%)

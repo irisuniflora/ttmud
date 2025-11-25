@@ -172,10 +172,12 @@ export const getHeroStats = (hero, gradeId, stars) => {
 
   Object.keys(hero.baseStats).forEach(statKey => {
     if (statKey === 'attack') {
-      // 공격력: 기본값 * (2^등급인덱스) + (별당증가값 * (2^등급인덱스) * 별개수)
+      // 공격력: 기본값 * (2^등급인덱스) + (별당증가값 * (2^등급인덱스) * 별개수) + 등급업 보너스
       const baseAttack = HERO_CONFIG.heroBaseAttack * Math.pow(2, gradeIndex);
       const starBonus = HERO_CONFIG.heroAttackPerStar * Math.pow(2, gradeIndex) * stars;
-      stats.attack = baseAttack + starBonus;
+      // 등급업 보너스: 등급이 높을수록 더 많이 증가 (50 * 2^등급인덱스)
+      const gradeBonus = gradeIndex > 0 ? 50 * Math.pow(2, gradeIndex - 1) : 0;
+      stats.attack = baseAttack + starBonus + gradeBonus;
     } else if (statKey === 'critChance') {
       // 크리확: 이전 등급 5별 수치 + 등급업 보너스 + (현재 별 * 현재 등급 별당 증가)
       // 각 등급의 0별 기준값 = 이전 등급 최대치 + 등급업 보너스(2%)

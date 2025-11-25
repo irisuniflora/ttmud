@@ -271,11 +271,17 @@ const getMonsterNameForFloor = (floor, isBoss = false, isRare = false, monsterIn
   }
 };
 
-export const getMonsterForStage = (stage, isBoss = false, forceRare = false, forceLegendary = false, collection = null) => {
+export const getMonsterForStage = (stage, isBoss = false, forceRare = false, forceLegendary = false, collection = null, rareSpawnBonus = 0, legendarySpawnBonus = 0) => {
   // 새로운 스폰 로직: 몬스터 타입을 먼저 결정 후, 수집 여부에 따라 희귀/전설 결정
   let isRare = false;
   let isLegendary = false;
   let monsterIndex = null;
+
+  // 유물 효과로 스폰율 증가
+  const adjustedRareChance = RARE_MONSTER_COLLECTION_CHANCE + rareSpawnBonus;
+  const adjustedLegendaryChance = LEGENDARY_MONSTER_COLLECTION_CHANCE + legendarySpawnBonus;
+  const adjustedRareBossChance = RARE_MONSTER_CHANCE + rareSpawnBonus;
+  const adjustedLegendaryBossChance = LEGENDARY_MONSTER_CHANCE + legendarySpawnBonus;
 
   if (!isBoss && collection) {
     // 1. 몬스터 타입을 먼저 선택 (0-9)
@@ -291,20 +297,20 @@ export const getMonsterForStage = (stage, isBoss = false, forceRare = false, for
     // 3. 수집 상태에 따라 희귀/전설/일반 결정
     if (!rareCollected) {
       // 희귀가 수집 안됨 → 희귀 출현 가능
-      isRare = forceRare || Math.random() * 100 < RARE_MONSTER_COLLECTION_CHANCE; // 30% 확률
+      isRare = forceRare || Math.random() * 100 < adjustedRareChance;
     } else if (rareCollected && !legendaryCollected) {
       // 희귀는 수집됨, 전설은 수집 안됨 → 전설 출현 가능
-      isLegendary = forceLegendary || Math.random() * 100 < LEGENDARY_MONSTER_COLLECTION_CHANCE; // 30% 확률
+      isLegendary = forceLegendary || Math.random() * 100 < adjustedLegendaryChance;
     }
     // 둘 다 수집됨 → 일반 몬스터 (isRare = false, isLegendary = false)
   } else {
     // 보스의 경우 기존 로직 유지
-    isRare = forceRare || Math.random() * 100 < RARE_MONSTER_CHANCE;
+    isRare = forceRare || Math.random() * 100 < adjustedRareBossChance;
     if (collection && isRare) {
       const rangeStart = Math.floor((stage - 1) / 5) * 5 + 1;
       const rareId = `rare_boss_${rangeStart}`;
       if (collection.rareBosses?.[rareId]?.unlocked) {
-        isLegendary = forceLegendary || Math.random() * 100 < LEGENDARY_MONSTER_CHANCE;
+        isLegendary = forceLegendary || Math.random() * 100 < adjustedLegendaryBossChance;
         if (isLegendary) isRare = false;
       }
     }

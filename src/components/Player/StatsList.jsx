@@ -126,7 +126,7 @@ const StatsList = () => {
     // 보너스 관련 스탯 (금색)
     { icon: '💰', name: '골드 획득량', value: '+' + formatPercent(player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus), color: 'text-yellow-400' },
     { icon: '🍀', name: '드랍율', value: formatPercent(player.stats.dropRate + equipmentDropRate + (skillEffects.dropRate || 0) + heroBuffs.dropRate), color: 'text-yellow-400' },
-    { icon: '✨', name: '경험치 증가량', value: '+' + formatPercent(equipmentExpBonus + heroBuffs.expBonus), color: 'text-yellow-400', hide: (equipmentExpBonus + heroBuffs.expBonus) === 0 },
+    { icon: '📚', name: '경험치 증가량', value: '+' + formatPercent(equipmentExpBonus + heroBuffs.expBonus), color: 'text-yellow-400', hide: (equipmentExpBonus + heroBuffs.expBonus) === 0 },
     { icon: '💀', name: '체력퍼뎀', value: `${formatPercent(heroBuffs.hpPercentDmgChance)} (${Math.floor(heroBuffs.hpPercentDmgValue)}%HP)`, color: 'text-yellow-400', hide: heroBuffs.hpPercentDmgChance === 0 },
     { icon: '🔥', name: '도트 데미지', value: formatPercent(heroBuffs.dotDmgPercent), color: 'text-yellow-400', hide: heroBuffs.dotDmgPercent === 0 },
     { icon: '⏭️', name: '스킵 확률', value: formatPercent(heroBuffs.stageSkipChance), color: 'text-yellow-400', hide: heroBuffs.stageSkipChance === 0 },

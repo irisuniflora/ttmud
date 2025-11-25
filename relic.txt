@@ -1,0 +1,69 @@
+1. 심연의 서 (Book of Abyss)
+•	효과: 환생당 유물 조각 획득량 +X%
+2. 발견의 나침반 (Compass of Discovery)
+•	효과: 모든 장비 능력치 +X%
+3. 폭풍의 문양 (Sigil of Storm)
+•	효과: 문양 데미지 보너스 +X%
+4. 차원의 문 (Dimensional Gate)
+•	효과: 보스 층 스킵 확률 +X%
+5. 황금의 예언서 (Golden Prophecy)
+•	효과: 모든 골드 획득량 +X%
+6. 탐욕의 그릇 (Bowl of Greed)
+•	효과: 일반 몬스터 골드 +X%
+7. 군주의 금고 (Lord's Treasury)
+•	효과: 보스 골드 +X%
+8. 요정의 축복 (Fairy's Blessing)
+•	효과: 희귀/전설 몬스터 골드 +X%
+9. 파멸의 칼날 (Blade of Ruin)
+•	효과: 모든 데미지 +X%
+10. 보복자의 인장 (Seal of Vengeance)
+•	효과: 크리티컬 데미지 +X%
+11. 거인 학살자 (Giant Slayer)
+•	효과: 보스 데미지 +X%
+12. 전쟁의 각인 (Sigil of War)
+•	효과: 무기 능력치 +X%
+13. 광기의 투구 (Helm of Madness)
+•	효과: 투구 능력치 +X%
+14. 티타늄 갑옷 (Titanium Armor)
+•	효과: 갑옷 능력치 +X%
+15. 질주의 신발 (Boots of Haste)
+•	효과: 신발 능력치 +X%
+16. 달빛 목걸이 (Moonlight Necklace)
+•	효과: 목걸이 능력치 +X%
+17. 영원의 반지 (Ring of Eternity)
+•	효과: 반지 능력치 +X%
+18. 고대의 렌즈 (Ancient Lens)
+•	효과: 데미지 관련 모든 유물 효과 +X%
+19. 부의 보물상자 (Treasure Chest)
+•	효과: 골드 관련 모든 유물 효과 +X%
+20. 별의 파편 (Stellar Fragment)
+•	효과: 보유 유물 개수당 모든 데미지 +X%
+21. 수집가의 휘장 (Collector's Badge)
+•	효과: 도감 수집률 1%당 골드 +0.5%
+22. 탐험가의 일지 (Explorer's Journal)
+•	효과: 도감 수집률 1%당 데미지 +0.5%
+23. 살육의 도끼 (Axe of Carnage)
+•	효과: 크리티컬 확률 +X%
+24. 문양의 정수 (Essence of Sigil)
+•	효과: 문양 기본 스탯 +X%
+27. 행운의 알 (Lucky Egg)
+•	효과: 희귀 몬스터 출현 확률 +X%
+28. 구미호의 구슬 (Fox Spirit Orb)
+•	효과: 전설 몬스터 출현 확률 +X%
+29. 기적의 성배 (Chalice of Miracle)
+•	효과: X% 확률로 골드 10배 획득
+30. 망각의 가면 (Mask of Oblivion)
+•	효과: 유물 업그레이드 비용 -X%
+31. 찬란한 홀 (Staff of Brilliance)
+•	효과: 장비 업그레이드 비용 -X%
+32. 정복자의 창 (Spear of Conquest)
+•	효과: 모든 몬스터 HP -X%
+33. 암흑의 장막 (Veil of Shadow)
+•	효과: 스테이지당 몬스터 수 -X마리
+34. 시간의 모래시계 (Hourglass of Time)
+•	효과: 보스 처치 제한시간 +10초
+35. 도전의 증표 (Token of Challenge)
+•	효과: 봉인구역 도전권 획득 확률 +X%
+36. 소환의 부적 (Talisman of Summoning)
+•	효과: 문양 소환권 획득 확률 +X%
+

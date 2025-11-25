@@ -2,6 +2,7 @@ import { getMonsterForStage, getCollectionBonus, RARE_MONSTER_COLLECTION_CHANCE,
 import { HEROES, getHeroById, getHeroStats, getNextGrade, getUpgradeCost, getStarUpgradeCost } from '../data/heroes.js';
 import { generateItem, GEAR_CORE_DROP_RATE, upgradeItemStatToMax, rerollItemWithOrb } from '../data/items.js';
 import { getTotalSkillEffects } from '../data/skills.js';
+import { getTotalRelicEffects } from '../data/prestigeRelics.js';
 import {
   GAME_CONFIG,
   PLAYER_BASE_STATS,
@@ -15,6 +16,7 @@ import {
   calculateUpgradeCoinAmount,
   getMonstersPerFloor
 } from '../data/gameBalance.js';
+import { isWorldBossActive, WORLD_BOSS_CONFIG, AUCTION_CONFIG, AUCTION_ITEMS } from '../data/worldBoss.js';
 
 export class GameEngine {
   constructor(initialState) {
@@ -22,9 +24,24 @@ export class GameEngine {
     this.tickInterval = null;
     this.tickRate = GAME_CONFIG.tickRate;
 
+    // 데이터 마이그레이션: orbs와 gearCores 초기화
+    if (this.state.orbs === undefined || this.state.orbs === null || isNaN(this.state.orbs)) {
+      this.state.orbs = 0;
+    }
+    if (this.state.gearCores === undefined || this.state.gearCores === null || isNaN(this.state.gearCores)) {
+      this.state.gearCores = 0;
+    }
+    if (!this.state.consumables) {
+      this.state.consumables = {};
+    }
+    // 스킬 포인트 초기화
+    if (this.state.player && (this.state.player.skillPoints === undefined || this.state.player.skillPoints === null || isNaN(this.state.player.skillPoints))) {
+      this.state.player.skillPoints = 0;
+    }
+
     // 초기 몬스터가 없으면 생성
     if (!this.state.currentMonster) {
-      this.state.currentMonster = getMonsterForStage(this.state.player.floor, false, false, false, this.state.collection);
+      this.state.currentMonster = this.spawnMonster(this.state.player.floor, false, false, false, this.state.collection);
       // 희귀 몬스터 스폰 체크 (초기화)
       if (this.state.currentMonster.isRare && !this.state.currentMonster.isBoss) {
         if (!this.state.statistics) {
@@ -45,6 +62,7 @@ export class GameEngine {
         exp: PLAYER_BASE_STATS.exp,
         expToNextLevel: PLAYER_BASE_STATS.expToNextLevel,
         gold: PLAYER_BASE_STATS.gold,
+        skillPoints: 0, // 스킬 포인트
         prestigePoints: 0,
         totalPrestiges: 0,
         floor: 1, // 층 (기존 stage 대체)
@@ -160,6 +178,12 @@ export class GameEngine {
       this.lastDailyRechargeCheck = Date.now();
     }
 
+    // 월드보스/경매 체크 (10초마다 체크)
+    if (!this.lastWorldBossCheck || Date.now() - this.lastWorldBossCheck >= 10000) {
+      this.checkWorldBossAndAuction();
+      this.lastWorldBossCheck = Date.now();
+    }
+
     // 희귀/전설 몬스터 타이머 체크 (5초 = 5000ms)
     if (currentMonster && (currentMonster.isRare || currentMonster.isLegendary) && !currentMonster.isBoss) {
       const elapsedTime = Date.now() - currentMonster.spawnTime;
@@ -184,7 +208,7 @@ export class GameEngine {
     this.addCombatLog(`💨 ${monsterType} 몬스터가 도망갔습니다! ${currentMonster.name}`, 'rare_monster');
 
     // 새로운 일반 몬스터 생성
-    this.state.currentMonster = getMonsterForStage(this.state.player.floor, false, false, false, collection);
+    this.state.currentMonster = this.spawnMonster(this.state.player.floor, false, false, false, collection);
     this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
   }
 
@@ -270,6 +294,14 @@ export class GameEngine {
     const releaseBonus = this.calculateReleaseBonus(Math.floor((player.floor - 1) / 5) * 5 + 1);
     if (releaseBonus.damageBonus > 0) {
       totalDmg *= (1 + releaseBonus.damageBonus / 100);
+    }
+
+    // 유물 효과: 별의 파편 (보유 유물 개수당 데미지 증가)
+    const relicEffects = this.getRelicEffects();
+    if (relicEffects.damagePerRelic > 0) {
+      const relicCount = Object.keys(this.state.prestigeRelics || {}).length;
+      const relicDamageBonus = relicCount * relicEffects.damagePerRelic;
+      totalDmg *= (1 + relicDamageBonus / 100);
     }
 
     // 장비 스탯 적용 (크리티컬 등)
@@ -389,9 +421,37 @@ export class GameEngine {
     });
 
     // 골드 획득 = 몬스터 최대 체력 기반 (체력 = 골드)
-    // 골드 보너스는 % 증가로 적용
-    let goldGained = currentMonster.maxHp;
-    goldGained *= (1 + (player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus) / 100);
+    // 정복자의 창 유물로 HP가 감소되었을 경우, 골드는 원래 HP 기준으로 계산
+    let goldGained = currentMonster.originalMaxHp || currentMonster.maxHp;
+
+    // 유물 효과 가져오기
+    const relicEffects = this.getRelicEffects();
+
+    // 기적의 성배: 골드 10배 확률
+    const gold10xChance = relicEffects.gold10xChance || 0;
+    const isGold10x = Math.random() * 100 < gold10xChance;
+
+    if (isGold10x) {
+      goldGained *= 10;
+      this.addCombatLog('🏆 기적의 성배 발동! 골드 10배!', 'gold_10x');
+    }
+
+    // 기본 골드 보너스
+    let totalGoldBonus = player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus;
+
+    // 유물: 몬스터 유형별 골드 보너스
+    if (currentMonster.isBoss) {
+      // 군주의 금고: 보스 골드
+      totalGoldBonus += (relicEffects.bossGold || 0);
+    } else if (currentMonster.isRare || currentMonster.isLegendary) {
+      // 요정의 축복: 희귀/전설 몬스터 골드
+      totalGoldBonus += (relicEffects.rareMonsterGold || 0);
+    } else {
+      // 탐욕의 그릇: 일반 몬스터 골드
+      totalGoldBonus += (relicEffects.normalMonsterGold || 0);
+    }
+
+    goldGained *= (1 + totalGoldBonus / 100);
     goldGained = Math.floor(goldGained);
 
     player.gold += goldGained;
@@ -401,10 +461,10 @@ export class GameEngine {
     if (currentMonster.isBoss) {
       statistics.totalBossesKilled++;
 
-      // 보스방(각 층의 마지막 보스)에서 문양 각인권 드랍 (10% 확률)
-      this.tryDropInscriptionToken();
+      // 보스방(각 층의 마지막 보스)에서 층별 문양 직접 드랍
+      this.tryDropInscription();
 
-      // 보스방(각 층의 마지막 보스)에서 봉인구역 도전권 드랍 (5% 확률)
+      // 보스방(각 층의 마지막 보스)에서 봉인구역 도전권 드랍 (10% 확률)
       this.tryDropRaidTicket();
     }
 
@@ -426,6 +486,9 @@ export class GameEngine {
 
     // 오브 드랍
     this.tryDropOrb();
+
+    // 완벽의 정수 드랍 (글로벌 드랍)
+    this.tryDropStatMaxItem();
 
     // 희귀 몬스터 도감 등록 (30% 확률)
     if (currentMonster.isRare && !currentMonster.isBoss && currentMonster.monsterIndex !== undefined) {
@@ -597,7 +660,7 @@ export class GameEngine {
       player.hasFailedBoss = false; // 새 층 시작 시 초기화
 
       // 새 층의 일반 몬스터 생성
-      this.state.currentMonster = getMonsterForStage(player.floor, false, false, false, collection);
+      this.state.currentMonster = this.spawnMonster(player.floor, false, false, false, collection);
       this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
     } else {
       // 일반 몬스터 처치
@@ -610,18 +673,18 @@ export class GameEngine {
           player.floorState = 'boss_battle';
           player.bossTimer = FLOOR_CONFIG.bossTimeLimit;
           // 보스 몬스터 생성
-          this.state.currentMonster = getMonsterForStage(player.floor, true, false, false, collection);
+          this.state.currentMonster = this.spawnMonster(player.floor, true, false, false, collection);
           this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
         } else {
           // 실패한 적이 있으면 boss_ready 상태로 (수동 입장 대기)
           player.floorState = 'boss_ready';
           // 일반 몬스터 생성
-          this.state.currentMonster = getMonsterForStage(player.floor, false, false, false, collection);
+          this.state.currentMonster = this.spawnMonster(player.floor, false, false, false, collection);
           this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
         }
       } else {
         // 다음 몬스터 생성 (같은 층)
-        this.state.currentMonster = getMonsterForStage(player.floor, false, false, false, collection);
+        this.state.currentMonster = this.spawnMonster(player.floor, false, false, false, collection);
         this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
       }
     }
@@ -751,6 +814,9 @@ export class GameEngine {
 
       // 레벨업 보너스
       player.stats.baseAtk += EXP_CONFIG.atkPerLevel;
+
+      // 스킬 포인트 지급 (레벨당 1포인트)
+      player.skillPoints = (player.skillPoints || 0) + 1;
     }
   }
 
@@ -933,8 +999,28 @@ export class GameEngine {
     return false;
   }
 
+  // 완벽의 정수 드랍 시도 (글로벌 드랍)
+  tryDropStatMaxItem() {
+    const { player } = this.state;
+    // 기본 확률: 0.0001%
+    // 층수에 따른 가중치: sqrt(floor)
+    const baseRate = 0.0001; // 0.0001%
+    const floorWeight = Math.sqrt(player.floor);
+    const dropRate = baseRate * floorWeight;
+
+    if (Math.random() * 100 < dropRate) {
+      if (!this.state.consumables) {
+        this.state.consumables = {};
+      }
+      this.state.consumables.stat_max_item = (this.state.consumables.stat_max_item || 0) + 1;
+      this.addCombatLog('🔷 완벽의 정수 획득!', 'stat_max');
+      return true;
+    }
+    return false;
+  }
+
   // 문양 드랍 (보스방에서만, 층별로 특정 문양 드랍)
-  tryDropInscriptionToken() {
+  tryDropInscription() {
     // 동적 import 대신 직접 함수 구현
     const getInscriptionIdByFloor = (floor) => {
       const INSCRIPTION_DROP_TABLE = {
@@ -964,48 +1050,48 @@ export class GameEngine {
       return Math.min(dropRate, 0.80);
     };
 
+    const rollInscriptionGrade = () => {
+      const INSCRIPTION_GACHA_RATES = {
+        common: 0.50,
+        rare: 0.30,
+        epic: 0.15,
+        unique: 0.04,
+        legendary: 0.009,
+        mythic: 0.001
+      };
+
+      const roll = Math.random();
+      let cumulative = 0;
+
+      for (const [grade, rate] of Object.entries(INSCRIPTION_GACHA_RATES)) {
+        cumulative += rate;
+        if (roll <= cumulative) return grade;
+      }
+
+      return 'common';
+    };
+
     const floor = this.state.player.floor;
     const dropInfo = getInscriptionIdByFloor(floor);
     const dropRate = getInscriptionDropRate(floor);
 
     if (!dropInfo) return false;
 
-    // 드랍 확률 체크
+    // 드랍 확률 체크 - 문양 직접 드랍
     if (Math.random() < dropRate) {
       if (!this.state.sealedZone) {
         this.state.sealedZone = {
           tickets: 0,
-          inscriptionTokens: 0,
           ownedInscriptions: [],
           unlockedBosses: ['vecta'],
           unlockedInscriptionSlots: 1
         };
       }
 
-      // 랜덤 등급 결정
-      const rollInscriptionGrade = () => {
-        const INSCRIPTION_GACHA_RATES = {
-          common: 0.50,
-          rare: 0.30,
-          epic: 0.15,
-          unique: 0.04,
-          legendary: 0.009,
-          mythic: 0.001
-        };
-
-        const roll = Math.random();
-        let cumulative = 0;
-
-        for (const [grade, rate] of Object.entries(INSCRIPTION_GACHA_RATES)) {
-          cumulative += rate;
-          if (roll <= cumulative) return grade;
-        }
-        return 'common';
-      };
-
+      // 문양 등급 결정
       const grade = rollInscriptionGrade();
 
-      // 문양 직접 생성
+      // 문양 인스턴스 생성
       const newInscription = {
         id: `inscription_${Date.now()}_${Math.random()}`,
         inscriptionId: dropInfo.inscriptionId,
@@ -1013,19 +1099,23 @@ export class GameEngine {
         level: 1
       };
 
-      this.state.sealedZone.ownedInscriptions = [...(this.state.sealedZone.ownedInscriptions || []), newInscription];
+      // 문양 추가
+      this.state.sealedZone.ownedInscriptions = [
+        ...(this.state.sealedZone.ownedInscriptions || []),
+        newInscription
+      ];
 
-      // 등급별 색상
-      const gradeColors = {
-        common: '일반',
-        rare: '희귀',
-        epic: '레어',
-        unique: '유니크',
-        legendary: '레전드',
-        mythic: '신화'
+      const INSCRIPTION_GRADES = {
+        common: { name: '일반', color: 'text-gray-400' },
+        rare: { name: '희귀', color: 'text-green-400' },
+        epic: { name: '레어', color: 'text-blue-400' },
+        unique: { name: '유니크', color: 'text-purple-400' },
+        legendary: { name: '레전드', color: 'text-orange-400' },
+        mythic: { name: '신화', color: 'text-red-400' }
       };
 
-      this.addCombatLog(`📿 ${dropInfo.name}의 문양 (${gradeColors[grade]}) 획득!`, 'inscription');
+      const gradeName = INSCRIPTION_GRADES[grade]?.name || '일반';
+      this.addCombatLog(`📿 ${dropInfo.name}의 문양 (${gradeName}) 획득!`, 'inscription');
       return true;
     }
     return false;
@@ -1040,7 +1130,6 @@ export class GameEngine {
       if (!this.state.sealedZone) {
         this.state.sealedZone = {
           tickets: 0,
-          inscriptionTokens: 0,
           ownedInscriptions: [],
           unlockedBosses: ['vecta'],
           unlockedInscriptionSlots: 1,
@@ -1083,7 +1172,6 @@ export class GameEngine {
       if (!this.state.sealedZone) {
         this.state.sealedZone = {
           tickets: 0,
-          inscriptionTokens: 0,
           ownedInscriptions: [],
           unlockedBosses: ['vecta'],
           unlockedInscriptionSlots: 1
@@ -1263,18 +1351,24 @@ export class GameEngine {
   upgradeSkill(skillId, tree) {
     const { player, skillLevels } = this.state;
     const skill = tree.skills.find(s => s.id === skillId);
-    
+
     if (!skill) return false;
-    
+
     const currentLevel = skillLevels[skillId] || 0;
     if (currentLevel >= skill.maxLevel) return false;
-    
+
     const cost = Math.floor(skill.costPerLevel * Math.pow(skill.costMultiplier, currentLevel));
     const costType = skill.costType || 'gold';
-    
+
     if (costType === 'pp') {
       if (player.prestigePoints >= cost) {
         player.prestigePoints -= cost;
+        skillLevels[skillId] = currentLevel + 1;
+        return true;
+      }
+    } else if (costType === 'sp') {
+      if ((player.skillPoints || 0) >= cost) {
+        player.skillPoints = (player.skillPoints || 0) - cost;
         skillLevels[skillId] = currentLevel + 1;
         return true;
       }
@@ -1285,13 +1379,13 @@ export class GameEngine {
         return true;
       }
     }
-    
+
     return false;
   }
 
   // 보스방 입장
   enterBossBattle() {
-    const { player, equipment, slotEnhancements } = this.state;
+    const { player, equipment, slotEnhancements, collection } = this.state;
 
     if (player.floorState !== 'boss_ready' && player.floorState !== 'farming') {
       return false;
@@ -1327,15 +1421,136 @@ export class GameEngine {
       return false;
     }
 
+    // 유물 효과: 보스 스킵 확률 체크 (차원의 문)
+    const relicEffects = this.getRelicEffects();
+    const bossSkipChance = relicEffects.bossSkipChance || 0;
+
+    if (bossSkipChance > 0 && Math.random() * 100 < bossSkipChance) {
+      // 보스 스킵 성공! 보스 처치 보상 획득 + 다음 층으로 즉시 이동
+      this.skipBoss();
+      return true;
+    }
+
     // 보스 전투 시작
     player.floorState = 'boss_battle';
     player.bossTimer = FLOOR_CONFIG.bossTimeLimit;
 
     // 보스 몬스터 생성
-    this.state.currentMonster = getMonsterForStage(player.floor, true, false, false, this.state.collection);
+    this.state.currentMonster = this.spawnMonster(player.floor, true, false, false, collection);
     this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
 
     return true;
+  }
+
+  // 보스 스킵 (차원의 문 유물 효과)
+  skipBoss() {
+    const { player, statistics, collection, skillLevels, heroes } = this.state;
+
+    // 보스 몬스터 생성 (보상 계산용)
+    const bossMonster = this.spawnMonster(player.floor, true, false, false, collection);
+
+    // 통계 증가
+    statistics.totalBossesKilled++;
+    statistics.totalMonstersKilled++;
+
+    // 골드 획득 계산
+    const skillEffects = getTotalSkillEffects(skillLevels);
+    const relicEffects = this.getRelicEffects();
+
+    // 영웅 버프 계산
+    let heroBuffs = {
+      goldBonus: 0,
+      expBonus: 0
+    };
+
+    Object.entries(heroes).forEach(([heroId, heroState]) => {
+      if (heroState && heroState.inscribed) {
+        const heroData = getHeroById(heroId);
+        if (heroData) {
+          const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
+          heroBuffs.goldBonus += stats.goldBonus || 0;
+          heroBuffs.expBonus += stats.expBonus || 0;
+        }
+      }
+    });
+
+    // 장비 보조 스탯 계산
+    let equipmentGoldBonus = 0;
+    let equipmentExpBonus = 0;
+    const slotEnhancements = this.state.slotEnhancements || {};
+    Object.entries(this.state.equipment).forEach(([slot, item]) => {
+      if (item) {
+        const enhancementLevel = slotEnhancements[slot] || 0;
+        const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        item.stats.forEach(stat => {
+          const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
+          const bonus = isExcluded ? 1 : enhancementBonus;
+
+          if (stat.id === 'goldBonus') {
+            equipmentGoldBonus += stat.value * bonus;
+          } else if (stat.id === 'expBonus') {
+            equipmentExpBonus += stat.value * bonus;
+          }
+        });
+      }
+    });
+
+    // 골드 획득 (원본 HP 기준)
+    let goldGained = bossMonster.originalMaxHp || bossMonster.maxHp;
+
+    // 기적의 성배: 골드 10배 확률
+    const gold10xChance = relicEffects.gold10xChance || 0;
+    const isGold10x = Math.random() * 100 < gold10xChance;
+
+    if (isGold10x) {
+      goldGained *= 10;
+      this.addCombatLog('🏆 기적의 성배 발동! 골드 10배!', 'gold_10x');
+    }
+
+    // 기본 골드 보너스
+    let totalGoldBonus = player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus;
+
+    // 유물: 보스 골드 보너스 (군주의 금고)
+    totalGoldBonus += (relicEffects.bossGold || 0);
+
+    goldGained *= (1 + totalGoldBonus / 100);
+    goldGained = Math.floor(goldGained);
+
+    player.gold += goldGained;
+    statistics.totalGoldEarned += goldGained;
+
+    // 경험치 획득
+    const expGained = Math.floor(EXP_CONFIG.baseExpPerKill * (1 + ((skillEffects.expPercent || 0) + equipmentExpBonus + heroBuffs.expBonus) / 100));
+    this.gainExp(expGained);
+
+    // 보스 아이템 드랍 (문양, 봉인구역 도전권)
+    this.tryDropInscription();
+    this.tryDropRaidTicket();
+
+    // 일반 아이템 드랍
+    this.tryDropItem();
+    this.tryDropHeroCard();
+    this.tryDropUpgradeCoin();
+    this.tryDropGearCore();
+    this.tryDropOrb();
+    this.tryDropStatMaxItem();
+
+    // 다음 층으로 진행
+    player.floor++;
+    if (player.floor > player.highestFloor) {
+      player.highestFloor = player.floor;
+    }
+    player.monstersKilledInFloor = 0;
+    player.floorState = 'farming';
+    player.bossTimer = 0;
+    player.hasFailedBoss = false;
+
+    // 새 층의 일반 몬스터 생성
+    this.state.currentMonster = this.spawnMonster(player.floor, false, false, false, collection);
+    this.checkRareMonsterSpawn();
+
+    // 보스 스킵 알림
+    this.addCombatLog(`🌀 차원의 문 발동! ${player.floor - 1}층 보스를 스킵했습니다!`, 'boss_skip');
   }
 
   // 보스 타이머 업데이트 (매 초마다 호출)
@@ -1362,7 +1577,7 @@ export class GameEngine {
     player.hasFailedBoss = true; // 실패 플래그 설정 (다음부턴 수동 입장)
 
     // 일반 몬스터로 교체
-    this.state.currentMonster = getMonsterForStage(player.floor, false, false, false, collection);
+    this.state.currentMonster = this.spawnMonster(player.floor, false, false, false, collection);
     this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
   }
 
@@ -1935,7 +2150,7 @@ export class GameEngine {
     const { isActive, manualOverride } = worldBoss;
 
     // 월드보스 활성화 체크
-    const bossActive = require('../data/worldBoss').isWorldBossActive(new Date(), manualOverride);
+    const bossActive = isWorldBossActive(new Date(), manualOverride);
     if (!bossActive) {
       return { success: false, message: '월드보스가 활성화되지 않았습니다!' };
     }
@@ -1954,7 +2169,6 @@ export class GameEngine {
     }
 
     // 전투 세션 시작
-    const { WORLD_BOSS_CONFIG } = require('../data/worldBoss');
     const sessionEndTime = Date.now() + (WORLD_BOSS_CONFIG.battleSession.duration * 1000);
 
     this.state.worldBoss.battleSession = {
@@ -2059,7 +2273,6 @@ export class GameEngine {
       return { success: false, message: '참가자가 없습니다!' };
     }
 
-    const { WORLD_BOSS_CONFIG, AUCTION_CONFIG, AUCTION_ITEMS } = require('../data/worldBoss');
     const rewards = [];
 
     // 랭킹별 보상 지급
@@ -2108,7 +2321,6 @@ export class GameEngine {
 
   // 경매 시작
   startAuction() {
-    const { AUCTION_CONFIG, AUCTION_ITEMS } = require('../data/worldBoss');
 
     if (!this.state.worldBoss) {
       this.state.worldBoss = {};
@@ -2158,7 +2370,6 @@ export class GameEngine {
     }
 
     // 최소 입찰가 확인
-    const { AUCTION_CONFIG } = require('../data/worldBoss');
     const minBid = auctionItem.currentBid + AUCTION_CONFIG.bidding.minIncrement;
 
     if (amount < minBid) {
@@ -2206,7 +2417,6 @@ export class GameEngine {
     if (!worldBoss || !worldBoss.auction) return;
 
     const { auction } = worldBoss;
-    const { AUCTION_ITEMS } = require('../data/worldBoss');
 
     // 각 아이템별 낙찰 처리
     Object.entries(auction.items).forEach(([itemId, auctionData]) => {
@@ -2259,6 +2469,66 @@ export class GameEngine {
     // 경매 종료
     auction.active = false;
     this.addCombatLog('🔨 경매가 종료되었습니다!', 'boss');
+  }
+
+  // 월드보스/경매 상태 자동 체크
+  checkWorldBossAndAuction() {
+    const { worldBoss } = this.state;
+    if (!worldBoss) return;
+
+    const now = new Date();
+    const bossActive = isWorldBossActive(now, worldBoss.manualOverride);
+
+    // 월드보스가 종료되었고 아직 보상이 지급되지 않았다면
+    if (!bossActive && worldBoss.rankings && worldBoss.rankings.length > 0 && !worldBoss.lastRewardTime) {
+      this.distributeWorldBossRewards();
+    }
+
+    // 경매 시간 종료 체크
+    if (worldBoss.auction && worldBoss.auction.active && worldBoss.auction.endTime) {
+      if (Date.now() >= worldBoss.auction.endTime) {
+        this.endAuction();
+      }
+    }
+  }
+
+  // 유물 효과 가져오기
+  getRelicEffects() {
+    const { prestigeRelics = {} } = this.state;
+    return getTotalRelicEffects(prestigeRelics);
+  }
+
+  // 몬스터 생성 (유물 효과 적용)
+  spawnMonster(floor, isBoss, isRare, isLegendary, collection) {
+    // 유물 효과 가져오기
+    const relicEffects = this.getRelicEffects();
+
+    // 행운의 알: 희귀 몬스터 출현 확률 증가
+    const rareSpawnBonus = relicEffects.rareMonsterSpawn || 0;
+
+    // 구미호의 구슬: 전설 몬스터 출현 확률 증가
+    const legendarySpawnBonus = relicEffects.legendaryMonsterSpawn || 0;
+
+    // 몬스터 생성 (스폰율 보너스 적용)
+    const monster = getMonsterForStage(floor, isBoss, isRare, isLegendary, collection, rareSpawnBonus, legendarySpawnBonus);
+
+    // 정복자의 창: 몬스터 HP 감소 (골드는 원래 HP 기준)
+    const hpReduction = relicEffects.monsterHpReduction || 0;
+
+    if (hpReduction > 0) {
+      // 원본 HP를 따로 저장 (골드 계산용)
+      monster.originalMaxHp = monster.maxHp;
+
+      // HP 감소 적용 (최소 1은 유지)
+      const reducedMaxHp = Math.max(1, Math.floor(monster.maxHp * (1 - hpReduction / 100)));
+      monster.maxHp = reducedMaxHp;
+      monster.hp = reducedMaxHp;
+    } else {
+      // HP 감소가 없으면 originalMaxHp를 maxHp와 동일하게 설정
+      monster.originalMaxHp = monster.maxHp;
+    }
+
+    return monster;
   }
 
   getState() {

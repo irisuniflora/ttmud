@@ -6,6 +6,7 @@ import { formatNumber } from '../../utils/formatter';
 const SkillTree = () => {
   const { gameState, upgradeSkill } = useGame();
   const { player, skillLevels } = gameState;
+  const skillPoints = player.skillPoints || 0;
 
   const renderSkillTree = (treeKey, tree) => {
     return (
@@ -19,6 +20,8 @@ const SkillTree = () => {
             const costType = skill.costType || 'gold';
             const canAfford = costType === 'pp'
               ? player.prestigePoints >= cost
+              : costType === 'sp'
+              ? skillPoints >= cost
               : player.gold >= cost;
             const isMaxLevel = currentLevel >= maxLevel;
 
@@ -35,11 +38,35 @@ const SkillTree = () => {
                       <span className="text-xs text-blue-400">
                         레벨: {currentLevel} / {maxLevel}
                       </span>
-                      {currentLevel > 0 && (
-                        <span className="text-xs text-green-400">
-                          {JSON.stringify(skill.effect(currentLevel))}
-                        </span>
-                      )}
+                      {currentLevel > 0 && (() => {
+                        const effect = skill.effect(currentLevel);
+                        const effectText = Object.entries(effect).map(([key, value]) => {
+                          const effectNames = {
+                            critChance: '크리티컬',
+                            critDmg: '치명타 데미지',
+                            atkPercent: '공격력',
+                            heroDmgPercent: '영웅 데미지',
+                            goldPercent: '골드 획득',
+                            dropRate: '드랍률',
+                            expPercent: '경험치 획득',
+                            startingGold: '시작 골드',
+                            startingLevel: '시작 레벨',
+                            permanentDmgPercent: '영구 데미지',
+                            permanentGoldPercent: '영구 골드'
+                          };
+                          const name = effectNames[key] || key;
+                          const unit = key.includes('Percent') || key === 'critDmg' ? '%' :
+                                       key === 'startingGold' ? 'G' :
+                                       key === 'startingLevel' ? 'Lv' :
+                                       key === 'critChance' || key === 'dropRate' ? '%' : '';
+                          return `${name} +${value}${unit}`;
+                        }).join(', ');
+                        return (
+                          <span className="text-xs text-yellow-400 font-bold">
+                            [{effectText}]
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -57,7 +84,7 @@ const SkillTree = () => {
                   >
                     {isMaxLevel
                       ? '최대'
-                      : `${costType === 'pp' ? '✨' : '💰'} ${formatNumber(cost)}`
+                      : `${costType === 'pp' ? '🌟' : costType === 'sp' ? '📘' : '💰'} ${formatNumber(cost)}`
                     }
                   </button>
                 </div>
@@ -71,7 +98,14 @@ const SkillTree = () => {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-xl font-bold text-white">스킬 트리</h3>
+      {/* 헤더: 스킬 포인트 표시 */}
+      <div className="flex items-center justify-between bg-game-panel border border-game-border rounded-lg p-4">
+        <h3 className="text-xl font-bold text-white">스킬 트리</h3>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-400">보유 스킬 포인트:</span>
+          <span className="text-2xl font-bold text-blue-400">📘 {skillPoints}</span>
+        </div>
+      </div>
 
       {/* 모든 스킬 트리를 가로 3열로 표시 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
