@@ -2,7 +2,7 @@ import { getMonsterForStage, getCollectionBonus, RARE_MONSTER_COLLECTION_CHANCE,
 import { HEROES, getHeroById, getHeroStats, getNextGrade, getUpgradeCost, getStarUpgradeCost } from '../data/heroes.js';
 import { generateItem, rerollItemWithOrb, perfectSingleStat, calculateStatPercentage } from '../data/items.js';
 import { getTotalSkillEffects } from '../data/skills.js';
-import { getTotalRelicEffects } from '../data/prestigeRelics.js';
+import { getTotalRelicEffects, PRESTIGE_RELICS, getRelicGachaCost, getRelicUpgradeCost } from '../data/prestigeRelics.js';
 import {
   GAME_CONFIG,
   PLAYER_BASE_STATS,
@@ -2750,5 +2750,86 @@ export class GameEngine {
 
   setState(newState) {
     this.state = newState;
+  }
+
+  // 유물 가챠 (중복 없이 랜덤 획득)
+  gachaRelic() {
+    const { relicFragments = 0, relicGachaCount = 0, prestigeRelics = {} } = this.state;
+
+    // 미보유 유물 목록
+    const unownedRelicIds = Object.keys(PRESTIGE_RELICS).filter(id => !prestigeRelics[id]);
+
+    if (unownedRelicIds.length === 0) {
+      return { success: false, message: '모든 유물을 보유하고 있습니다!' };
+    }
+
+    const cost = getRelicGachaCost(relicGachaCount);
+
+    if (relicFragments < cost) {
+      return { success: false, message: `유물 조각이 부족합니다! (필요: ${cost}개)` };
+    }
+
+    // 랜덤 유물 선택
+    const randomRelicId = unownedRelicIds[Math.floor(Math.random() * unownedRelicIds.length)];
+    const relic = PRESTIGE_RELICS[randomRelicId];
+
+    // 상태 업데이트
+    this.state.relicFragments = relicFragments - cost;
+    this.state.relicGachaCount = relicGachaCount + 1;
+    this.state.prestigeRelics = {
+      ...prestigeRelics,
+      [randomRelicId]: {
+        relicId: randomRelicId,
+        level: 1
+      }
+    };
+
+    return {
+      success: true,
+      relic: relic,
+      message: `${relic.icon} ${relic.name} 획득!`
+    };
+  }
+
+  // 유물 레벨업
+  upgradeRelic(relicId) {
+    const { relicFragments = 0, prestigeRelics = {} } = this.state;
+    const relicInstance = prestigeRelics[relicId];
+
+    if (!relicInstance) {
+      return { success: false, message: '보유하지 않은 유물입니다.' };
+    }
+
+    const relic = PRESTIGE_RELICS[relicId];
+
+    // 만렙 체크
+    if (relic.maxLevel && relicInstance.level >= relic.maxLevel) {
+      return { success: false, message: '이미 최대 레벨입니다!' };
+    }
+
+    // 유물 효과로 비용 감소 계산
+    const relicEffects = this.getRelicEffects();
+    const costReduction = relicEffects.relicUpgradeCostReduction || 0;
+    const cost = getRelicUpgradeCost(relicInstance.level, costReduction);
+
+    if (relicFragments < cost) {
+      return { success: false, message: `유물 조각이 부족합니다! (필요: ${cost}개)` };
+    }
+
+    // 상태 업데이트
+    this.state.relicFragments = relicFragments - cost;
+    this.state.prestigeRelics = {
+      ...prestigeRelics,
+      [relicId]: {
+        ...relicInstance,
+        level: relicInstance.level + 1
+      }
+    };
+
+    return {
+      success: true,
+      newLevel: relicInstance.level + 1,
+      message: `${relic.icon} ${relic.name} Lv.${relicInstance.level + 1} 달성!`
+    };
   }
 }

@@ -279,6 +279,19 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
+  // ===== 유물 시스템 =====
+  const gachaRelic = () => {
+    const result = engineRef.current.gachaRelic();
+    setGameState({ ...engineRef.current.getState() });
+    return result;
+  };
+
+  const upgradeRelic = (relicId) => {
+    const result = engineRef.current.upgradeRelic(relicId);
+    setGameState({ ...engineRef.current.getState() });
+    return result;
+  };
+
   // 보스 타이머 업데이트 (1초마다)
   useEffect(() => {
     const timerInterval = setInterval(() => {
@@ -330,6 +343,8 @@ export const GameProvider = ({ children }) => {
       toggleWorldBoss,
       distributeWorldBossRewards,
       placeBid,
+      gachaRelic,
+      upgradeRelic,
       engine: engineRef.current
     }}>
       {children}

@@ -10,7 +10,7 @@ import {
 import { formatNumber } from '../../utils/formatter';
 
 const PrestigeRelics = () => {
-  const { gameState, setGameState } = useGame();
+  const { gameState, gachaRelic: doGachaRelic, upgradeRelic: doUpgradeRelic } = useGame();
   const { player, prestigeRelics = {}, relicFragments = 0, relicGachaCount = 0 } = gameState;
 
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -26,73 +26,22 @@ const PrestigeRelics = () => {
   const unownedRelicIds = Object.keys(PRESTIGE_RELICS).filter(id => !prestigeRelics[id]);
   const hasAllRelics = unownedRelicIds.length === 0;
 
-  // 유물 뽑기 (중복 없이 랜덤 획득)
-  const gachaRelic = () => {
-    if (hasAllRelics) {
-      alert('모든 유물을 보유하고 있습니다!');
-      return;
+  // 유물 뽑기 (GameEngine을 통해)
+  const handleGachaRelic = () => {
+    const result = doGachaRelic();
+    if (result.success) {
+      alert(result.message);
+    } else {
+      alert(result.message);
     }
-
-    if (relicFragments < currentGachaCost) {
-      alert(`유물 조각이 부족합니다! (필요: ${currentGachaCost}개)`);
-      return;
-    }
-
-    // 보유하지 않은 유물 중 랜덤 선택
-    const randomRelicId = unownedRelicIds[Math.floor(Math.random() * unownedRelicIds.length)];
-    const relic = PRESTIGE_RELICS[randomRelicId];
-
-    setGameState(prev => {
-      const newRelics = { ...prev.prestigeRelics };
-
-      // 새로운 유물 획득
-      newRelics[randomRelicId] = {
-        relicId: randomRelicId,
-        level: 1
-      };
-
-      alert(`${relic.icon} ${relic.name} 획득!`);
-
-      return {
-        ...prev,
-        relicFragments: prev.relicFragments - currentGachaCost,
-        relicGachaCount: (prev.relicGachaCount || 0) + 1,
-        prestigeRelics: newRelics
-      };
-    });
   };
 
-  // 유물 레벨업
-  const upgradeRelic = (relicId) => {
-    const relicInstance = prestigeRelics[relicId];
-    if (!relicInstance) return;
-
-    const relic = PRESTIGE_RELICS[relicId];
-
-    // 만렙 체크
-    if (relic.maxLevel && relicInstance.level >= relic.maxLevel) {
-      alert('이미 최대 레벨입니다!');
-      return;
+  // 유물 레벨업 (GameEngine을 통해)
+  const handleUpgradeRelic = (relicId) => {
+    const result = doUpgradeRelic(relicId);
+    if (!result.success) {
+      alert(result.message);
     }
-
-    const cost = getRelicUpgradeCost(relicInstance.level, relicUpgradeCostReduction);
-
-    if (relicFragments < cost) {
-      alert(`유물 조각이 부족합니다! (필요: ${cost}개)`);
-      return;
-    }
-
-    setGameState(prev => ({
-      ...prev,
-      relicFragments: prev.relicFragments - cost,
-      prestigeRelics: {
-        ...prev.prestigeRelics,
-        [relicId]: {
-          ...prev.prestigeRelics[relicId],
-          level: prev.prestigeRelics[relicId].level + 1
-        }
-      }
-    }));
   };
 
   // 카테고리별 유물 필터링
@@ -136,7 +85,7 @@ const PrestigeRelics = () => {
 
           {/* 오른쪽: 소환 버튼 */}
           <button
-            onClick={gachaRelic}
+            onClick={handleGachaRelic}
             disabled={relicFragments < currentGachaCost || hasAllRelics}
             className={`px-4 py-2 rounded font-bold text-sm transition-all whitespace-nowrap ${
               hasAllRelics
@@ -252,7 +201,7 @@ const PrestigeRelics = () => {
 
                   {/* 레벨업 버튼 */}
                   <button
-                    onClick={() => upgradeRelic(relicId)}
+                    onClick={() => handleUpgradeRelic(relicId)}
                     disabled={!canUpgrade || isMaxLevel}
                     className={`w-full py-1.5 rounded font-bold text-xs transition-all ${
                       isMaxLevel

@@ -586,11 +586,15 @@ export const getRelicUpgradeCost = (currentLevel, hasReduction = 0) => {
   return Math.max(1, Math.floor(baseCost * (1 - reduction / 100)));
 };
 
-// 유물 가챠 비용 계산 (Relic 조각) - 1.4배씩 증가, 올림
+// 유물 가챠 비용 계산 (Relic 조각) - 이전 올림 비용 × 1.4
+// 1 → 2 → 3 → 5 → 7 → 10 → 14 → 20 → ...
 export const getRelicGachaCost = (gachaCount) => {
   if (gachaCount === 0) return 1;
-  const cost = Math.pow(1.4, gachaCount);
-  return Math.ceil(cost);
+  let cost = 1;
+  for (let i = 0; i < gachaCount; i++) {
+    cost = Math.ceil(cost * 1.4);
+  }
+  return cost;
 };
 
 // 모든 유물 효과 합산
