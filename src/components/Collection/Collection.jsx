@@ -142,9 +142,9 @@ const Collection = () => {
                 <h4 className="text-sm font-bold text-yellow-400 mb-2">🐧 방생 시스템</h4>
                 <div className="text-xs text-gray-200 space-y-1">
                   <p>• <span className="text-purple-400 font-bold">💎 레어</span>와 <span className="text-orange-400 font-bold">👑 전설</span> 몬스터를 수집하면 이름 옆에 아이콘이 표시됩니다</p>
-                  <p>• 각 몬스터는 레어와 전설 각각 <span className="text-yellow-400 font-bold">최대 3회</span>까지 방생 가능</p>
+                  <p>• 각 몬스터는 레어와 전설 각각 <span className="text-yellow-400 font-bold">1회</span> 방생 가능</p>
                   <p>• 방생하면 해당 구간에서 <span className="text-red-400 font-bold">데미지</span>와 <span className="text-green-400 font-bold">드랍율</span>이 영구 증가</p>
-                  <p>• 레어: 1회당 <span className="text-purple-400">+5%</span> (최대 +15%) | 전설: 1회당 <span className="text-orange-400">+20%</span> (최대 +60%)</p>
+                  <p>• 레어: <span className="text-purple-400">+5%</span> | 전설: <span className="text-orange-400">+20%</span></p>
                 </div>
               </div>
               <button
@@ -274,9 +274,9 @@ const Collection = () => {
                     const legendaryReleaseData = releaseData.releasedMonsters?.[legendaryId];
                     const legendaryReleaseCount = legendaryReleaseData?.releaseCount || 0;
 
-                    // 방생 가능 여부
-                    const canReleaseRare = rareUnlocked && rareReleaseCount < 3 && (!legendaryUnlocked || legendaryReleaseCount >= rareReleaseCount + 1);
-                    const canReleaseLegendary = legendaryUnlocked && legendaryReleaseCount < 3;
+                    // 방생 가능 여부 (최대 1회)
+                    const canReleaseRare = rareUnlocked && rareReleaseCount < 1 && (!legendaryUnlocked || legendaryReleaseCount >= 1);
+                    const canReleaseLegendary = legendaryUnlocked && legendaryReleaseCount < 1;
 
                     return (
                       <div key={idx} className="space-y-0.5">
@@ -321,7 +321,7 @@ const Collection = () => {
                             <button
                               onClick={() => handleReleaseClick(legendaryId, monsterName, 'legendary')}
                               className="w-full bg-orange-600 hover:bg-orange-700 border border-orange-500 rounded flex items-center justify-center gap-1 text-[10px] font-bold py-1 transition-transform hover:scale-105"
-                              title={`전설 방생 (${legendaryReleaseCount + 1}/3회) (+20% 데미지, +20%p 드랍)`}
+                              title={`전설 방생 (+20% 데미지, +20%p 드랍)`}
                             >
                               <span className="text-orange-300">⭐</span>
                               <span>방생</span>
@@ -331,7 +331,7 @@ const Collection = () => {
                             <button
                               onClick={() => handleReleaseClick(rareId, monsterName, 'rare')}
                               className="w-full bg-purple-600 hover:bg-purple-700 border border-purple-500 rounded flex items-center justify-center gap-1 text-[10px] font-bold py-1 transition-transform hover:scale-105"
-                              title={`레어 방생 (${rareReleaseCount + 1}/3회) (+5% 데미지, +5%p 드랍)`}
+                              title={`레어 방생 (+5% 데미지, +5%p 드랍)`}
                             >
                               <span className="text-purple-300">●</span>
                               <span>방생</span>

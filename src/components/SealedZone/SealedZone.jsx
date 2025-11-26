@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useGame } from '../../store/GameContext';
 import { RAID_BOSSES, RAID_DIFFICULTIES, calculateRaidBossStats, INSCRIPTION_SLOT_CONFIG, checkBossUnlock } from '../../data/raidBosses';
 import { INSCRIPTIONS, INSCRIPTION_GRADES, INSCRIPTION_ABILITIES, calculateInscriptionStats, migrateGrade } from '../../data/inscriptions';
+import { getTotalRelicEffects } from '../../data/prestigeRelics';
 import { formatNumber, formatPercent } from '../../utils/formatter';
 
 const SealedZone = () => {
@@ -41,12 +42,17 @@ const SealedZone = () => {
     const bossData = RAID_BOSSES[selectedBoss];
     const inscription = INSCRIPTIONS[inscriptionStats.id];
 
-    // 기본 공격력
-    let baseDamage = inscriptionStats.attack;
+    // 유물 효과: 문양 스탯/데미지 증가
+    const relicEffects = getTotalRelicEffects(gameState.prestigeRelics || {});
+    const inscriptionStatsBonus = 1 + (relicEffects.inscriptionStats || 0) / 100;
+    const inscriptionDamageBonus = 1 + (relicEffects.inscriptionDamage || 0) / 100;
 
-    // 공격력 % 증가
+    // 기본 공격력 (유물: 문양의 정수 적용)
+    let baseDamage = inscriptionStats.attack * inscriptionStatsBonus;
+
+    // 공격력 % 증가 (유물 보너스 적용)
     if (inscriptionStats.attackPercent) {
-      baseDamage *= (1 + inscriptionStats.attackPercent / 100);
+      baseDamage *= (1 + (inscriptionStats.attackPercent * inscriptionStatsBonus) / 100);
     }
 
     // 어빌리티: true_hit (필중 - 회피 무시)
@@ -149,6 +155,10 @@ const SealedZone = () => {
           break;
       }
     });
+
+    // 유물: 폭풍의 문양 (문양 데미지 보너스 증가) 최종 적용
+    baseDamage *= inscriptionDamageBonus;
+    shieldDamage *= inscriptionDamageBonus;
 
     return {
       damage: Math.floor(baseDamage),

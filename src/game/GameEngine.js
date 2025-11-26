@@ -230,19 +230,35 @@ export class GameEngine {
     let equipmentAttackFlat = 0;
     let equipmentAttackPercent = 0;
 
+    // 유물 효과: 장비 능력치 증가
+    const equipRelicEffects = this.getRelicEffects();
+    const equipmentPercentBonus = (equipRelicEffects.equipmentPercent || 0) / 100; // 모든 장비
+    const slotBonuses = {
+      weapon: (equipRelicEffects.weaponPercent || 0) / 100,
+      helmet: (equipRelicEffects.helmetPercent || 0) / 100,
+      armor: (equipRelicEffects.armorPercent || 0) / 100,
+      boots: (equipRelicEffects.bootsPercent || 0) / 100,
+      necklace: (equipRelicEffects.necklacePercent || 0) / 100,
+      ring: (equipRelicEffects.ringPercent || 0) / 100,
+      gloves: 0 // 장갑은 별도 유물 없음
+    };
+
     Object.entries(equipment).forEach(([slot, item]) => {
       if (item) {
         const enhancementLevel = slotEnhancements[slot] || 0;
         const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        // 유물 슬롯별 보너스 + 전체 장비 보너스
+        const relicSlotBonus = 1 + equipmentPercentBonus + (slotBonuses[slot] || 0);
+
         item.stats.forEach(stat => {
           // 크리티컬 스탯은 강화 효과 제외
           const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
           const bonus = isExcluded ? 1 : enhancementBonus;
 
           if (stat.id === 'attack') {
-            equipmentAttackFlat += stat.value * bonus;
+            equipmentAttackFlat += stat.value * bonus * relicSlotBonus;
           } else if (stat.id === 'attackPercent') {
-            equipmentAttackPercent += stat.value * bonus;
+            equipmentAttackPercent += stat.value * bonus * relicSlotBonus;
           }
         });
       }
@@ -292,8 +308,14 @@ export class GameEngine {
     heroBuffs.goldBonus += collectionBonus.goldBonus;
     heroBuffs.expBonus += collectionBonus.expBonus;
 
+    // 영웅(동료) 공격력에 스킬 보너스 적용 (heroDmgPercent: 동료 강화 스킬)
+    let heroAttack = heroBuffs.attack;
+    if (skillEffects.heroDmgPercent > 0) {
+      heroAttack *= (1 + skillEffects.heroDmgPercent / 100);
+    }
+
     // 영웅 공격력 추가
-    let totalDmg = playerDmg + heroBuffs.attack;
+    let totalDmg = playerDmg + heroAttack;
 
     // 방생 보너스 곱연산 적용 (101층 이상은 1-100층으로 매핑)
     const baseFloor = player.floor > 100 ? ((player.floor - 1) % 100) + 1 : player.floor;
@@ -303,40 +325,83 @@ export class GameEngine {
       totalDmg *= (1 + releaseBonus.damageBonus / 100);
     }
 
-    // 유물 효과: 별의 파편 (보유 유물 개수당 데미지 증가)
+    // 유물 효과 가져오기
     const relicEffects = this.getRelicEffects();
+    const relicCount = Object.keys(this.state.prestigeRelics || {}).length;
+
+    // 유물: 별의 파편 (보유 유물 개수당 데미지 증가)
     if (relicEffects.damagePerRelic > 0) {
-      const relicCount = Object.keys(this.state.prestigeRelics || {}).length;
       const relicDamageBonus = relicCount * relicEffects.damagePerRelic;
       totalDmg *= (1 + relicDamageBonus / 100);
     }
 
-    // 장비 스탯 적용 (크리티컬 등)
+    // 유물: 파멸의 칼날 (모든 데미지 증가%)
+    // damageRelicBonus(고대의 렌즈)로 효과 증폭
+    const damageRelicMultiplier = 1 + (relicEffects.damageRelicBonus || 0) / 100;
+    if (relicEffects.damagePercent > 0) {
+      totalDmg *= (1 + (relicEffects.damagePercent * damageRelicMultiplier) / 100);
+    }
+
+    // 장비 스탯 적용 (크리티컬, 보스데미지, 일반몹데미지 등) - 유물 장비 보너스 포함
     let equipmentCritChance = 0;
     let equipmentCritDmg = 0;
+    let equipmentBossDamageIncrease = 0;
+    let equipmentNormalMonsterDamageIncrease = 0;
     Object.entries(equipment).forEach(([slot, item]) => {
       if (item) {
         const enhancementLevel = slotEnhancements[slot] || 0;
         const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        // 유물 슬롯별 보너스 + 전체 장비 보너스
+        const relicSlotBonus = 1 + equipmentPercentBonus + (slotBonuses[slot] || 0);
+
         item.stats.forEach(stat => {
           // 크리티컬 스탯은 강화 효과 제외
           const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
           const bonus = isExcluded ? 1 : enhancementBonus;
 
           if (stat.id === 'critChance') {
-            equipmentCritChance += stat.value * bonus;
+            equipmentCritChance += stat.value * bonus * relicSlotBonus;
           } else if (stat.id === 'critDmg') {
-            equipmentCritDmg += stat.value * bonus;
+            equipmentCritDmg += stat.value * bonus * relicSlotBonus;
+          } else if (stat.id === 'bossDamageIncrease') {
+            equipmentBossDamageIncrease += stat.value * bonus * relicSlotBonus;
+          } else if (stat.id === 'normalMonsterDamageIncrease') {
+            equipmentNormalMonsterDamageIncrease += stat.value * bonus * relicSlotBonus;
           }
         });
       }
     });
 
-    // 크리티컬 계산 (장비 + 영웅 버프 포함)
-    const critChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroBuffs.critChance;
-    const critDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroBuffs.critDmg;
+    // 크리티컬 계산 (장비 + 영웅 버프 + 유물 포함)
+    // 유물: 살육의 도끼 (크리티컬 확률 증가)
+    const relicCritChance = (relicEffects.critChance || 0) * damageRelicMultiplier;
+    // 유물: 보복자의 인장 (크리티컬 데미지 증가)
+    const relicCritDmg = (relicEffects.critDmg || 0) * damageRelicMultiplier;
+
+    const critChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroBuffs.critChance + relicCritChance;
+    const critDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroBuffs.critDmg + relicCritDmg;
 
     let finalDmg = totalDmg;
+
+    // 보스 데미지 증가 (유물 + 장비)
+    if (this.state.currentMonster?.isBoss) {
+      // 유물: 거인 학살자 (보스 데미지 증가)
+      if (relicEffects.bossDamage > 0) {
+        finalDmg *= (1 + (relicEffects.bossDamage * damageRelicMultiplier) / 100);
+      }
+      // 장비: bossDamageIncrease 스탯
+      if (equipmentBossDamageIncrease > 0) {
+        finalDmg *= (1 + equipmentBossDamageIncrease / 100);
+      }
+    }
+
+    // 일반몹 데미지 증가 (장비)
+    const monster = this.state.currentMonster;
+    if (monster && !monster.isBoss && !monster.isRare && !monster.isLegendary) {
+      if (equipmentNormalMonsterDamageIncrease > 0) {
+        finalDmg *= (1 + equipmentNormalMonsterDamageIncrease / 100);
+      }
+    }
 
     // 체력 퍼센트 데미지 (다크 리퍼)
     if (heroBuffs.hpPercentDmgChance > 0 && Math.random() * 100 < heroBuffs.hpPercentDmgChance) {
@@ -446,16 +511,21 @@ export class GameEngine {
     // 기본 골드 보너스
     let totalGoldBonus = player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus;
 
+    // 유물: 황금의 예언서 (모든 골드 획득량 증가)
+    // goldRelicBonus(부의 보물상자)로 골드 유물 효과 증폭
+    const goldRelicMultiplier = 1 + (relicEffects.goldRelicBonus || 0) / 100;
+    totalGoldBonus += (relicEffects.goldPercent || 0) * goldRelicMultiplier;
+
     // 유물: 몬스터 유형별 골드 보너스
     if (currentMonster.isBoss) {
       // 군주의 금고: 보스 골드
-      totalGoldBonus += (relicEffects.bossGold || 0);
+      totalGoldBonus += (relicEffects.bossGold || 0) * goldRelicMultiplier;
     } else if (currentMonster.isRare || currentMonster.isLegendary) {
       // 요정의 축복: 희귀/전설 몬스터 골드
-      totalGoldBonus += (relicEffects.rareMonsterGold || 0);
+      totalGoldBonus += (relicEffects.rareMonsterGold || 0) * goldRelicMultiplier;
     } else {
       // 탐욕의 그릇: 일반 몬스터 골드
-      totalGoldBonus += (relicEffects.normalMonsterGold || 0);
+      totalGoldBonus += (relicEffects.normalMonsterGold || 0) * goldRelicMultiplier;
     }
 
     goldGained *= (1 + totalGoldBonus / 100);
@@ -633,9 +703,13 @@ export class GameEngine {
     // 도감 보너스 계산
     const collectionBonus = this.calculateCollectionBonus();
 
-    // 장비 + 도감으로 인한 몬스터 감소 적용 (최소 5마리는 유지)
+    // 유물: 암흑의 장막 (스테이지당 몬스터 수 감소)
+    const killRelicEffects = this.getRelicEffects();
+    const relicMonsterReduction = killRelicEffects.monstersPerStageReduction || 0;
+
+    // 장비 + 도감 + 유물로 인한 몬스터 감소 적용 (최소 5마리는 유지)
     const baseMonstersPerFloor = getMonstersPerFloor(player.floor);
-    const actualMonstersPerFloor = Math.max(5, baseMonstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction);
+    const actualMonstersPerFloor = Math.max(5, baseMonstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction - relicMonsterReduction);
 
     // 스테이지 스킵 확률 체크 (일반 몬스터만, 보스는 제외) - 장비 + 영웅 버프
     let skipCount = 0;
@@ -679,7 +753,9 @@ export class GameEngine {
         // 처음 도달한 경우 자동으로 보스방 입장
         if (!player.hasFailedBoss) {
           player.floorState = 'boss_battle';
-          player.bossTimer = FLOOR_CONFIG.bossTimeLimit;
+          // 유물: 시간의 모래시계 (보스 제한시간 증가)
+          const bossRelicEffects = this.getRelicEffects();
+          player.bossTimer = FLOOR_CONFIG.bossTimeLimit + (bossRelicEffects.bossTimeLimit || 0);
           // 보스 몬스터 생성
           this.state.currentMonster = this.spawnMonster(player.floor, true, false, false, collection);
           this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
@@ -1071,7 +1147,14 @@ export class GameEngine {
 
     const floor = this.state.player.floor;
     const dropInfo = getInscriptionIdByFloor(floor);
-    const dropRate = getInscriptionDropRate(floor);
+    let dropRate = getInscriptionDropRate(floor);
+
+    // 유물: 소환의 부적 (문양 드랍 확률 증가)
+    const relicEffects = this.getRelicEffects();
+    if (relicEffects.inscriptionDropRate > 0) {
+      dropRate *= (1 + relicEffects.inscriptionDropRate / 100);
+      dropRate = Math.min(dropRate, 0.95); // 최대 95%
+    }
 
     if (!dropInfo) return false;
 
@@ -1138,7 +1221,13 @@ export class GameEngine {
   // 봉인구역 도전권 드랍 (보스몬스터 처치 시)
   tryDropRaidTicket() {
     // 모든 보스 몬스터에서 10% 확률로 1개 드랍
-    const dropRate = 10;
+    let dropRate = 10;
+
+    // 유물: 도전의 증표 (봉인구역 도전권 획득 확률 증가)
+    const relicEffects = this.getRelicEffects();
+    if (relicEffects.raidTicketDropRate > 0) {
+      dropRate *= (1 + relicEffects.raidTicketDropRate / 100);
+    }
 
     if (Math.random() * 100 < dropRate) {
       if (!this.state.sealedZone) {
@@ -1347,7 +1436,13 @@ export class GameEngine {
     const baseFragments = 5;
     const floorBonus = Math.floor(player.floor / 20);
     const highFloorBonus = player.floor > 100 ? Math.floor((player.floor - 100) / 10) : 0;
-    const fragmentsGained = baseFragments + floorBonus + highFloorBonus;
+    let fragmentsGained = baseFragments + floorBonus + highFloorBonus;
+
+    // 유물: 심연의 서 (환생당 유물 조각 획득량 증가%)
+    const relicEffects = this.getRelicEffects();
+    if (relicEffects.relicFragmentPercent > 0) {
+      fragmentsGained = Math.floor(fragmentsGained * (1 + relicEffects.relicFragmentPercent / 100));
+    }
 
     // 리셋 (일부 제외)
     const newState = this.getDefaultState();
@@ -1433,8 +1528,12 @@ export class GameEngine {
     // 도감 보너스 계산
     const collectionBonus = this.calculateCollectionBonus();
 
+    // 유물: 암흑의 장막 (스테이지당 몬스터 수 감소)
+    const enterRelicEffects = this.getRelicEffects();
+    const relicMonsterReduction = enterRelicEffects.monstersPerStageReduction || 0;
+
     const baseMonstersPerFloor = getMonstersPerFloor(player.floor);
-    const totalReduction = equipmentMonsterReduction + collectionBonus.monsterReduction;
+    const totalReduction = equipmentMonsterReduction + collectionBonus.monsterReduction + relicMonsterReduction;
     const actualMonstersPerFloor = Math.max(1, baseMonstersPerFloor - totalReduction);
 
     // 몬스터 감소가 스테이지 몬스터 수보다 크면 바로 보스방
@@ -1460,7 +1559,11 @@ export class GameEngine {
 
     // 보스 전투 시작
     player.floorState = 'boss_battle';
-    player.bossTimer = FLOOR_CONFIG.bossTimeLimit;
+
+    // 유물: 시간의 모래시계 (보스 제한시간 증가)
+    const relicEffects = this.getRelicEffects();
+    const bossTimeBonus = relicEffects.bossTimeLimit || 0;
+    player.bossTimer = FLOOR_CONFIG.bossTimeLimit + bossTimeBonus;
 
     // 보스 몬스터 생성
     this.state.currentMonster = this.spawnMonster(player.floor, true, false, false, collection);
@@ -1647,11 +1750,14 @@ export class GameEngine {
     const slotEnhancements = this.state.slotEnhancements || {};
     const currentLevel = slotEnhancements[slot] || 0;
 
-    // 비용 계산
-    const cost = Math.floor(
-      EQUIPMENT_CONFIG.enhancement.baseCost *
-      Math.pow(EQUIPMENT_CONFIG.enhancement.costMultiplier, currentLevel)
-    );
+    // 유물: 장비 강화 비용 감소
+    const relicEffects = this.getRelicEffects();
+    const costReduction = (relicEffects.equipmentUpgradeCostReduction || 0) / 100;
+
+    // 비용 계산 (유물 비용 감소 적용)
+    const baseCost = EQUIPMENT_CONFIG.enhancement.baseCost *
+      Math.pow(EQUIPMENT_CONFIG.enhancement.costMultiplier, currentLevel);
+    const cost = Math.floor(baseCost * (1 - costReduction));
 
     // 골드 확인
     if (player.gold < cost) {
@@ -1933,6 +2039,22 @@ export class GameEngine {
     totalBonus.goldBonus = rareBonus.goldBonus + legendaryBonus.goldBonus;
     totalBonus.expBonus = rareBonus.expBonus + legendaryBonus.expBonus;
 
+    // 유물: 수집가의 휘장, 탐험가의 일지 (도감 수집률당 골드/데미지 증가)
+    // 전체 도감 수집률 계산 (희귀 + 전설 몬스터 100마리씩 = 200마리 기준)
+    const totalRareUnlocked = Object.values(collection.rareMonsters || {}).filter(m => m.unlocked).length;
+    const totalLegendaryUnlocked = Object.values(collection.legendaryMonsters || {}).filter(m => m.unlocked).length;
+    const totalCollectionRate = ((totalRareUnlocked + totalLegendaryUnlocked) / 200) * 100; // 퍼센트
+
+    const relicEffects = this.getRelicEffects();
+    // 수집가의 휘장: 도감 수집률 1%당 골드 증가
+    if (relicEffects.collectionGoldBonus > 0) {
+      totalBonus.goldBonus += totalCollectionRate * relicEffects.collectionGoldBonus;
+    }
+    // 탐험가의 일지: 도감 수집률 1%당 데미지 증가
+    if (relicEffects.collectionDamageBonus > 0) {
+      totalBonus.attack += totalCollectionRate * relicEffects.collectionDamageBonus;
+    }
+
     // 방생 보너스는 이제 곱연산으로 calculateTotalDPS()와 tryDropItem()에서 직접 적용됨
 
     return totalBonus;
@@ -1981,7 +2103,7 @@ export class GameEngine {
     return { damageBonus, dropRateBonus };
   }
 
-  // 몬스터 방생 (최대 3회)
+  // 몬스터 방생 (최대 1회)
   releaseMonster(monsterId, type = 'rare') {
     const { collection } = this.state;
 
@@ -2003,17 +2125,17 @@ export class GameEngine {
         return { success: false, message: '수집되지 않은 몬스터입니다' };
       }
 
-      // 전설 우선 방생 확인
+      // 전설 우선 방생 확인 (전설이 수집되어 있고 아직 방생 안 했으면 전설 먼저)
       const legendaryId = monsterId.replace('rare_', 'legendary_');
       const legendaryCollected = collection.legendaryMonsters?.[legendaryId]?.unlocked || false;
       const legendaryReleaseData = collection.release.releasedMonsters[legendaryId];
-      const legendaryReleaseCount = legendaryReleaseData?.releaseCount || 0;
+      const legendaryReleased = (legendaryReleaseData?.releaseCount || 0) >= 1;
 
-      // 전설이 수집되어 있고 방생 횟수가 희귀보다 적으면 방생 불가
+      // 전설이 수집되어 있고 방생 안 했으면 방생 불가
       const rareReleaseData = collection.release.releasedMonsters[monsterId];
       const rareReleaseCount = rareReleaseData?.releaseCount || 0;
 
-      if (legendaryCollected && legendaryReleaseCount < rareReleaseCount + 1) {
+      if (legendaryCollected && !legendaryReleased) {
         const monsterName = collection.rareMonsters[monsterId].name;
         return {
           success: false,
@@ -2021,9 +2143,9 @@ export class GameEngine {
         };
       }
 
-      // 방생 횟수 확인 (최대 3회)
-      if (rareReleaseCount >= 3) {
-        return { success: false, message: '최대 방생 횟수(3회)에 도달했습니다!' };
+      // 방생 횟수 확인 (최대 1회)
+      if (rareReleaseCount >= 1) {
+        return { success: false, message: '최대 방생 횟수(1회)에 도달했습니다!' };
       }
 
       // 방생 처리
@@ -2044,11 +2166,11 @@ export class GameEngine {
       // 마일스톤 보상 체크
       this.checkReleaseMilestones();
 
-      this.addCombatLog(`🕊️ ${monsterName}을(를) 방생했습니다! (${collection.release.releasedMonsters[monsterId].releaseCount}/3회)`, 'release');
+      this.addCombatLog(`🕊️ ${monsterName}을(를) 방생했습니다!`, 'release');
 
       return {
         success: true,
-        message: `${monsterName}을(를) 방생했습니다! (${collection.release.releasedMonsters[monsterId].releaseCount}/3회)`,
+        message: `${monsterName}을(를) 방생했습니다!`,
         damageBonus: 5,
         dropRateBonus: 5
       };
@@ -2057,12 +2179,12 @@ export class GameEngine {
         return { success: false, message: '수집되지 않은 몬스터입니다' };
       }
 
-      // 방생 횟수 확인 (최대 3회)
+      // 방생 횟수 확인 (최대 1회)
       const legendaryReleaseData = collection.release.releasedMonsters[monsterId];
       const legendaryReleaseCount = legendaryReleaseData?.releaseCount || 0;
 
-      if (legendaryReleaseCount >= 3) {
-        return { success: false, message: '최대 방생 횟수(3회)에 도달했습니다!' };
+      if (legendaryReleaseCount >= 1) {
+        return { success: false, message: '최대 방생 횟수(1회)에 도달했습니다!' };
       }
 
       // 방생 처리
@@ -2083,11 +2205,11 @@ export class GameEngine {
       // 마일스톤 보상 체크
       this.checkReleaseMilestones();
 
-      this.addCombatLog(`🕊️ ${monsterName}을(를) 방생했습니다! (${collection.release.releasedMonsters[monsterId].releaseCount}/3회)`, 'release');
+      this.addCombatLog(`🕊️ ${monsterName}을(를) 방생했습니다!`, 'release');
 
       return {
         success: true,
-        message: `${monsterName}을(를) 방생했습니다! (${collection.release.releasedMonsters[monsterId].releaseCount}/3회)`,
+        message: `${monsterName}을(를) 방생했습니다!`,
         damageBonus: 20,
         dropRateBonus: 20
       };
@@ -2123,7 +2245,7 @@ export class GameEngine {
           const releaseData = collection.release.releasedMonsters[monsterId];
           const releaseCount = releaseData?.releaseCount || 0;
 
-          if (releaseCount < 3) {
+          if (releaseCount < 1) {
             // 방생 처리
             data.unlocked = false;
 
@@ -2153,14 +2275,14 @@ export class GameEngine {
           const releaseData = collection.release.releasedMonsters[monsterId];
           const releaseCount = releaseData?.releaseCount || 0;
 
-          // 전설 우선 방생 확인
+          // 전설 우선 방생 확인 (전설이 수집되어 있고 아직 방생 안 했으면 방생 불가)
           const legendaryId = monsterId.replace('rare_', 'legendary_');
           const legendaryCollected = collection.legendaryMonsters?.[legendaryId]?.unlocked || false;
           const legendaryReleaseData = collection.release.releasedMonsters[legendaryId];
-          const legendaryReleaseCount = legendaryReleaseData?.releaseCount || 0;
+          const legendaryReleased = (legendaryReleaseData?.releaseCount || 0) >= 1;
 
-          // 전설이 없거나 전설 방생 횟수가 레어보다 많으면 방생 가능
-          const canRelease = releaseCount < 3 && (!legendaryCollected || legendaryReleaseCount > releaseCount);
+          // 전설이 없거나 전설이 방생되었으면 방생 가능
+          const canRelease = releaseCount < 1 && (!legendaryCollected || legendaryReleased);
 
           if (canRelease) {
             // 방생 처리
