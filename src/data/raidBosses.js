@@ -103,7 +103,7 @@ export const RAID_BOSSES = {
         { id: 'cooldown_up', name: '스킬 쿨타임 증가', value: 50 },
         { id: 'dot', name: '지속 피해', value: 1000 }
       ],
-      description: '3초마다 펫에게 5종 랜덤 디버프 중 하나 적용'
+      description: '3초마다 문양에게 5종 랜덤 디버프 중 하나 적용'
     },
     baseStats: {
       hp: 90000,
@@ -170,27 +170,25 @@ export const calculateBossCoinReward = (difficultyLevel) => {
   return Math.floor(10 * multiplier);
 };
 
-// 난이도 레벨별 보스 스탯 계산
-export const calculateRaidBossStats = (bossId, difficultyLevel, playerFloor = 1) => {
+// 난이도 레벨별 보스 스탯 계산 (플레이어 층수와 무관하게 난이도만으로 결정)
+export const calculateRaidBossStats = (bossId, difficultyLevel) => {
   const boss = RAID_BOSSES[bossId];
 
   if (!boss) return null;
 
   const difficultyMultiplier = getDifficultyMultiplier(difficultyLevel);
-  const floorMultiplier = 1 + (playerFloor * 0.05); // 층당 5% 증가
-  const totalMultiplier = difficultyMultiplier * floorMultiplier;
 
   return {
     ...boss,
     difficultyLevel,
     difficultyName: getDifficultyName(difficultyLevel),
     difficultyColor: getDifficultyColor(difficultyLevel),
-    hp: Math.floor(boss.baseStats.hp * totalMultiplier),
-    maxHp: Math.floor(boss.baseStats.hp * totalMultiplier),
-    defense: Math.floor(boss.baseStats.defense * totalMultiplier),
+    hp: Math.floor(boss.baseStats.hp * difficultyMultiplier),
+    maxHp: Math.floor(boss.baseStats.hp * difficultyMultiplier),
+    defense: Math.floor(boss.baseStats.defense * difficultyMultiplier),
     rewards: {
-      gold: Math.floor(boss.rewards.gold * totalMultiplier),
-      exp: Math.floor(boss.rewards.exp * totalMultiplier),
+      gold: Math.floor(boss.rewards.gold * difficultyMultiplier),
+      exp: Math.floor(boss.rewards.exp * difficultyMultiplier),
       bossCoins: calculateBossCoinReward(difficultyLevel)
     }
   };

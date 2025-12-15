@@ -3,11 +3,13 @@
 // 문양 등급 (동료 등급 색상과 통일)
 export const INSCRIPTION_GRADES = {
   common: { name: '일반', color: 'text-gray-400', statMultiplier: 1, sellDust: 1 },
-  uncommon: { name: '희귀', color: 'text-blue-400', statMultiplier: 1.5, sellDust: 3 },
-  rare: { name: '레어', color: 'text-purple-400', statMultiplier: 2, sellDust: 8 },
-  unique: { name: '유니크', color: 'text-yellow-400', statMultiplier: 3, sellDust: 20 },
-  legendary: { name: '레전드', color: 'text-orange-400', statMultiplier: 5, sellDust: 50 },
-  mythic: { name: '신화', color: 'text-red-400', statMultiplier: 8, sellDust: 150 }
+  uncommon: { name: '희귀', color: 'text-green-400', statMultiplier: 1.5, sellDust: 3 },
+  rare: { name: '레어', color: 'text-blue-400', statMultiplier: 2.2, sellDust: 8 },
+  epic: { name: '에픽', color: 'text-purple-400', statMultiplier: 3, sellDust: 15 },
+  unique: { name: '유니크', color: 'text-yellow-400', statMultiplier: 4, sellDust: 25 },
+  legendary: { name: '레전드', color: 'text-orange-400', statMultiplier: 6, sellDust: 50 },
+  mythic: { name: '신화', color: 'text-red-400', statMultiplier: 10, sellDust: 150 },
+  dark: { name: '다크', color: 'text-fuchsia-500', statMultiplier: 15, sellDust: 300 }
 };
 
 // 문양 강화 설정
@@ -345,16 +347,9 @@ export const INSCRIPTIONS = {
   }
 };
 
-// 구 등급 -> 신 등급 마이그레이션 맵
-const GRADE_MIGRATION = {
-  'rare': 'uncommon',    // 구: rare(희귀) -> 신: uncommon(희귀)
-  'epic': 'rare',        // 구: epic(레어) -> 신: rare(레어)
-  // common, unique, legendary, mythic은 그대로
-};
-
-// 등급 마이그레이션 함수
+// 등급 마이그레이션 함수 (더 이상 마이그레이션 불필요)
 export const migrateGrade = (grade) => {
-  return GRADE_MIGRATION[grade] || grade;
+  return grade;
 };
 
 // 등급별 문양 스탯 계산
@@ -438,12 +433,14 @@ export const getInscriptionDropRate = (floor) => {
 
 // 문양 드랍 확률 (등급별)
 export const INSCRIPTION_DROP_RATES = {
-  common: 0.50,     // 50%
-  uncommon: 0.30,   // 30%
+  common: 0.44,     // 44%
+  uncommon: 0.27,   // 27%
   rare: 0.15,       // 15%
+  epic: 0.08,       // 8%
   unique: 0.04,     // 4%
-  legendary: 0.009, // 0.9%
-  mythic: 0.001     // 0.1%
+  legendary: 0.015, // 1.5%
+  mythic: 0.004,    // 0.4%
+  dark: 0.001       // 0.1%
 };
 
 // 문양 등급 롤 (드랍 시 등급 결정)

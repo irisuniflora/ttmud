@@ -233,6 +233,29 @@ export const getCollectionBonus = (collectedCount, totalCount) => {
   };
 };
 
+// 보스 도감 보너스 계산 (레어/전설 보스 수집 시)
+// 레어 보스: 5셋 +10% 골드, 10셋 +20% 골드, 20셋 +50% 골드
+// 전설 보스: 5셋 +10% 데미지, 10셋 +25% 데미지, 20셋 +60% 데미지
+export const getBossCollectionBonus = (rareCount, legendaryCount) => {
+  let goldBonus = 0;
+  let damageBonus = 0;
+
+  // 레어 보스 골드 보너스
+  if (rareCount >= 5) goldBonus += 10;
+  if (rareCount >= 10) goldBonus += 10; // 총 20%
+  if (rareCount >= 20) goldBonus += 30; // 총 50%
+
+  // 전설 보스 데미지 보너스
+  if (legendaryCount >= 5) damageBonus += 10;
+  if (legendaryCount >= 10) damageBonus += 15; // 총 25%
+  if (legendaryCount >= 20) damageBonus += 35; // 총 60%
+
+  return {
+    goldBonus,
+    damageBonus
+  };
+};
+
 // 층에 맞는 몬스터 이름 가져오기 (monsterIndex 파라미터 추가)
 const getMonsterNameForFloor = (floor, isBoss = false, isRare = false, monsterIndex = null) => {
   // 100층 이하

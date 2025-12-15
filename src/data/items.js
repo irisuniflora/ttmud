@@ -29,18 +29,17 @@ export const DAMAGE_STATS = {
   attack: { id: 'attack', name: '공격력', suffix: '' },
   critChance: { id: 'critChance', name: '치명타 확률', suffix: '%' },
   critDmg: { id: 'critDmg', name: '치명타 데미지', suffix: '%' },
-  attackPercent: { id: 'attackPercent', name: '공격력', suffix: '%' },
-  bossDamageIncrease: { id: 'bossDamageIncrease', name: '보스몹 추뎀', suffix: '%' },
-  normalMonsterDamageIncrease: { id: 'normalMonsterDamageIncrease', name: '일반몹 추뎀', suffix: '%' }
+  attackPercent: { id: 'attackPercent', name: '공격력%', suffix: '%' },
+  bossDamageIncrease: { id: 'bossDamageIncrease', name: '보스 추뎀', suffix: '%' }
 };
 
 // 보조 능력치 (신발, 목걸이, 반지)
 export const UTILITY_STATS = {
   skipChance: { id: 'skipChance', name: '스킵 확률', suffix: '%' },
-  expBonus: { id: 'expBonus', name: '경험치 획득률', suffix: '%' },
+  expBonus: { id: 'expBonus', name: '경험치 획득', suffix: '%' },
   dropRate: { id: 'dropRate', name: '드랍률', suffix: '%' },
-  goldBonus: { id: 'goldBonus', name: '골드 획득량', suffix: '%' },
-  monstersPerStageReduction: { id: 'monstersPerStageReduction', name: '스테이지 당 몬스터 감소', suffix: '' }
+  goldBonus: { id: 'goldBonus', name: '골드 획득', suffix: '%' },
+  monstersPerStageReduction: { id: 'monstersPerStageReduction', name: '몬스터 감소', suffix: '' }
 };
 
 // 등급별 능력치 범위 (배수 기준: 1-3, 4-7, 8-14, 15-25, 26-43, 44-62, 63-109)
@@ -55,8 +54,7 @@ const BASE_VALUES = {
   dropRate: 0.04, // 영웅 드랍율 5%의 1/120 수준 (1/10로 감소)
   goldBonus: 0.08, // 영웅 골드 10%의 1/120 수준 (1/10로 감소)
   monstersPerStageReduction: 1, // 스테이지 당 몬스터 감소 (미사용 - 등급별 고정값 사용: 전설2~3, 신화4~5, 다크7~9)
-  bossDamageIncrease: 0.1, // 보스 데미지 증가 (1/10로 감소)
-  normalMonsterDamageIncrease: 0.1 // 일반 몬스터 데미지 증가 (1/10로 감소)
+  bossDamageIncrease: 0.1 // 보스 데미지 증가 (1/10로 감소)
 };
 
 // 등급별 배수 범위
@@ -96,7 +94,9 @@ export const SLOT_STAT_TYPES = {
 
 // 티어 배수 계산 (50층마다 1.2배)
 const calculateTierMultiplier = (floor) => {
-  const tier = Math.floor((floor - 1) / EQUIPMENT_CONFIG.tierSystem.floorInterval);
+  // floor가 0이거나 없으면 1층으로 처리
+  const safeFloor = Math.max(1, floor || 1);
+  const tier = Math.floor((safeFloor - 1) / EQUIPMENT_CONFIG.tierSystem.floorInterval);
   return Math.pow(EQUIPMENT_CONFIG.tierSystem.tierMultiplier, tier);
 };
 
@@ -161,16 +161,18 @@ export const generateItem = (slot, playerFloor = 1) => {
       const minValue = gradedBaseValue * OPTION_GRADE_MULTIPLIERS.low;  // 0.8x
       const maxValue = gradedBaseValue * OPTION_GRADE_MULTIPLIERS.perfect; // 1.5x
 
-      // 1/20 확률로 극옵(1.5x)
+      // 옵션 등급 확률: 1/5 극옵, 2/5 중옵, 2/5 하옵
       let finalValue;
-      if (Math.random() < 0.05) {
-        // 5% 확률로 극옵
+      const roll = Math.random();
+      if (roll < 0.2) {
+        // 20% (1/5) 확률로 극옵 (1.5x)
         finalValue = maxValue;
+      } else if (roll < 0.6) {
+        // 40% (2/5) 확률로 중옵 (1.0x)
+        finalValue = gradedBaseValue * OPTION_GRADE_MULTIPLIERS.mid;
       } else {
-        // 0.8x ~ 1.5x 범위에서 랜덤 결정
-        const randomOptionMultiplier = OPTION_GRADE_MULTIPLIERS.low +
-          Math.random() * (OPTION_GRADE_MULTIPLIERS.perfect - OPTION_GRADE_MULTIPLIERS.low);
-        finalValue = gradedBaseValue * randomOptionMultiplier;
+        // 40% (2/5) 확률로 하옵 (0.8x)
+        finalValue = minValue;
       }
 
       stats.push({
@@ -226,13 +228,13 @@ export const OPTION_GRADE_MULTIPLIERS = {
   perfect: 1.5   // 극옵
 };
 
-// 다이아몬드 등급 계산 (배율 기준)
-// 하옵: 0.8x = 1다이아, 중옵: 1.0x = 2다이아, 상옵: 1.2x = 3다이아, 극옵: 1.5x = 반짝이는 3다이아
+// 다이아몬드 등급 계산 (3등급: 하옵/중옵/극옵)
+// 하옵: ◆ (80%), 중옵: ◆◆ (90%), 극옵: ◆◆◆ (100%)
 export const getDiamondGrade = (percentage) => {
-  // percentage는 0~100 범위 (0.8x~1.5x를 0~100%로 환산)
-  if (percentage >= 100) return { count: 3, isPerfect: true, label: '극옵', multiplier: 1.5 };
-  if (percentage >= 57) return { count: 3, isPerfect: false, label: '상옵', multiplier: 1.2 }; // (1.2-0.8)/(1.5-0.8) = 57%
-  if (percentage >= 29) return { count: 2, isPerfect: false, label: '중옵', multiplier: 1.0 }; // (1.0-0.8)/(1.5-0.8) = 29%
+  // percentage는 0~100 범위
+  // 상위 33%: 극옵(100%), 중간 33%: 중옵(90%), 하위 33%: 하옵(80%)
+  if (percentage >= 67) return { count: 3, isPerfect: true, label: '극옵', multiplier: 1.0 };
+  if (percentage >= 33) return { count: 2, isPerfect: false, label: '중옵', multiplier: 0.9 };
   return { count: 1, isPerfect: false, label: '하옵', multiplier: 0.8 };
 };
 
@@ -244,10 +246,10 @@ export const getDiamondDisplay = (percentage) => {
 };
 
 // 다이아몬드 색상
-// 하옵~상옵: 회색, 극옵: 노란색 반짝임
+// 하옵~중옵: 회색, 극옵: 노란색 반짝임
 export const getDiamondColor = (percentage) => {
-  if (percentage >= 100) return 'text-yellow-400 animate-pulse'; // 극옵: 노란색 반짝임
-  return 'text-gray-400'; // 하옵~상옵: 모두 회색
+  if (percentage >= 67) return 'text-yellow-400 animate-pulse'; // 극옵: 노란색 반짝임
+  return 'text-gray-400'; // 하옵~중옵: 모두 회색
 };
 
 // 옵션 % 기준 색상 결정 (스탯 값 자체의 색상)
@@ -284,6 +286,9 @@ export const rerollItemWithOrb = (item, playerFloor = 1) => {
   const statPool = statType === 'damage' ? DAMAGE_STATS : UTILITY_STATS;
   const statKeys = Object.keys(statPool).filter(key => key !== 'monstersPerStageReduction');
 
+  // 아이템의 원래 층수 사용 (없으면 playerFloor 사용)
+  const itemFloor = item.floor || playerFloor;
+
   // 기존 스탯을 새로운 랜덤 스탯으로 재조정
   item.stats = [];
 
@@ -313,16 +318,17 @@ export const rerollItemWithOrb = (item, playerFloor = 1) => {
         suffix: statDef.suffix
       });
     } else {
-      // 티어 배수 계산
-      const tierMultiplier = calculateTierMultiplier(playerFloor);
+      // 티어 배수 계산 (아이템 원래 층수 기준)
+      const tierMultiplier = calculateTierMultiplier(itemFloor);
 
       // 등급별 스탯 배수 범위 가져오기
       const rarityConfig = EQUIPMENT_CONFIG.rarities[item.rarity];
-      const statMultiplierMin = rarityConfig.statMin;
-      const statMultiplierMax = rarityConfig.statMax;
+      // rarityConfig가 없으면 기본값 사용 (호환성)
+      const statMultiplierMin = rarityConfig?.statMin || 1;
+      const statMultiplierMax = rarityConfig?.statMax || 2;
 
-      // 기본 스탯 값
-      const baseValue = BASE_VALUES[statDef.id];
+      // 기본 스탯 값 (없으면 기본값 1 사용)
+      const baseValue = BASE_VALUES[statDef.id] || 1;
 
       // 등급별 기본값 = BASE_VALUE × 등급배수 × 티어배수
       // 이 기본값을 중옵(1.0x)으로 설정
@@ -333,16 +339,18 @@ export const rerollItemWithOrb = (item, playerFloor = 1) => {
       const minValue = gradedBaseValue * OPTION_GRADE_MULTIPLIERS.low;  // 0.8x
       const maxValue = gradedBaseValue * OPTION_GRADE_MULTIPLIERS.perfect; // 1.5x
 
-      // 1/20 확률로 극옵(1.5x)
+      // 옵션 등급 확률: 1/5 극옵, 2/5 중옵, 2/5 하옵
       let finalValue;
-      if (Math.random() < 0.05) {
-        // 5% 확률로 극옵
+      const roll = Math.random();
+      if (roll < 0.2) {
+        // 20% (1/5) 확률로 극옵 (1.5x)
         finalValue = maxValue;
+      } else if (roll < 0.6) {
+        // 40% (2/5) 확률로 중옵 (1.0x)
+        finalValue = gradedBaseValue * OPTION_GRADE_MULTIPLIERS.mid;
       } else {
-        // 0.8x ~ 1.5x 범위에서 랜덤 결정
-        const randomOptionMultiplier = OPTION_GRADE_MULTIPLIERS.low +
-          Math.random() * (OPTION_GRADE_MULTIPLIERS.perfect - OPTION_GRADE_MULTIPLIERS.low);
-        finalValue = gradedBaseValue * randomOptionMultiplier;
+        // 40% (2/5) 확률로 하옵 (0.8x)
+        finalValue = minValue;
       }
 
       item.stats.push({
@@ -388,16 +396,20 @@ export const perfectSingleStat = (item, statIndex, playerFloor = 1) => {
   // maxValue가 없으면 새로 계산
   const statType = SLOT_STAT_TYPES[item.slot];
 
-  // 티어 배수 계산
-  const tierMultiplier = calculateTierMultiplier(playerFloor);
+  // 아이템의 원래 층수 사용 (없으면 playerFloor 사용)
+  const itemFloor = item.floor || playerFloor;
+
+  // 티어 배수 계산 (아이템 원래 층수 기준)
+  const tierMultiplier = calculateTierMultiplier(itemFloor);
 
   // 등급별 스탯 배수 범위 가져오기
   const rarityConfig = EQUIPMENT_CONFIG.rarities[item.rarity];
-  const statMultiplierMin = rarityConfig.statMin;
-  const statMultiplierMax = rarityConfig.statMax;
+  // rarityConfig가 없으면 기본값 사용 (호환성)
+  const statMultiplierMin = rarityConfig?.statMin || 1;
+  const statMultiplierMax = rarityConfig?.statMax || 2;
 
-  // 기본 스탯 값
-  const baseValue = BASE_VALUES[stat.id];
+  // 기본 스탯 값 (없으면 기본값 1 사용)
+  const baseValue = BASE_VALUES[stat.id] || 1;
 
   // 등급별 기본값 = BASE_VALUE × 등급배수 × 티어배수
   const gradedBaseValue = baseValue * ((statMultiplierMin + statMultiplierMax) / 2) * tierMultiplier;

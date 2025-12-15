@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
-import { EQUIPMENT_SLOTS, EQUIPMENT_SLOT_NAMES, EQUIPMENT_SETS, getUpgradeCost } from '../../data/equipmentSets';
+import { EQUIPMENT_SLOTS, EQUIPMENT_SLOT_NAMES, EQUIPMENT_SETS, getUpgradeCost, OPTION_GRADES } from '../../data/equipmentSets';
 import { formatNumber, formatStatValue } from '../../utils/formatter';
 import NotificationModal from '../UI/NotificationModal';
 
@@ -34,8 +34,8 @@ const getContrastTextColor = (hexColor) => {
 };
 
 const NewEquipment = () => {
-  const { gameState, equipNewItem, unequipNewItem, disassembleNewItem, disassembleAllNormal, upgradeEquipmentLevel, awakenEquipment, useSetSelector, updateSettings } = useGame();
-  const { equipment, newInventory = [], equipmentFragments = 0, settings = {}, setSelectors = {} } = gameState;
+  const { gameState, equipNewItem, unequipNewItem, disassembleNewItem, disassembleAllNormal, upgradeEquipmentLevel, awakenEquipment, useSetSelector, updateSettings, usePerfectEssence, useOrb } = useGame();
+  const { equipment, newInventory = [], equipmentFragments = 0, settings = {}, setSelectors = {}, orbs = 0 } = gameState;
 
   const [showSets, setShowSets] = useState(false);
   const [showSelector, setShowSelector] = useState(false);
@@ -112,9 +112,8 @@ const NewEquipment = () => {
 
   const handleUpgrade = (slot) => {
     const result = upgradeEquipmentLevel(slot);
-    if (result.success) {
-      showNotification('강화 성공!', result.message, 'success');
-    } else {
+    // 성공 시 팝업 없이 바로 적용, 실패 시에만 알림
+    if (!result.success) {
       showNotification('강화 실패', result.message, 'warning');
     }
   };
@@ -167,7 +166,29 @@ const NewEquipment = () => {
   });
 
   const setCounts = getSetCounts();
-  const awakenStones = gameState.awakenStones || 0;
+  const consumables = gameState.consumables || {};
+  const awakenStones = consumables.awakening_stone || 0;
+  const perfectEssences = consumables.stat_max_item || 0;
+
+  // 완벽의 정수 사용
+  const handleUsePerfectEssence = (slot, statIndex) => {
+    const result = usePerfectEssence(slot, statIndex);
+    if (result.success) {
+      showNotification('극옵화 성공!', result.message, 'success');
+    } else {
+      showNotification('실패', result.message, 'warning');
+    }
+  };
+
+  // 장비 오브 사용
+  const handleUseOrb = (slot) => {
+    const result = useOrb(slot);
+    if (result.success) {
+      showNotification('재굴림 성공!', result.message, 'success');
+    } else {
+      showNotification('실패', result.message, 'warning');
+    }
+  };
 
   return (
     <>
@@ -189,6 +210,12 @@ const NewEquipment = () => {
             </span>
             <span className="text-xs bg-game-panel px-2 py-1 rounded text-purple-400">
               ✨ 각성석: <span className="text-purple-300 font-bold">{awakenStones}</span>
+            </span>
+            <span className="text-xs bg-game-panel px-2 py-1 rounded text-pink-400">
+              💎 정수: <span className="text-pink-300 font-bold">{perfectEssences}</span>
+            </span>
+            <span className="text-xs bg-game-panel px-2 py-1 rounded text-blue-400">
+              🔮 오브: <span className="text-blue-300 font-bold">{orbs}</span>
             </span>
           </div>
 
@@ -335,7 +362,7 @@ const NewEquipment = () => {
         {/* 세트 효과 모달 */}
         {showSets && (
           <div className="bg-game-panel border border-game-border rounded-lg p-3">
-            <div className="grid grid-cols-2 gap-2 max-h-[300px] overflow-y-auto">
+            <div className="grid grid-cols-4 gap-2 max-h-[300px] overflow-y-auto">
               {Object.entries(EQUIPMENT_SETS).map(([setId, setData]) => {
                 const count = setCounts[setId] || 0;
                 const is3SetActive = count >= 3;
@@ -423,115 +450,229 @@ const NewEquipment = () => {
 
                 {item ? (
                   <div
-                    className={`border rounded p-1.5 relative overflow-hidden ${
-                      item.type === 'set' ? 'border-purple-500 bg-purple-900/20' : 'border-gray-600 bg-gray-800/20'
+                    className={`relative overflow-hidden rounded-lg ${
+                      item.type === 'set' ? 'bg-gradient-to-b from-gray-800 to-gray-900' : 'bg-gradient-to-b from-gray-700 to-gray-800'
                     }`}
                     style={item.type === 'set' ? {
-                      borderColor: setData?.color,
-                      boxShadow: `0 0 10px ${setData?.color}40, inset 0 0 15px ${setData?.color}20`
-                    } : {}}
+                      border: `2px solid ${setData?.color}`,
+                      boxShadow: `0 0 15px ${setData?.color}50, inset 0 0 20px ${setData?.color}15`
+                    } : { border: '1px solid #4B5563' }}
                   >
-                    {/* 세트 아이템 글로우 효과 */}
+                    {/* 상단 장식 라인 */}
                     {item.type === 'set' && (
                       <div
-                        className="absolute inset-0 opacity-20 animate-pulse"
+                        className="absolute top-0 left-0 right-0 h-0.5"
+                        style={{ background: `linear-gradient(90deg, transparent, ${setData?.color}, transparent)` }}
+                      />
+                    )}
+
+                    {/* 배경 글로우 */}
+                    {item.type === 'set' && (
+                      <div
+                        className="absolute inset-0 opacity-30"
                         style={{
-                          background: `radial-gradient(circle at center, ${setData?.color}30 0%, transparent 70%)`
+                          background: `radial-gradient(ellipse at top, ${setData?.color}40 0%, transparent 60%)`
                         }}
                       />
                     )}
 
-                    {/* 아이템 이미지 */}
-                    <div className="relative flex justify-center mb-1">
+                    {/* 아이템 이미지 영역 */}
+                    <div className="relative flex justify-center py-4 mb-2">
+                      {/* 아이콘 배경 원형 글로우 */}
+                      {item.type === 'set' && (
+                        <div
+                          className="absolute inset-0 flex items-center justify-center"
+                        >
+                          <div
+                            className="w-16 h-16 rounded-full opacity-40 blur-sm"
+                            style={{ background: `radial-gradient(circle, ${setData?.color}60 0%, transparent 70%)` }}
+                          />
+                        </div>
+                      )}
                       {item.type === 'set' ? (
                         <img
                           src={getSetItemImage(item.setId, slot)}
                           alt={item.name}
-                          className="w-8 h-8 object-contain pixelated"
+                          className="w-14 h-14 object-contain relative z-10"
                           style={{
-                            filter: `drop-shadow(0 0 4px ${setData?.color})`,
+                            filter: `drop-shadow(0 0 8px ${setData?.color}) drop-shadow(0 2px 4px rgba(0,0,0,0.5))`,
                             imageRendering: 'pixelated'
                           }}
                         />
                       ) : (
-                        <span className="text-2xl">{SLOT_ICONS[slot]}</span>
+                        <span className="text-4xl relative z-10 drop-shadow-lg">{SLOT_ICONS[slot]}</span>
                       )}
                     </div>
 
-                    {/* 아이템 이름 */}
-                    {item.type === 'set' ? (
-                      <div
-                        className={`relative rounded px-1 py-0.5 mb-1 ${isSetActive ? 'ring-1 ring-yellow-400' : ''}`}
-                        style={{ backgroundColor: setData?.color }}
-                      >
-                        <p
-                          className="text-[10px] font-bold text-center leading-tight"
-                          style={{ color: getContrastTextColor(setData?.color) }}
+                    {/* 정보 영역 */}
+                    <div className="relative px-2 pb-2">
+                      {/* 아이템 이름 */}
+                      {item.type === 'set' ? (
+                        <div
+                          className={`relative rounded-md px-1.5 py-1 mb-2 ${isSetActive ? 'ring-2 ring-yellow-400/70' : ''}`}
+                          style={{
+                            backgroundColor: setData?.color,
+                            boxShadow: `0 2px 8px ${setData?.color}50`
+                          }}
                         >
-                          {setData?.name}
-                        </p>
-                        {isSetActive && (
-                          <div className="absolute -top-1 -right-1 text-[8px]">✨</div>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="relative text-[10px] mb-1 font-bold text-center text-gray-400 leading-tight">
-                        {EQUIPMENT_SLOT_NAMES[slot]}
-                      </p>
-                    )}
-
-                    {/* 템렙 & 업글 횟수 */}
-                    <div className="relative flex items-center justify-between mb-1 px-1">
-                      <span className="text-[10px] text-yellow-400 font-bold">Lv.{item.itemLevel}</span>
-                      <span className={`text-[9px] ${upgradesLeft > 0 ? 'text-cyan-400' : 'text-red-400'}`}>
-                        ({upgradesLeft}회)
-                      </span>
-                    </div>
-
-                    {/* 스탯 */}
-                    <div className="relative text-[9px] space-y-0">
-                      {item.stats.map((stat, idx) => (
-                        <div key={idx} className="flex justify-between text-gray-400">
-                          <span className="truncate">{stat.name.substring(0, 3)}</span>
-                          <span className="text-green-400">+{formatStatValue(stat.value, stat.suffix)}</span>
+                          <p
+                            className="text-[11px] font-bold text-center leading-tight tracking-wide"
+                            style={{
+                              color: getContrastTextColor(setData?.color),
+                              textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+                            }}
+                          >
+                            {setData?.name}
+                          </p>
+                          {isSetActive && (
+                            <div className="absolute -top-1.5 -right-1.5 text-sm animate-pulse">✨</div>
+                          )}
                         </div>
-                      ))}
+                      ) : (
+                        <p className="relative text-[11px] mb-2 font-bold text-center text-gray-400 leading-tight bg-gray-700/50 rounded py-1">
+                          {EQUIPMENT_SLOT_NAMES[slot]}
+                        </p>
+                      )}
+
+                      {/* 템렙 & 각성 & 업글 횟수 */}
+                      <div className="relative flex items-center justify-between mb-2 px-1">
+                        <div className="flex items-center gap-1">
+                          <div className="flex items-center bg-yellow-900/40 px-1.5 py-0.5 rounded border border-yellow-600/30">
+                            <span className="text-[9px] text-yellow-400 font-bold leading-none">Lv.{item.itemLevel}</span>
+                          </div>
+                          {(item.awakeningCount || 0) > 0 && (
+                            <div className="flex items-center bg-purple-900/40 px-1.5 py-0.5 rounded border border-purple-600/30">
+                              <span className="text-[9px] text-purple-400 font-bold leading-none">⭐{item.awakeningCount}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className={`flex items-center px-1.5 py-0.5 rounded border ${upgradesLeft > 0 ? 'bg-cyan-900/40 border-cyan-600/30' : 'bg-red-900/40 border-red-600/30'}`}>
+                          <span className={`text-[9px] font-bold leading-none ${upgradesLeft > 0 ? 'text-cyan-400' : 'text-red-400'}`}>
+                            {upgradesLeft}회
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 스탯 - 기본옵션 + 잠재옵션 분리 */}
+                      <div className="relative text-[9px] bg-black/20 rounded p-1.5 mb-2 min-h-[60px]">
+                        {/* 기본 옵션 */}
+                        {item.stats.filter(s => s.isMain).map((stat, idx) => {
+                          // 몬스터 감소는 - 표시
+                          const isReduction = stat.id === 'monstersPerStageReduction';
+                          return (
+                            <div key={`main-${idx}`} className="flex justify-between items-center text-cyan-300">
+                              <span className="truncate max-w-[60px]">{stat.name}</span>
+                              <span className="font-medium">{isReduction ? '-' : '+'}{formatStatValue(stat.value, stat.suffix)}{stat.suffix}</span>
+                            </div>
+                          );
+                        })}
+                        {/* 구분선 */}
+                        <div className="border-t border-dashed border-gray-600 my-1"></div>
+                        {/* 잠재 옵션 */}
+                        {item.stats.map((stat, idx) => {
+                          if (stat.isMain) return null;
+                          const optionGrade = stat.optionGrade ?? OPTION_GRADES.LOW;
+                          const isMaxed = optionGrade === OPTION_GRADES.HIGH;
+
+                          // 하옵: 회색, 중옵: 연두색, 극옵: 빨간색
+                          let optionColorClass = 'text-gray-400';
+                          if (optionGrade === OPTION_GRADES.HIGH) {
+                            optionColorClass = 'text-red-400';
+                          } else if (optionGrade === OPTION_GRADES.MID) {
+                            optionColorClass = 'text-green-400';
+                          }
+
+                          const canPerfect = perfectEssences > 0 && !isMaxed && stat.id !== 'monstersPerStageReduction';
+
+                          return (
+                            <div key={`pot-${idx}`} className="flex justify-between items-center group">
+                              <span className={`truncate ${optionColorClass}`}>
+                                {stat.name}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className={`font-medium ${optionGrade === OPTION_GRADES.HIGH ? 'text-red-400' : optionGrade === OPTION_GRADES.MID ? 'text-green-400' : 'text-gray-400'}`}>
+                                  +{formatStatValue(stat.value, stat.suffix)}{stat.suffix}
+                                </span>
+                                {canPerfect && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleUsePerfectEssence(slot, idx);
+                                    }}
+                                    className="text-[7px] px-1 py-0.5 bg-pink-600 hover:bg-pink-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                    title="완벽의 정수 사용 (극옵화)"
+                                  >
+                                    💎
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* 버튼들 */}
+                      <div className="relative space-y-1.5">
+                        {upgradesLeft > 0 ? (
+                          <button
+                            onClick={() => handleUpgrade(slot)}
+                            disabled={!canUpgrade}
+                            className={`w-full py-1.5 rounded-lg text-[11px] font-bold transition-all duration-200 ${
+                              canUpgrade
+                                ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-400/50 hover:scale-[1.02] active:scale-100'
+                                : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+                            }`}
+                          >
+                            <span className="flex items-center justify-center gap-1">
+                              <span className="text-yellow-300">⚡</span> +1
+                              <span className={`text-[9px] ${equipmentFragments >= upgradeCost ? 'opacity-80' : 'text-red-400'}`}>
+                                ({equipmentFragments}/{upgradeCost})
+                              </span>
+                            </span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleAwaken(slot)}
+                            disabled={!canAwaken}
+                            className={`w-full py-1.5 rounded-lg text-[11px] font-bold transition-all duration-200 ${
+                              canAwaken
+                                ? 'bg-gradient-to-r from-purple-500 via-pink-500 to-purple-500 hover:from-purple-400 hover:via-pink-400 hover:to-purple-400 text-white shadow-lg shadow-purple-500/40 hover:shadow-purple-400/60 hover:scale-[1.02] active:scale-100 animate-pulse'
+                                : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+                            }`}
+                          >
+                            <span className="flex items-center justify-center gap-1">
+                              <span>✨</span> 각성
+                              <span className={`text-[9px] ${awakenStones > 0 ? 'opacity-80' : 'text-red-400'}`}>
+                                (💎{awakenStones})
+                              </span>
+                            </span>
+                          </button>
+                        )}
+                        {/* 오브 재굴림 버튼 */}
+                        {orbs > 0 && (
+                          <button
+                            onClick={() => handleUseOrb(slot)}
+                            className="w-full py-1 rounded-lg text-[10px] font-bold bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white transition-all"
+                          >
+                            🔮 옵션 재굴림 ({orbs})
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleUnequip(slot)}
+                          className="w-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-gray-200 text-[10px] py-1 rounded border border-gray-700 hover:border-gray-600 transition-all"
+                        >
+                          해제
+                        </button>
+                      </div>
                     </div>
 
-                    {/* 버튼들 */}
-                    <div className="relative mt-1.5 space-y-1">
-                      {upgradesLeft > 0 ? (
-                        <button
-                          onClick={() => handleUpgrade(slot)}
-                          disabled={!canUpgrade}
-                          className={`w-full py-0.5 rounded text-[10px] font-bold ${
-                            canUpgrade
-                              ? 'bg-green-600 hover:bg-green-700 text-white'
-                              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                          }`}
-                        >
-                          ⬆️ +1 ({upgradeCost}조각)
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleAwaken(slot)}
-                          disabled={!canAwaken}
-                          className={`w-full py-0.5 rounded text-[10px] font-bold ${
-                            canAwaken
-                              ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                          }`}
-                        >
-                          ✨ 각성
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleUnequip(slot)}
-                        className="w-full bg-gray-600 hover:bg-gray-700 text-white text-[10px] py-0.5 rounded"
-                      >
-                        해제
-                      </button>
-                    </div>
+                    {/* 하단 장식 라인 */}
+                    {item.type === 'set' && (
+                      <div
+                        className="absolute bottom-0 left-0 right-0 h-0.5"
+                        style={{ background: `linear-gradient(90deg, transparent, ${setData?.color}60, transparent)` }}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div className="border border-dashed border-gray-700 rounded h-24 flex items-center justify-center">
@@ -544,7 +685,7 @@ const NewEquipment = () => {
         </div>
 
         {/* 인벤토리 */}
-        <div className="bg-game-panel border border-game-border rounded-lg p-3">
+        <div className="bg-game-panel border border-game-border rounded-lg p-3 overflow-visible">
           {/* 인벤토리 헤더 */}
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-sm font-bold text-white">
@@ -574,7 +715,7 @@ const NewEquipment = () => {
               인벤토리가 비어있습니다
             </div>
           ) : (
-            <div className="space-y-2 max-h-[250px] overflow-y-auto">
+            <div className="space-y-2 max-h-[250px] overflow-y-auto py-1">
               {EQUIPMENT_SLOTS.map(slot => {
                 const items = inventoryBySlot[slot];
                 if (items.length === 0) return null;
@@ -592,7 +733,7 @@ const NewEquipment = () => {
                         return (
                           <div
                             key={item.id}
-                            className={`border rounded p-1 relative group cursor-pointer hover:scale-105 transition-all overflow-hidden ${
+                            className={`border rounded p-1 relative group cursor-pointer hover:scale-110 hover:z-10 transition-all ${
                               isSet ? 'border-purple-500 bg-purple-900/20' : 'border-gray-700 bg-gray-800/20'
                             }`}
                             style={isSet ? {
@@ -636,20 +777,15 @@ const NewEquipment = () => {
                             {/* 세트명 */}
                             {isSet && (
                               <p
-                                className="relative text-[7px] text-center font-bold"
+                                className="relative text-[7px] text-center font-bold text-black px-0.5 rounded"
                                 style={{
-                                  color: setData?.color,
-                                  textShadow: '0 1px 2px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.5)'
+                                  backgroundColor: setData?.color,
+                                  textShadow: '0 0 2px rgba(255,255,255,0.5)'
                                 }}
                               >
                                 {setData?.name}
                               </p>
                             )}
-
-                            {/* 스탯 요약 */}
-                            <div className="relative text-[7px] text-gray-500 text-center">
-                              {item.stats.length}옵션
-                            </div>
 
                             {/* 분해 버튼 */}
                             <button

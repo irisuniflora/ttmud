@@ -132,7 +132,7 @@ export const EQUIPMENT_SETS = {
     id: 'shadow',
     name: '어둠의 추적자',
     description: '그림자 속에서 보물을 찾는 자',
-    color: '#4B0082', // 남색
+    color: '#9CA3AF', // 반짝이는 회색
     icon: '🌙',
     setBonus: {
       3: {
@@ -170,7 +170,7 @@ export const EQUIPMENT_SETS = {
     id: 'fortune',
     name: '운명의 유랑자',
     description: '행운을 타고난 방랑자',
-    color: '#32CD32', // 라임
+    color: '#9B2335', // 와인/루비
     icon: '💎',
     setBonus: {
       3: {
@@ -189,7 +189,7 @@ export const EQUIPMENT_SETS = {
     id: 'dimension',
     name: '차원의 방랑자',
     description: '차원을 넘나드는 초월자',
-    color: '#9400D3', // 진보라
+    color: '#00CED1', // 청록/시안
     icon: '🌀',
     setBonus: {
       3: {
@@ -206,21 +206,70 @@ export const EQUIPMENT_SETS = {
   }
 };
 
-// ===== 기본 스탯 (템렙 1 기준) =====
-export const BASE_STATS = {
-  // 딜링 스탯 (무기, 갑옷, 장갑)
-  attack: { base: 10, name: '공격력', suffix: '' },
-  critChance: { base: 0.5, name: '치명타 확률', suffix: '%' },
-  critDmg: { base: 2, name: '치명타 데미지', suffix: '%' },
-  attackPercent: { base: 0.5, name: '공격력', suffix: '%' },
-  bossDamageIncrease: { base: 1, name: '보스 추가 데미지', suffix: '%' },
-  normalMonsterDamageIncrease: { base: 1, name: '일반몹 추가 데미지', suffix: '%' },
+// ===== 기본 옵션 (슬롯별 고정, 옵션등급 없음) =====
+// 무기/갑옷: 복리 20% 성장
+// 장갑/악세서리: 선형 증가
+export const MAIN_STATS = {
+  // 딜링 슬롯
+  weapon: { id: 'attack', name: '공격력', base: 100, suffix: '', roundTo: 0, growth: 'compound', compoundRate: 0.20 },
+  armor: { id: 'accuracy', name: '명중치', base: 30, suffix: '', roundTo: 0, growth: 'compound', compoundRate: 0.20 },
+  gloves: { id: 'critChance', name: '치명타 확률', base: 5, perLevel: 1, suffix: '%', roundTo: 0, max: 100, growth: 'linear' }, // 5% + 1%/레벨
+  // 악세서리 슬롯 (선형 증가)
+  boots: { id: 'monstersPerStageReduction', name: '몬스터 감소', base: 5, perLevel: 1, suffix: '', roundTo: 0, growth: 'linear', isReduction: true },
+  necklace: { id: 'skipChance', name: '스킵 확률', base: 5, perLevel: 0.5, suffix: '%', roundTo: 1, growth: 'linear' },
+  ring: { id: 'ppBonus', name: '환생 포인트', base: 10, perLevel: 2, suffix: '%', roundTo: 0, growth: 'linear' }
+};
 
-  // 유틸 스탯 (신발, 목걸이, 반지)
-  goldBonus: { base: 1, name: '골드 획득', suffix: '%' },
-  expBonus: { base: 1, name: '경험치 획득', suffix: '%' },
-  dropRate: { base: 0.5, name: '드랍률', suffix: '%' },
-  skipChance: { base: 0.3, name: '스킵 확률', suffix: '%' }
+// ===== 잠재 옵션 (랜덤) =====
+export const POTENTIAL_STATS = {
+  // 딜링 잠재옵션 (무기, 갑옷, 장갑)
+  // 10레벨 구간마다 tierGrowth만큼 추가 (Lv.1-10: base, Lv.11-20: base+tierGrowth, ...)
+  attackPercent: { base: 9, tierGrowth: 3, name: '공격력%', suffix: '%' },
+  critDmg: { base: 6, tierGrowth: 2, name: '치명타 데미지', suffix: '%' },
+  bossDamageIncrease: { base: 6, tierGrowth: 2, name: '보스 추가 데미지', suffix: '%' },
+
+  // 유틸 잠재옵션 (신발, 목걸이, 반지)
+  goldBonus: { base: 20, tierGrowth: 5, name: '골드 획득량', suffix: '%' },
+  expBonus: { base: 20, tierGrowth: 5, name: '경험치 획득량', suffix: '%' },
+  dropRate: { base: 10, tierGrowth: 2, name: '드랍률', suffix: '%' }
+};
+
+// 치명타 확률 최대치 (100% 초과분은 치명타 데미지 2배로 전환)
+export const CRIT_CHANCE_CAP = 100;
+
+// ===== 옵션 등급 시스템 =====
+// 옵션 등급: 0=하옵(80%), 1=중옵(90%), 2=극옵(100%)
+export const OPTION_GRADES = {
+  LOW: 0,    // 하옵 80%
+  MID: 1,    // 중옵 90%
+  HIGH: 2    // 극옵 100%
+};
+
+export const OPTION_GRADE_MULTIPLIERS = {
+  [OPTION_GRADES.LOW]: 0.8,
+  [OPTION_GRADES.MID]: 0.9,
+  [OPTION_GRADES.HIGH]: 1.0
+};
+
+// 노말템 확률: 극옵 20%, 중옵 40%, 하옵 40%
+// 세트템 확률: 극옵 25%, 중옵 50%, 하옵 25%
+export const rollOptionGrade = (isSetItem = false) => {
+  const roll = Math.random() * 100;
+  if (isSetItem) {
+    // 세트템: 극옵 25%, 중옵 50%, 하옵 25%
+    if (roll < 25) return OPTION_GRADES.HIGH;
+    if (roll < 75) return OPTION_GRADES.MID;
+    return OPTION_GRADES.LOW;
+  } else {
+    // 노말템: 극옵 20%, 중옵 40%, 하옵 40%
+    if (roll < 20) return OPTION_GRADES.HIGH;
+    if (roll < 60) return OPTION_GRADES.MID;
+    return OPTION_GRADES.LOW;
+  }
+};
+
+export const getGradeMultiplier = (optionGrade) => {
+  return OPTION_GRADE_MULTIPLIERS[optionGrade] ?? OPTION_GRADE_MULTIPLIERS[OPTION_GRADES.LOW];
 };
 
 // 슬롯별 스탯 타입
@@ -233,22 +282,38 @@ export const SLOT_STAT_TYPES = {
   ring: 'utility'
 };
 
-// 딜링 스탯 목록
-export const DAMAGE_STAT_IDS = ['attack', 'critChance', 'critDmg', 'attackPercent', 'bossDamageIncrease', 'normalMonsterDamageIncrease'];
+// 딜링 잠재옵션 목록
+export const DAMAGE_POTENTIAL_IDS = ['attackPercent', 'critDmg', 'bossDamageIncrease'];
 
-// 유틸 스탯 목록
-export const UTILITY_STAT_IDS = ['goldBonus', 'expBonus', 'dropRate', 'skipChance'];
+// 유틸 잠재옵션 목록
+export const UTILITY_POTENTIAL_IDS = ['goldBonus', 'expBonus', 'dropRate'];
+
+// 기존 호환용 (deprecated)
+export const BASE_STATS = { ...POTENTIAL_STATS };
+export const DAMAGE_STAT_IDS = DAMAGE_POTENTIAL_IDS;
+export const UTILITY_STAT_IDS = UTILITY_POTENTIAL_IDS;
 
 // ===== 템렙 시스템 =====
 export const ITEM_LEVEL_CONFIG = {
-  // 템렙 스탯 공식: 기본값 × (1 + 템렙 × multiplier)
-  statMultiplier: 0.02, // 템렙당 2% 증가
+  // 기본옵션 증가율: 업그레이드당 5%
+  mainStatMultiplier: 0.05,
+
+  // 잠재옵션 증가율: 업그레이드당 2%
+  potentialMultiplier: 0.02,
 
   // 기본 업글 횟수
   defaultUpgradesLeft: 10,
 
   // 업글 비용 공식: (totalUpgrades + 1) × baseCost
   baseCost: 5
+};
+
+// ===== 각성 시스템 =====
+export const AWAKENING_CONFIG = {
+  // 각성석 가격 (보스 코인)
+  stoneCost: 100,
+  // 각성 시 복구되는 업그레이드 횟수
+  upgradesRestored: 10
 };
 
 // 드랍 레벨 계산 (층수 기반)
@@ -307,43 +372,94 @@ export const DROP_RATES = {
 
 // ===== 아이템 생성 =====
 
-// 스탯 값 계산 (템렙 기반)
-export const calculateStatValue = (statId, itemLevel) => {
-  const statConfig = BASE_STATS[statId];
-  if (!statConfig) return 0;
+// 기본옵션 값 계산 (슬롯 + 템렙 기반)
+// 딜링 슬롯: 복리 20% 성장
+// 악세서리 슬롯: 선형 증가
+export const calculateMainStatValue = (slot, itemLevel) => {
+  const mainStat = MAIN_STATS[slot];
+  if (!mainStat) return 0;
 
-  const multiplier = 1 + (itemLevel * ITEM_LEVEL_CONFIG.statMultiplier);
-  return statConfig.base * multiplier;
+  let rawValue;
+
+  if (mainStat.growth === 'linear') {
+    // 선형 증가: base + perLevel * (itemLevel - 1)
+    // Lv.1은 기본값, Lv.2부터 perLevel씩 증가
+    rawValue = mainStat.base + (mainStat.perLevel || 0) * Math.max(0, itemLevel - 1);
+  } else {
+    // 복리 성장: base * (1 + rate)^(itemLevel-1)
+    // Lv.1은 기본값, Lv.2부터 복리 적용
+    const rate = mainStat.compoundRate || 0.20; // 기본 20%
+    const compoundMultiplier = Math.pow(1 + rate, Math.max(0, itemLevel - 1));
+    rawValue = mainStat.base * compoundMultiplier;
+  }
+
+  // 올림 처리 (roundTo: 0 = 일의자리, 1 = 소수점 첫째자리)
+  const roundTo = mainStat.roundTo ?? 1;
+  const factor = Math.pow(10, roundTo);
+  return Math.ceil(rawValue * factor) / factor;
 };
 
-// 노말 아이템 생성
+// 잠재옵션 값 계산 (템렙 기반, 10레벨 구간 시스템)
+// Lv.1-10: base, Lv.11-20: base+tierGrowth, Lv.21-30: base+tierGrowth*2, ...
+export const calculatePotentialValue = (statId, itemLevel) => {
+  const statConfig = POTENTIAL_STATS[statId];
+  if (!statConfig) return 0;
+
+  // 10레벨 단위 구간 계산 (Lv.1-10 = tier 0, Lv.11-20 = tier 1, ...)
+  const tier = Math.floor((itemLevel - 1) / 10);
+  const tierBonus = tier * (statConfig.tierGrowth || 0);
+
+  return statConfig.base + tierBonus;
+};
+
+// 기존 호환용
+export const calculateStatValue = calculatePotentialValue;
+
+// 노말 아이템 생성 (세트템 대비 60% 성능)
 export const generateNormalItem = (slot, floor) => {
   const statType = SLOT_STAT_TYPES[slot];
-  const statIds = statType === 'damage' ? DAMAGE_STAT_IDS : UTILITY_STAT_IDS;
+  const potentialIds = statType === 'damage' ? DAMAGE_POTENTIAL_IDS : UTILITY_POTENTIAL_IDS;
   const itemLevel = getDropLevel(floor);
 
-  // 랜덤 스탯 3개 선택 (중복 가능)
-  const stats = [];
+  // 기본옵션 생성 (세트템의 60%)
+  const mainStatConfig = MAIN_STATS[slot];
+  const mainStat = {
+    id: mainStatConfig.id,
+    name: mainStatConfig.name,
+    value: calculateMainStatValue(slot, itemLevel) * 0.6,
+    suffix: mainStatConfig.suffix,
+    isMain: true,
+    max: mainStatConfig.max ? mainStatConfig.max * 0.6 : null
+  };
+
+  // 잠재옵션 3개 (세트템과 동일 개수, 하지만 최대치가 60%)
+  const potentials = [];
   for (let i = 0; i < 3; i++) {
-    const statId = statIds[Math.floor(Math.random() * statIds.length)];
-    const statConfig = BASE_STATS[statId];
-    const value = calculateStatValue(statId, itemLevel);
+    const statId = potentialIds[Math.floor(Math.random() * potentialIds.length)];
+    const statConfig = POTENTIAL_STATS[statId];
+    const baseValue = calculatePotentialValue(statId, itemLevel);
+    const optionGrade = rollOptionGrade(false); // 노말템
+    const gradeMultiplier = getGradeMultiplier(optionGrade);
 
-    // 옵션 등급 (0.8x ~ 1.5x)
-    const optionMultiplier = 0.8 + (Math.random() * 0.7);
-    const finalValue = value * optionMultiplier;
+    // 노말템 60% 페널티 적용 + 반올림(소수점 첫째자리)
+    const rawValue = baseValue * gradeMultiplier * 0.6;
+    const finalValue = Math.round(rawValue * 10) / 10;
 
-    stats.push({
+    potentials.push({
       id: statId,
       name: statConfig.name,
-      value: finalValue,
+      value: Math.max(0, finalValue),
       suffix: statConfig.suffix,
-      optionGrade: optionMultiplier
+      optionGrade,
+      isMain: false
     });
   }
 
+  // stats 배열에 기본옵션 + 잠재옵션 합침
+  const stats = [mainStat, ...potentials];
+
   return {
-    id: `normal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    id: `normal_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
     type: 'normal',
     slot,
     name: EQUIPMENT_SLOT_NAMES[slot],
@@ -353,6 +469,8 @@ export const generateNormalItem = (slot, floor) => {
     upgradesLeft: ITEM_LEVEL_CONFIG.defaultUpgradesLeft,
     totalUpgrades: 0,
     stats,
+    mainStat, // 기본옵션 별도 저장
+    potentials, // 잠재옵션 별도 저장
     createdAt: Date.now()
   };
 };
@@ -366,30 +484,47 @@ export const generateSetItem = (slot, floor, setId = null) => {
   const itemLevel = getDropLevel(floor);
 
   const statType = SLOT_STAT_TYPES[slot];
-  const statIds = statType === 'damage' ? DAMAGE_STAT_IDS : UTILITY_STAT_IDS;
+  const potentialIds = statType === 'damage' ? DAMAGE_POTENTIAL_IDS : UTILITY_POTENTIAL_IDS;
 
-  // 랜덤 스탯 3개 선택
-  const stats = [];
+  // 기본옵션 생성
+  const mainStatConfig = MAIN_STATS[slot];
+  const mainStat = {
+    id: mainStatConfig.id,
+    name: mainStatConfig.name,
+    value: calculateMainStatValue(slot, itemLevel),
+    suffix: mainStatConfig.suffix,
+    isMain: true,
+    max: mainStatConfig.max || null
+  };
+
+  // 세트템 잠재옵션 3개 (세트템은 하옵 확률 낮춤)
+  const potentials = [];
   for (let i = 0; i < 3; i++) {
-    const statId = statIds[Math.floor(Math.random() * statIds.length)];
-    const statConfig = BASE_STATS[statId];
-    const value = calculateStatValue(statId, itemLevel);
+    const statId = potentialIds[Math.floor(Math.random() * potentialIds.length)];
+    const statConfig = POTENTIAL_STATS[statId];
+    const baseValue = calculatePotentialValue(statId, itemLevel);
+    const optionGrade = rollOptionGrade(true); // 세트템
+    const gradeMultiplier = getGradeMultiplier(optionGrade);
 
-    // 세트템은 옵션 등급이 조금 더 좋음 (0.9x ~ 1.5x)
-    const optionMultiplier = 0.9 + (Math.random() * 0.6);
-    const finalValue = value * optionMultiplier;
+    // 반올림(소수점 첫째자리)
+    const rawValue = baseValue * gradeMultiplier;
+    const finalValue = Math.round(rawValue * 10) / 10;
 
-    stats.push({
+    potentials.push({
       id: statId,
       name: statConfig.name,
-      value: finalValue,
+      value: Math.max(0, finalValue),
       suffix: statConfig.suffix,
-      optionGrade: optionMultiplier
+      optionGrade,
+      isMain: false
     });
   }
 
+  // stats 배열에 기본옵션 + 잠재옵션 합침
+  const stats = [mainStat, ...potentials];
+
   return {
-    id: `set_${selectedSetId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    id: `set_${selectedSetId}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
     type: 'set',
     setId: selectedSetId,
     setName: setData.name,
@@ -403,6 +538,8 @@ export const generateSetItem = (slot, floor, setId = null) => {
     upgradesLeft: ITEM_LEVEL_CONFIG.defaultUpgradesLeft,
     totalUpgrades: 0,
     stats,
+    mainStat, // 기본옵션 별도 저장
+    potentials, // 잠재옵션 별도 저장
     createdAt: Date.now()
   };
 };
@@ -508,8 +645,20 @@ export const calculateEquipmentStats = (equippedItems) => {
 
     item.stats.forEach(stat => {
       totalStats[stat.id] = (totalStats[stat.id] || 0) + stat.value;
+
+      // 치명타 확률 오버플로우 → 치명타 데미지로 전환
+      if (stat.overflowCritDmg) {
+        totalStats['critDmg'] = (totalStats['critDmg'] || 0) + stat.overflowCritDmg;
+      }
     });
   });
+
+  // 치명타 확률 최대 50% 캡 적용
+  if (totalStats['critChance'] > CRIT_CHANCE_CAP) {
+    const overflow = totalStats['critChance'] - CRIT_CHANCE_CAP;
+    totalStats['critChance'] = CRIT_CHANCE_CAP;
+    totalStats['critDmg'] = (totalStats['critDmg'] || 0) + (overflow * 2);
+  }
 
   return totalStats;
 };
@@ -548,11 +697,40 @@ export const upgradeItemLevel = (item, fragments) => {
   item.upgradesLeft = (item.upgradesLeft || ITEM_LEVEL_CONFIG.defaultUpgradesLeft) - 1;
   item.totalUpgrades = (item.totalUpgrades || 0) + 1;
 
+  // 잠재옵션 구간 계산 (Lv.1-10 = tier 0, Lv.11-20 = tier 1, ...)
+  // Lv.10 → Lv.11 올리면 바로 티어업!
+  const oldPotentialTier = Math.floor(oldLevel / 10);
+  const newPotentialTier = Math.floor(newLevel / 10);
+  const potentialTierUp = newPotentialTier > oldPotentialTier;
+
   item.stats.forEach(stat => {
-    const baseValue = calculateStatValue(stat.id, item.baseItemLevel);
-    const newMultiplier = 1 + (newLevel * ITEM_LEVEL_CONFIG.statMultiplier);
-    const baseMultiplier = 1 + (item.baseItemLevel * ITEM_LEVEL_CONFIG.statMultiplier);
-    stat.value = baseValue * stat.optionGrade * (newMultiplier / baseMultiplier);
+    if (stat.isMain) {
+      // 기본옵션: 딜링 슬롯은 복리 5%, 악세서리는 선형 증가
+      const mainStatConfig = MAIN_STATS[item.slot];
+      // 노말템 60% 패널티 적용
+      const normalPenalty = item.type === 'normal' ? 0.6 : 1;
+      const rawValue = calculateMainStatValue(item.slot, newLevel) * normalPenalty;
+      // 올림 처리 (악세서리는 이미 calculateMainStatValue에서 처리됨)
+      const roundTo = mainStatConfig.roundTo ?? 1;
+      const factor = Math.pow(10, roundTo);
+      stat.value = Math.ceil(rawValue * factor) / factor;
+
+      // 치명타 확률 캡 체크 (100% 초과 시 치명타 데미지로 전환)
+      if (stat.id === 'critChance' && stat.value > CRIT_CHANCE_CAP) {
+        const overflow = stat.value - CRIT_CHANCE_CAP;
+        stat.value = CRIT_CHANCE_CAP;
+        stat.overflowCritDmg = overflow * 2;
+      }
+    } else if (potentialTierUp) {
+      // 잠재옵션: 10레벨 구간 돌파 시 tierGrowth만큼 증가
+      const statConfig = POTENTIAL_STATS[stat.id];
+      const tierBonus = newPotentialTier * (statConfig?.tierGrowth || 0);
+      const newBase = statConfig.base + tierBonus;
+      const gradeMultiplier = getGradeMultiplier(stat.optionGrade);
+      const normalPenalty = item.type === 'normal' ? 0.6 : 1;
+      const rawValue = newBase * gradeMultiplier * normalPenalty;
+      stat.value = Math.max(0, Math.round(rawValue * 10) / 10);
+    }
   });
 
   return {
@@ -567,9 +745,96 @@ export const upgradeItemLevel = (item, fragments) => {
 
 // 장비 각성 (업글 횟수 리셋)
 export const awakenItem = (item) => {
-  item.upgradesLeft = ITEM_LEVEL_CONFIG.defaultUpgradesLeft;
+  // 각성 횟수 증가 (없으면 0에서 시작)
+  item.awakeningCount = (item.awakeningCount || 0) + 1;
+  item.upgradesLeft = AWAKENING_CONFIG.upgradesRestored;
   return {
     success: true,
-    message: `장비가 각성되었습니다! 업그레이드 횟수가 ${ITEM_LEVEL_CONFIG.defaultUpgradesLeft}회로 복구되었습니다.`
+    message: `장비가 ${item.awakeningCount}차 각성되었습니다! 업그레이드 횟수가 ${AWAKENING_CONFIG.upgradesRestored}회로 복구되었습니다.`
   };
+};
+
+// 장비 오브로 잠재옵션 재굴림
+// 아이템의 현재 템렙 기준으로 잠재옵션을 새로 굴림
+// 옵션 등급: 극옵 100% (20% 확률, 빨간색), 중옵 90% (40% 확률, 연두색), 하옵 80% (40% 확률, 회색)
+export const rerollItemPotentials = (item) => {
+  if (!item || !item.stats) {
+    return false;
+  }
+
+  const statType = SLOT_STAT_TYPES[item.slot];
+  const potentialIds = statType === 'damage' ? DAMAGE_POTENTIAL_IDS : UTILITY_POTENTIAL_IDS;
+  const itemLevel = item.itemLevel || 1;
+  const isSetItem = item.type === 'set';
+  const normalPenalty = isSetItem ? 1 : 0.6;
+
+  // 잠재옵션만 재굴림 (기본옵션은 유지)
+  const newPotentials = [];
+  for (let i = 0; i < 3; i++) {
+    const statId = potentialIds[Math.floor(Math.random() * potentialIds.length)];
+    const statConfig = POTENTIAL_STATS[statId];
+    const baseValue = calculatePotentialValue(statId, itemLevel);
+    const optionGrade = rollOptionGrade(isSetItem);
+    const gradeMultiplier = getGradeMultiplier(optionGrade);
+
+    const rawValue = baseValue * gradeMultiplier * normalPenalty;
+    const finalValue = Math.round(rawValue * 10) / 10;
+
+    newPotentials.push({
+      id: statId,
+      name: statConfig.name,
+      value: Math.max(0, finalValue),
+      suffix: statConfig.suffix,
+      optionGrade
+    });
+  }
+
+  // stats 배열에서 기본옵션(isMain)만 유지하고 잠재옵션 교체
+  const mainStat = item.stats.find(s => s.isMain);
+  item.stats = mainStat ? [mainStat, ...newPotentials] : newPotentials;
+  item.potentials = newPotentials;
+
+  return true;
+};
+
+// 완벽의 정수로 잠재옵션 1개를 극옵(100%)으로 변경
+export const perfectPotentialStat = (item, statIndex) => {
+  if (!item || !item.stats || !item.stats[statIndex]) {
+    return false;
+  }
+
+  const stat = item.stats[statIndex];
+
+  // 기본옵션(isMain)은 변경 불가
+  if (stat.isMain) {
+    return false;
+  }
+
+  // 몬스터 감소 옵션은 불가
+  if (stat.id === 'monstersPerStageReduction') {
+    return false;
+  }
+
+  // 이미 극옵이면 불가
+  if (stat.optionGrade === OPTION_GRADES.HIGH) {
+    return false;
+  }
+
+  const statConfig = POTENTIAL_STATS[stat.id];
+  if (!statConfig) {
+    return false;
+  }
+
+  const itemLevel = item.itemLevel || 1;
+  const baseValue = calculatePotentialValue(stat.id, itemLevel);
+  const normalPenalty = item.type === 'normal' ? 0.6 : 1;
+  const gradeMultiplier = getGradeMultiplier(OPTION_GRADES.HIGH);
+
+  const rawValue = baseValue * gradeMultiplier * normalPenalty;
+  const finalValue = Math.round(rawValue * 10) / 10;
+
+  stat.value = Math.max(0, finalValue);
+  stat.optionGrade = OPTION_GRADES.HIGH;
+
+  return true;
 };

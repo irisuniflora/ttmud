@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../../store/GameContext';
-import { FLOOR_RANGES, getCollectionBonus } from '../../data/monsters';
+import { FLOOR_RANGES, getCollectionBonus, getBossCollectionBonus } from '../../data/monsters';
 import { formatNumberWithCommas } from '../../utils/formatter';
 
 const Collection = () => {
@@ -181,9 +181,9 @@ const Collection = () => {
         </div>
       )}
 
-      {/* 몬스터 도감 - 레어/전설 통합 */}
+      {/* 몬스터 도감 - 2열 레이아웃 */}
       {activeTab === 'monsters' && (
-        <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
           {Object.entries(FLOOR_RANGES).map(([floorStart, data]) => {
             const floor = parseInt(floorStart);
 
@@ -214,48 +214,30 @@ const Collection = () => {
             const releaseBonus = engine ? engine.calculateReleaseBonus(floor) : { damageBonus: 0, dropRateBonus: 0 };
 
             return (
-              <div key={floor} className="bg-game-panel border border-game-border rounded-lg p-3">
-                {/* 던전 제목 */}
-                <div className="flex items-center justify-between mb-2">
+              <div key={floor} className="bg-game-panel border border-game-border rounded-lg p-2">
+                {/* 던전 제목 + 세트효과 */}
+                <div className="flex items-start justify-between mb-1.5">
                   <div>
-                    <h4 className="text-sm font-bold text-cyan-400">
-                      {data.name} <span className="text-gray-400 font-normal">({floor}~{floor + 4}층)</span>
+                    <h4 className="text-xs font-bold text-cyan-400">
+                      {data.name} <span className="text-gray-500 font-normal">({floor}~{floor + 4}층)</span>
                     </h4>
-                    <div className="flex items-center gap-3">
-                      {/* 레어 도감 */}
-                      <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-purple-400">레어: {rareCollected}/10</span>
-                      </div>
-                      {/* 전설 도감 */}
-                      <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-orange-400">전설: {legendaryCollected}/10</span>
-                      </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-purple-400 font-bold">레어: {rareCollected}/10</span>
+                      <span className="text-[10px] text-orange-400 font-bold">전설: {legendaryCollected}/10</span>
                     </div>
                     {(rareReleased > 0 || legendaryReleased > 0) && (
-                      <p className="text-[10px] text-yellow-400">
-                        방생 보너스: +{releaseBonus.damageBonus}% 데미지, +{releaseBonus.dropRateBonus}%p 드랍
+                      <p className="text-[9px] text-yellow-400 mt-0.5">
+                        방생: +{releaseBonus.damageBonus}% 뎀, +{releaseBonus.dropRateBonus}%p 드랍
                       </p>
                     )}
                   </div>
-                  <div className="text-xs text-right space-y-1">
-                    <div className="text-[9px] text-gray-400">
-                      <div className="flex items-center justify-end gap-1 mb-0.5">
-                        <span className="text-purple-400 font-bold">레어 -{rareBonus.monsterReduction}</span>
-                        {rareCollected >= 10 && <span className="text-green-400">✓</span>}
-                      </div>
-                      <div className="flex items-center justify-end gap-1">
-                        <span className="text-orange-400 font-bold">전설 -{legendaryBonus.monsterReduction}</span>
-                        {legendaryCollected >= 10 && <span className="text-green-400">✓</span>}
-                      </div>
-                    </div>
-                    <p className="text-green-400 font-bold text-[10px]">
-                      총 감소: -{rareBonus.monsterReduction + legendaryBonus.monsterReduction}
+                  {/* 세트효과 - 더 눈에 띄게 */}
+                  <div className="text-right">
+                    <p className="text-green-400 font-bold text-sm">
+                      총 -{rareBonus.monsterReduction + legendaryBonus.monsterReduction}
                     </p>
-                    <p className="text-gray-500 text-[8px]">
-                      (레어: 2/5/10셋 = -1/-3/-8)
-                    </p>
-                    <p className="text-gray-500 text-[8px]">
-                      (전설: 2/5/10셋 = -2/-7/-20)
+                    <p className="text-[9px] text-gray-400">
+                      (레어 -{rareBonus.monsterReduction} / 전설 -{legendaryBonus.monsterReduction})
                     </p>
                   </div>
                 </div>
@@ -349,53 +331,82 @@ const Collection = () => {
       )}
 
       {/* 보스 도감 */}
-      {activeTab === 'bosses' && (
-        <div className="space-y-4">
-          <p className="text-gray-300 text-sm font-bold">
-            보스 도감 (레어 🌸 / 전설 ⭐)
-          </p>
+      {activeTab === 'bosses' && (() => {
+        // 전체 보스 수집 카운트
+        let totalRareBosses = 0;
+        let totalLegendaryBosses = 0;
+        Object.entries(FLOOR_RANGES).forEach(([floorStart]) => {
+          const floor = parseInt(floorStart);
+          if (collection.rareBosses?.[`rare_boss_${floor}`]?.unlocked) totalRareBosses++;
+          if (collection.legendaryBosses?.[`legendary_boss_${floor}`]?.unlocked) totalLegendaryBosses++;
+        });
+        const totalBossZones = Object.keys(FLOOR_RANGES).length;
+        const bossBonus = getBossCollectionBonus(totalRareBosses, totalLegendaryBosses);
 
-          <div className="grid grid-cols-4 gap-2">
-            {Object.entries(FLOOR_RANGES).map(([floorStart, data]) => {
-              const floor = parseInt(floorStart);
-              const rareBossId = `rare_boss_${floor}`;
-              const legendaryBossId = `legendary_boss_${floor}`;
-
-              const rareUnlocked = collection.rareBosses?.[rareBossId]?.unlocked;
-              const legendaryUnlocked = collection.legendaryBosses?.[legendaryBossId]?.unlocked;
-
-              return (
-                <div key={floor} className="bg-game-panel border border-game-border rounded p-2">
-                  <p className="text-[10px] text-cyan-400 font-bold mb-1">{data.name} <span className="text-gray-500 font-normal">({floor}~{floor + 4}층)</span></p>
-                  <p className="text-[9px] text-gray-300 font-bold mb-1 truncate">{data.boss}</p>
-
-                  <div className="space-y-0.5">
-                    <div className={`border rounded p-1 text-center ${
-                      rareUnlocked ? 'bg-pink-900 border-pink-500' : 'bg-gray-900 border-gray-700'
-                    }`}>
-                      <p className={`text-[8px] font-bold ${
-                        rareUnlocked ? 'text-pink-400' : 'text-gray-600'
-                      }`}>
-                        {rareUnlocked ? '희귀 보스!' : '-'}
-                      </p>
-                    </div>
-
-                    <div className={`border rounded p-1 text-center ${
-                      legendaryUnlocked ? 'bg-orange-900 border-orange-500' : 'bg-gray-900 border-gray-700'
-                    }`}>
-                      <p className={`text-[8px] font-bold ${
-                        legendaryUnlocked ? 'text-orange-400' : 'text-gray-600'
-                      }`}>
-                        {legendaryUnlocked ? '전설 보스!' : '-'}
-                      </p>
-                    </div>
+        return (
+          <div className="space-y-3">
+            {/* 보스 도감 세트효과 */}
+            <div className="bg-gradient-to-r from-purple-900/50 to-orange-900/50 border border-purple-500 rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-yellow-400 mb-1">🏆 보스 도감 보너스</h4>
+                  <div className="text-xs space-y-0.5">
+                    <p className="text-pink-400">
+                      🌸 레어 보스: <span className="font-bold">{totalRareBosses}/{totalBossZones}</span>
+                      <span className="text-gray-400 ml-2">(5/10/20셋 = +10/+20/+50% 골드)</span>
+                    </p>
+                    <p className="text-orange-400">
+                      ⭐ 전설 보스: <span className="font-bold">{totalLegendaryBosses}/{totalBossZones}</span>
+                      <span className="text-gray-400 ml-2">(5/10/20셋 = +10/+25/+60% 데미지)</span>
+                    </p>
                   </div>
                 </div>
-              );
-            })}
+                <div className="text-right">
+                  <p className="text-yellow-400 font-bold text-lg">+{bossBonus.goldBonus}% 골드</p>
+                  <p className="text-red-400 font-bold text-lg">+{bossBonus.damageBonus}% 데미지</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 보스 목록 - 5열 */}
+            <div className="grid grid-cols-5 gap-2">
+              {Object.entries(FLOOR_RANGES).map(([floorStart, data]) => {
+                const floor = parseInt(floorStart);
+                const rareBossId = `rare_boss_${floor}`;
+                const legendaryBossId = `legendary_boss_${floor}`;
+
+                const rareUnlocked = collection.rareBosses?.[rareBossId]?.unlocked;
+                const legendaryUnlocked = collection.legendaryBosses?.[legendaryBossId]?.unlocked;
+
+                return (
+                  <div key={floor} className="bg-game-panel border border-game-border rounded p-1.5">
+                    <p className="text-[9px] text-cyan-400 font-bold truncate">{data.name}</p>
+                    <p className="text-[8px] text-gray-400 mb-1">{floor}~{floor + 4}층</p>
+                    <p className="text-[8px] text-gray-300 font-bold mb-1 truncate">{data.boss}</p>
+
+                    <div className="flex gap-1">
+                      <div className={`flex-1 border rounded py-0.5 text-center ${
+                        rareUnlocked ? 'bg-pink-900/60 border-pink-500' : 'bg-gray-900 border-gray-700'
+                      }`}>
+                        <span className={`text-[9px] ${rareUnlocked ? 'text-pink-400' : 'text-gray-600'}`}>
+                          {rareUnlocked ? '🌸' : '-'}
+                        </span>
+                      </div>
+                      <div className={`flex-1 border rounded py-0.5 text-center ${
+                        legendaryUnlocked ? 'bg-orange-900/60 border-orange-500' : 'bg-gray-900 border-gray-700'
+                      }`}>
+                        <span className={`text-[9px] ${legendaryUnlocked ? 'text-orange-400' : 'text-gray-600'}`}>
+                          {legendaryUnlocked ? '⭐' : '-'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* 통계 */}
       {activeTab === 'stats' && (

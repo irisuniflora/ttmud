@@ -48,7 +48,18 @@ const StatsList = () => {
     }
   });
 
-  // 장비 스탯 계산
+  // 슬롯별 유물 보너스 매핑
+  const slotRelicBonusMap = {
+    weapon: relicEffects.weaponPercent || 0,
+    helmet: relicEffects.helmetPercent || 0,
+    armor: relicEffects.armorPercent || 0,
+    boots: relicEffects.bootsPercent || 0,
+    necklace: relicEffects.necklacePercent || 0,
+    ring: relicEffects.ringPercent || 0
+  };
+  const allEquipmentBonus = relicEffects.equipmentPercent || 0;
+
+  // 장비 스탯 계산 (유물 보너스 적용)
   let equipmentAttack = 0;
   let equipmentCritChance = 0;
   let equipmentCritDmg = 0;
@@ -57,30 +68,36 @@ const StatsList = () => {
   let equipmentExpBonus = 0;
   let equipmentMonstersPerStageReduction = 0;
   let equipmentBossDamageIncrease = 0;
-  let equipmentNormalMonsterDamageIncrease = 0;
+
+  // 유물 장비 보너스 합계 (표시용)
+  let totalRelicEquipBonus = 0;
 
   Object.entries(equipment).forEach(([slot, item]) => {
     if (item) {
       const enhancementBonus = 1 + ((slotEnhancements[slot] || 0) * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+      // 유물 보너스: 전체 장비 보너스 + 해당 슬롯 보너스
+      const slotBonus = slotRelicBonusMap[slot] || 0;
+      const relicBonus = 1 + (allEquipmentBonus + slotBonus) / 100;
+      totalRelicEquipBonus += (allEquipmentBonus + slotBonus);
+
       item.stats.forEach(stat => {
+        const finalValue = stat.value * enhancementBonus * relicBonus;
         if (stat.id === 'attack') {
-          equipmentAttack += stat.value * enhancementBonus;
+          equipmentAttack += finalValue;
         } else if (stat.id === 'critChance') {
-          equipmentCritChance += stat.value * enhancementBonus;
+          equipmentCritChance += finalValue;
         } else if (stat.id === 'critDmg') {
-          equipmentCritDmg += stat.value * enhancementBonus;
+          equipmentCritDmg += finalValue;
         } else if (stat.id === 'goldBonus') {
-          equipmentGoldBonus += stat.value * enhancementBonus;
+          equipmentGoldBonus += finalValue;
         } else if (stat.id === 'dropRate') {
-          equipmentDropRate += stat.value * enhancementBonus;
+          equipmentDropRate += finalValue;
         } else if (stat.id === 'expBonus') {
-          equipmentExpBonus += stat.value * enhancementBonus;
+          equipmentExpBonus += finalValue;
         } else if (stat.id === 'monstersPerStageReduction') {
-          equipmentMonstersPerStageReduction += stat.value * enhancementBonus;
+          equipmentMonstersPerStageReduction += finalValue;
         } else if (stat.id === 'bossDamageIncrease') {
-          equipmentBossDamageIncrease += stat.value * enhancementBonus;
-        } else if (stat.id === 'normalMonsterDamageIncrease') {
-          equipmentNormalMonsterDamageIncrease += stat.value * enhancementBonus;
+          equipmentBossDamageIncrease += finalValue;
         }
       });
     }
@@ -108,8 +125,8 @@ const StatsList = () => {
     { icon: '💥', name: '치명타 확률', value: formatPercent(totalCritChance), color: 'text-rose-400' },
     { icon: '🎯', name: '치명타 데미지', value: formatPercent(totalCritDmg), color: 'text-rose-400' },
     { icon: '👑', name: '보스 데미지', value: '+' + formatPercent(equipmentBossDamageIncrease + (relicEffects.bossDamage || 0)), color: 'text-rose-400' },
-    { icon: '🗡️', name: '일반몹 데미지', value: '+' + formatPercent(equipmentNormalMonsterDamageIncrease), color: 'text-rose-400' },
     { icon: '💎', name: '유물 데미지', value: '+' + formatPercent(relicEffects.damagePercent || 0), color: 'text-pink-400', hide: (relicEffects.damagePercent || 0) === 0 },
+    { icon: '🧭', name: '유물 장비', value: '+' + formatPercent(totalRelicEquipBonus / 6), color: 'text-cyan-400', hide: totalRelicEquipBonus === 0, tooltip: '유물로 인한 장비 스탯 평균 증가량' },
 
     // 보너스 관련 스탯 (금색)
     { icon: '💰', name: '골드 획득량', value: '+' + formatPercent(player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus + (relicEffects.goldPercent || 0)), color: 'text-yellow-400' },

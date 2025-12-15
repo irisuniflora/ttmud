@@ -9,7 +9,7 @@ import SkillTree from './components/SkillTree/SkillTree';
 import Collection from './components/Collection/Collection';
 import SealedZone from './components/SealedZone/SealedZone';
 import BossCoinShop from './components/SealedZone/BossCoinShop';
-import WorldBoss from './components/WorldBoss/WorldBoss';
+// import WorldBoss from './components/WorldBoss/WorldBoss'; // 월드보스 시스템 비활성화
 import PrestigeRelics from './components/Prestige/PrestigeRelics';
 
 const GameContent = () => {
@@ -190,6 +190,7 @@ const GameContent = () => {
               >
                 🪙 보스상점
               </button>
+              {/* 월드보스 탭 비활성화
               <button
                 onClick={() => setActiveTab('worldBoss')}
                 className={`px-4 py-2 rounded font-bold transition-all border-2 ${
@@ -200,6 +201,7 @@ const GameContent = () => {
               >
                 👹 월드보스
               </button>
+              */}
               <button
                 onClick={() => setActiveTab('prestige')}
                 className={`px-4 py-2 rounded font-bold transition-all ${
@@ -221,7 +223,7 @@ const GameContent = () => {
               {activeTab === 'collection' && <Collection />}
               {activeTab === 'sealedZone' && <SealedZone />}
               {activeTab === 'bossShop' && <BossCoinShop />}
-              {activeTab === 'worldBoss' && <WorldBoss />}
+              {/* {activeTab === 'worldBoss' && <WorldBoss />} */}
               {activeTab === 'prestige' && <PrestigeRelics />}
             </div>
           </div>

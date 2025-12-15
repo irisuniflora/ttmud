@@ -1,9 +1,19 @@
 import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
 import { formatNumber } from '../../utils/formatter';
+import { AWAKENING_CONFIG } from '../../data/equipmentSets';
 
 // 보스 코인 상점 상품 목록
 const SHOP_ITEMS = [
+  {
+    id: 'awakening_stone',
+    name: '각성석',
+    description: '장비의 업그레이드 횟수를 10회 복구 (비용은 누적)',
+    icon: '✨',
+    cost: AWAKENING_CONFIG.stoneCost,
+    maxPurchase: 999,
+    rarity: 'epic'
+  },
   {
     id: 'monster_selection_ticket',
     name: '몬스터 도감 선택권',
@@ -17,7 +27,7 @@ const SHOP_ITEMS = [
     id: 'stat_max_item',
     name: '완벽의 정수',
     description: '장비 옵션 1개를 극옵으로 변경',
-    icon: '⚙️',
+    icon: '💎',
     cost: 2000,
     maxPurchase: 99,
     rarity: 'mythic'
@@ -42,7 +52,7 @@ const RARITY_COLORS = {
 };
 
 const BossCoinShop = () => {
-  const { gameState, setGameState } = useGame();
+  const { gameState, setGameState, engine } = useGame();
   const { sealedZone = {} } = gameState;
   const { bossCoins = 0 } = sealedZone;
 
@@ -66,18 +76,51 @@ const BossCoinShop = () => {
       return;
     }
 
+    // GameEngine 상태 직접 업데이트 (저장을 위해)
+    if (engine) {
+      if (!engine.state.sealedZone) {
+        engine.state.sealedZone = { tickets: 0, ownedInscriptions: [], unlockedBosses: ['vecta'], unlockedInscriptionSlots: 1, bossCoins: 0 };
+      }
+      engine.state.sealedZone.bossCoins = (engine.state.sealedZone.bossCoins || 0) - totalCost;
+
+      if (!engine.state.consumables) {
+        engine.state.consumables = {};
+      }
+
+      switch (item.id) {
+        case 'awakening_stone':
+          engine.state.consumables.awakening_stone = (engine.state.consumables.awakening_stone || 0) + amount;
+          break;
+        case 'monster_selection_ticket':
+          engine.state.consumables.monster_selection_ticket = (engine.state.consumables.monster_selection_ticket || 0) + amount;
+          break;
+        case 'stat_max_item':
+          engine.state.consumables.stat_max_item = (engine.state.consumables.stat_max_item || 0) + amount;
+          break;
+        case 'gear_orb':
+          engine.state.orbs = (engine.state.orbs || 0) + amount;
+          break;
+      }
+    }
+
     // 보스 코인 차감 및 아이템 지급
     setGameState(prev => {
       const newState = {
         ...prev,
         sealedZone: {
           ...prev.sealedZone,
-          bossCoins: prev.sealedZone.bossCoins - totalCost
+          bossCoins: (prev.sealedZone?.bossCoins || 0) - totalCost
         }
       };
 
       // 아이템별 처리
       switch (item.id) {
+        case 'awakening_stone':
+          newState.consumables = {
+            ...prev.consumables,
+            awakening_stone: (prev.consumables?.awakening_stone || 0) + amount
+          };
+          break;
         case 'monster_selection_ticket':
           newState.consumables = {
             ...prev.consumables,

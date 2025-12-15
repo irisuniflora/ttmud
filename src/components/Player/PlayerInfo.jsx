@@ -259,7 +259,7 @@ const PlayerInfo = () => {
         <div className="flex justify-between text-sm mb-1">
           <span className="text-gray-200 font-semibold">HP</span>
           <span className="text-gray-300 font-bold">
-            {formatNumberWithCommas(Math.max(0, currentMonster.hp))} / {formatNumberWithCommas(currentMonster.maxHp)}
+            {formatNumber(Math.max(0, currentMonster.hp))} / {formatNumber(currentMonster.maxHp)}
           </span>
         </div>
         <div className="w-full bg-gray-700 rounded-full h-6 overflow-hidden border-2 border-gray-600">

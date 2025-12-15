@@ -70,29 +70,42 @@ export const DROP_CONFIG = {
 
 // ===== 영웅 시스템 =====
 export const HERO_CONFIG = {
-  // 영웅 등급 시스템
+  // 영웅 등급 시스템 (문양 등급과 통일)
   grades: {
     normal: { name: '일반', color: '#9CA3AF', colorClass: 'text-gray-400' },
-    rare: { name: '희귀', color: '#3B82F6', colorClass: 'text-blue-400' },
-    epic: { name: '레어', color: '#A855F7', colorClass: 'text-purple-400' },
+    uncommon: { name: '희귀', color: '#4ADE80', colorClass: 'text-green-400' },
+    rare: { name: '레어', color: '#3B82F6', colorClass: 'text-blue-400' },
+    epic: { name: '에픽', color: '#A855F7', colorClass: 'text-purple-400' },
     unique: { name: '유니크', color: '#EAB308', colorClass: 'text-yellow-400' },
-    legendary: { name: '전설', color: '#F97316', colorClass: 'text-orange-400' },
+    legendary: { name: '레전드', color: '#F97316', colorClass: 'text-orange-400' },
     mythic: { name: '신화', color: '#EF4444', colorClass: 'text-red-400' },
-    dark: { name: '다크', color: '#1F2937', colorClass: 'text-gray-900' },
+    dark: { name: '다크', color: '#D946EF', colorClass: 'text-fuchsia-500' },
   },
 
-  // 등급 순서
-  gradeOrder: ['normal', 'rare', 'epic', 'unique', 'legendary', 'mythic', 'dark'],
+  // 등급 순서 (8등급)
+  gradeOrder: ['normal', 'uncommon', 'rare', 'epic', 'unique', 'legendary', 'mythic', 'dark'],
+
+  // 등급별 스탯 배율 (문양과 동일)
+  gradeMultiplier: {
+    normal: 1,
+    uncommon: 1.5,
+    rare: 2.2,
+    epic: 3,
+    unique: 4,
+    legendary: 6,
+    mythic: 10,
+    dark: 15,
+  },
 
   // 별 시스템
   maxStarsPerGrade: 5,
   starBonusMultiplier: 0.2, // 별당 등급 스탯의 20% 추가
 
-  // 등급업 비용 (피보나치 수열 - 각 등급에서 다음 등급으로 갈 때 필요한 토큰)
-  upgradeCostByGrade: [2, 3, 5, 8, 13, 21], // normal->rare: 2, rare->epic: 3, ...
+  // 등급업 비용 (각 등급에서 다음 등급으로 갈 때 필요한 토큰)
+  upgradeCostByGrade: [2, 3, 5, 8, 13, 21, 34], // normal->uncommon: 2, uncommon->rare: 3, ...
 
-  // 별 업그레이드 카드 소모량 (피보나치 수열 - 등급별로 별 하나당 필요한 카드 수)
-  starUpgradeCostByGrade: [1, 2, 3, 5, 8, 13, 21], // normal: 1장, rare: 2장, epic: 3장, ...
+  // 별 업그레이드 카드 소모량 (등급별로 별 하나당 필요한 카드 수)
+  starUpgradeCostByGrade: [1, 2, 3, 5, 8, 13, 21, 34], // normal: 1장, uncommon: 2장, rare: 3장, ...
 
   // 영웅별 기본 스탯 (heroes.js에서 정의)
   // 모든 영웅 기본 공격력
@@ -187,15 +200,16 @@ export const EQUIPMENT_CONFIG = {
   // 장비 슬롯
   slots: ['weapon', 'armor', 'gloves', 'boots', 'necklace', 'ring'],
 
-  // 장비 레어리티 (스탯 배수 범위)
+  // 장비 레어리티 (스탯 배수 범위) - 등급 통일
   rarities: {
     common: { name: '일반', color: '#9CA3AF', weight: 50, statMin: 0.50, statMax: 1.00 },
-    rare: { name: '희귀', color: '#3B82F6', weight: 30, statMin: 1.00, statMax: 1.50 },
-    epic: { name: '레어', color: '#A855F7', weight: 15, statMin: 1.50, statMax: 2.00 },
-    unique: { name: '유니크', color: '#EAB308', weight: 8, statMin: 2.00, statMax: 3.00 },
-    legendary: { name: '전설', color: '#F97316', weight: 4, statMin: 3.00, statMax: 5.00 },
-    mythic: { name: '신화', color: '#EF4444', weight: 2, statMin: 5.00, statMax: 9.00 },
-    dark: { name: '다크', color: '#1F2937', weight: 1, statMin: 9.00, statMax: 15.00 },
+    uncommon: { name: '희귀', color: '#4ADE80', weight: 35, statMin: 1.00, statMax: 1.50 },
+    rare: { name: '레어', color: '#3B82F6', weight: 20, statMin: 1.50, statMax: 2.20 },
+    epic: { name: '에픽', color: '#A855F7', weight: 12, statMin: 2.20, statMax: 3.00 },
+    unique: { name: '유니크', color: '#EAB308', weight: 6, statMin: 3.00, statMax: 4.00 },
+    legendary: { name: '레전드', color: '#F97316', weight: 3, statMin: 4.00, statMax: 6.00 },
+    mythic: { name: '신화', color: '#EF4444', weight: 1.5, statMin: 6.00, statMax: 10.00 },
+    dark: { name: '다크', color: '#D946EF', weight: 0.5, statMin: 10.00, statMax: 15.00 },
   },
 
   // 티어 시스템 (50층 단위로 장비 성능 상승)

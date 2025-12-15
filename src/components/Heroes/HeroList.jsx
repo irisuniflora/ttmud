@@ -95,7 +95,7 @@ const HeroList = () => {
         message={notification.message}
         type={notification.type}
       />
-      <div className="space-y-3">
+      <div className="space-y-3 pt-2">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-4">
             <h3 className="text-xl font-bold text-gray-100">동료</h3>
@@ -106,13 +106,13 @@ const HeroList = () => {
           <div className="flex items-center gap-2">
             <button
               onClick={handleBulkUpgradeStars}
-              className="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold rounded transition-all text-sm shadow-md"
+              className="px-3 py-1.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:via-yellow-300 hover:to-amber-400 text-gray-900 font-bold rounded transition-all text-sm shadow-md shadow-amber-500/30"
             >
               ⭐ 일괄 별+
             </button>
             <button
               onClick={handleBulkUpgradeGrades}
-              className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold rounded transition-all text-sm shadow-md"
+              className="px-3 py-1.5 bg-gradient-to-r from-rose-800 via-red-900 to-rose-800 hover:from-rose-700 hover:via-red-800 hover:to-rose-700 text-white font-bold rounded transition-all text-sm shadow-md shadow-rose-900/40"
             >
               👑 일괄 등급↑
             </button>
@@ -285,19 +285,22 @@ const HeroList = () => {
                 </div>
 
                 {/* 버튼들 - 고정 높이 */}
-                <div className="mt-auto space-y-0.5 min-h-[52px] flex flex-col justify-end">
+                <div className="mt-auto space-y-1 min-h-[56px] flex flex-col justify-end">
                   {/* 별 올리기 버튼 */}
                   {currentStars < 5 && (
                     <button
                       onClick={() => upgradeHeroStar(hero.id)}
                       disabled={!canAddStar}
-                      className={`w-full py-1 rounded font-bold transition-all text-xs shadow-md ${
+                      className={`w-full py-1.5 rounded-lg font-bold transition-all duration-200 text-xs ${
                         canAddStar
-                          ? 'bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white'
-                          : 'bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600'
+                          ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:via-yellow-300 hover:to-amber-400 text-gray-900 shadow-lg shadow-amber-500/40 hover:shadow-amber-400/60 hover:scale-[1.02] active:scale-100'
+                          : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
                       }`}
                     >
-                      별+ ({starUpgradeCost})
+                      <span className="flex items-center justify-center gap-1">
+                        <span>⭐</span> +1
+                        <span className={`text-[10px] ${canAddStar ? 'opacity-80' : ''}`}>({starUpgradeCost})</span>
+                      </span>
                     </button>
                   )}
 
@@ -309,25 +312,31 @@ const HeroList = () => {
                           onClick={() => upgradeHeroGrade(hero.id)}
                           disabled={!hasEnoughCoins}
                           title="등급업 효과:&#10;- 공격력 추가 증가 (+50)&#10;- 별을 새로 달 수 있음&#10;- 더 높은 등급의 별은 더 강력함"
-                          className={`w-full py-1 rounded font-bold transition-all text-xs shadow-md ${
+                          className={`w-full py-1.5 rounded-lg font-bold transition-all duration-200 text-xs ${
                             hasEnoughCoins
-                              ? 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white'
-                              : 'bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600'
+                              ? 'bg-gradient-to-r from-rose-800 via-red-900 to-rose-800 hover:from-rose-700 hover:via-red-800 hover:to-rose-700 text-white shadow-lg shadow-rose-900/40 hover:shadow-rose-800/60 hover:scale-[1.02] active:scale-100'
+                              : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
                           }`}
                         >
-                          등급↑ ({upgradeCost})
+                          <span className="flex items-center justify-center gap-1">
+                            <span>👑</span> 등급↑
+                            <span className="text-[10px] opacity-80">({upgradeCost})</span>
+                          </span>
                         </button>
                       ) : (
-                        <div className="w-full py-1 rounded text-center text-xs text-gray-400 bg-gray-700 border border-gray-600 leading-tight font-semibold">
-                          등급업 해금 (별5)
+                        <div className="w-full py-1.5 rounded-lg text-center text-xs text-gray-500 bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 border border-gray-600 leading-tight font-semibold">
+                          <span className="flex items-center justify-center gap-1">
+                            <span className="text-gray-600">🔒</span>
+                            <span>⭐×5 필요</span>
+                          </span>
                         </div>
                       )}
                     </>
                   )}
                   {!nextGrade && (
-                    <div className="w-full py-1 rounded text-center text-xs text-yellow-300 bg-yellow-900/50 border-2 border-yellow-500 font-bold shadow-lg"
+                    <div className="w-full py-1.5 rounded-lg text-center text-xs text-yellow-300 bg-gradient-to-r from-yellow-900/60 via-amber-800/60 to-yellow-900/60 border-2 border-yellow-500 font-bold shadow-lg animate-pulse"
                       style={{ textShadow: '0 0 10px rgba(250, 204, 21, 0.8)' }}>
-                      MAX
+                      ✨ MAX ✨
                     </div>
                   )}
                 </div>

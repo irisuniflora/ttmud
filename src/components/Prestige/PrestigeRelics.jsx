@@ -8,12 +8,18 @@ import {
   getTotalRelicEffects
 } from '../../data/prestigeRelics';
 import { formatNumber } from '../../utils/formatter';
+import NotificationModal from '../UI/NotificationModal';
 
 const PrestigeRelics = () => {
   const { gameState, gachaRelic: doGachaRelic, upgradeRelic: doUpgradeRelic } = useGame();
   const { player, prestigeRelics = {}, relicFragments = 0, relicGachaCount = 0 } = gameState;
 
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [notification, setNotification] = useState({ isOpen: false, title: '', message: '', type: 'info' });
+
+  const showNotification = (title, message, type = 'info') => {
+    setNotification({ isOpen: true, title, message, type });
+  };
 
   // 현재 가챠 비용 계산
   const currentGachaCost = getRelicGachaCost(relicGachaCount);
@@ -30,9 +36,9 @@ const PrestigeRelics = () => {
   const handleGachaRelic = () => {
     const result = doGachaRelic();
     if (result.success) {
-      alert(result.message);
+      showNotification('유물 획득!', result.message, 'success');
     } else {
-      alert(result.message);
+      showNotification('소환 실패', result.message, 'warning');
     }
   };
 
@@ -40,7 +46,7 @@ const PrestigeRelics = () => {
   const handleUpgradeRelic = (relicId) => {
     const result = doUpgradeRelic(relicId);
     if (!result.success) {
-      alert(result.message);
+      showNotification('강화 실패', result.message, 'warning');
     }
   };
 
@@ -135,7 +141,7 @@ const PrestigeRelics = () => {
             {selectedCategory === 'all' ? '보유한 유물이 없습니다' : '이 카테고리의 유물이 없습니다'}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
             {ownedRelics.map(relicData => {
               const { relicId, level, name, icon, description, maxLevel, effectPerLevel, effectType, category } = relicData;
               const effect = calculateRelicEffect(relicId, level);
@@ -146,64 +152,42 @@ const PrestigeRelics = () => {
               // 다음 레벨 효과 계산
               const nextEffect = !isMaxLevel ? calculateRelicEffect(relicId, level + 1) : null;
 
+              // 효과 접미사
+              const getSuffix = () => {
+                if (effectType?.includes('Percent') || effectType?.includes('Chance') ||
+                    effectType?.includes('Spawn') || effectType?.includes('Reduction') ||
+                    effectType?.includes('Bonus')) return '%';
+                if (effectType === 'bossTimeLimit') return '초';
+                if (effectType === 'monstersPerStageReduction') return '마리';
+                return '';
+              };
+
               return (
                 <div
                   key={relicId}
-                  className="bg-gray-800 border-2 border-purple-700 rounded-lg p-3 hover:border-purple-500 transition-colors"
+                  className="bg-gray-800 border border-purple-700 rounded-lg p-2 hover:border-purple-500 transition-colors group relative"
                 >
-                  {/* 유물 헤더 */}
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="text-3xl">{icon}</div>
-                      <div>
-                        <div className="text-sm font-bold text-purple-300">
-                          {name}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                          Lv.{level}
-                          {maxLevel && ` / ${maxLevel}`}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-xs text-gray-500 bg-gray-700 px-2 py-0.5 rounded">
-                      {categories[category]}
-                    </div>
+                  {/* 아이콘 + 레벨 */}
+                  <div className="flex items-center justify-center mb-1">
+                    <span className="text-2xl">{icon}</span>
                   </div>
+                  <div className="text-[10px] font-bold text-purple-300 text-center truncate">{name}</div>
+                  <div className="text-[9px] text-gray-400 text-center">Lv.{level}{maxLevel && `/${maxLevel}`}</div>
 
-                  {/* 효과 */}
-                  <div className="bg-gray-900 rounded p-2 mb-2">
-                    <div className="text-xs text-gray-400 mb-1">{description}</div>
+                  {/* 효과 (컴팩트) */}
+                  <div className="bg-gray-900/80 rounded px-1 py-0.5 mt-1 mb-1.5">
+                    <div className="text-[9px] text-gray-400 truncate">{description}</div>
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-bold text-yellow-400">
-                        +{formatNumber(effect.value)}
-                        {effectType?.includes('Percent') ||
-                         effectType?.includes('Chance') ||
-                         effectType?.includes('Spawn') ||
-                         effectType?.includes('Reduction') ||
-                         effectType?.includes('Bonus') ? '%' :
-                         effectType === 'bossTimeLimit' ? '초' :
-                         effectType === 'monstersPerStageReduction' ? '마리' : ''}
-                      </div>
-                      {nextEffect && (
-                        <div className="text-xs text-green-400">
-                          → {formatNumber(nextEffect.value)}
-                          {effectType?.includes('Percent') ||
-                           effectType?.includes('Chance') ||
-                           effectType?.includes('Spawn') ||
-                           effectType?.includes('Reduction') ||
-                           effectType?.includes('Bonus') ? '%' :
-                           effectType === 'bossTimeLimit' ? '초' :
-                           effectType === 'monstersPerStageReduction' ? '마리' : ''}
-                        </div>
-                      )}
+                      <span className="text-[10px] font-bold text-yellow-400">+{formatNumber(effect.value)}{getSuffix()}</span>
+                      {nextEffect && <span className="text-[9px] text-green-400">→ {formatNumber(nextEffect.value)}{getSuffix()}</span>}
                     </div>
                   </div>
 
-                  {/* 레벨업 버튼 */}
+                  {/* 강화 버튼 */}
                   <button
                     onClick={() => handleUpgradeRelic(relicId)}
                     disabled={!canUpgrade || isMaxLevel}
-                    className={`w-full py-1.5 rounded font-bold text-xs transition-all ${
+                    className={`w-full py-1 rounded font-bold text-[10px] transition-all ${
                       isMaxLevel
                         ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
                         : canUpgrade
@@ -211,7 +195,7 @@ const PrestigeRelics = () => {
                         : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                     }`}
                   >
-                    {isMaxLevel ? '최대 레벨' : `강화 (💎 ${upgradeCost}개)`}
+                    {isMaxLevel ? 'MAX' : `강화 (💎 ${upgradeCost}개)`}
                   </button>
                 </div>
               );
@@ -219,6 +203,15 @@ const PrestigeRelics = () => {
           </div>
         )}
       </div>
+
+      {/* 알림 모달 */}
+      <NotificationModal
+        isOpen={notification.isOpen}
+        onClose={() => setNotification(prev => ({ ...prev, isOpen: false }))}
+        title={notification.title}
+        message={notification.message}
+        type={notification.type}
+      />
     </div>
   );
 };

@@ -245,39 +245,14 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
-  // ===== 월드보스 시스템 =====
-  const startWorldBossBattle = () => {
-    const result = engineRef.current.startWorldBossBattle();
-    if (result.success) {
-      setGameState({ ...engineRef.current.getState() });
-    }
-    return result;
-  };
+  /* ===== 월드보스 시스템 (비활성화) =====
+  const startWorldBossBattle = () => { ... };
+  const toggleWorldBoss = (forceState = null) => { ... };
+  const distributeWorldBossRewards = () => { ... };
 
-  const toggleWorldBoss = (forceState = null) => {
-    const result = engineRef.current.toggleWorldBoss(forceState);
-    if (result.success) {
-      setGameState({ ...engineRef.current.getState() });
-    }
-    return result;
-  };
-
-  const distributeWorldBossRewards = () => {
-    const result = engineRef.current.distributeWorldBossRewards();
-    if (result.success) {
-      setGameState({ ...engineRef.current.getState() });
-    }
-    return result;
-  };
-
-  // ===== 경매 시스템 =====
-  const placeBid = (itemId, amount, playerId, playerName) => {
-    const result = engineRef.current.placeBid(itemId, amount, playerId, playerName);
-    if (result.success) {
-      setGameState({ ...engineRef.current.getState() });
-    }
-    return result;
-  };
+  ===== 경매 시스템 (비활성화) =====
+  const placeBid = (itemId, amount, playerId, playerName) => { ... };
+  */
 
   // ===== 유물 시스템 =====
   const gachaRelic = () => {
@@ -396,10 +371,10 @@ export const GameProvider = ({ children }) => {
       enterBossBattle,
       toggleFloorLock,
       goDownFloor,
-      startWorldBossBattle,
-      toggleWorldBoss,
-      distributeWorldBossRewards,
-      placeBid,
+      // startWorldBossBattle, // 월드보스 비활성화
+      // toggleWorldBoss,
+      // distributeWorldBossRewards,
+      // placeBid,
       gachaRelic,
       upgradeRelic,
       // 새 장비 시스템
