@@ -3,7 +3,7 @@ import { GameProvider, useGame } from './store/GameContext';
 import PlayerInfo from './components/Player/PlayerInfo';
 import StatsList from './components/Player/StatsList';
 import HeroList from './components/Heroes/HeroList';
-import Equipment from './components/Equipment/Equipment';
+import NewEquipment from './components/Equipment/NewEquipment';
 import Consumables from './components/Inventory/Consumables';
 import SkillTree from './components/SkillTree/SkillTree';
 import Collection from './components/Collection/Collection';
@@ -134,7 +134,7 @@ const GameContent = () => {
                 onClick={() => setActiveTab('equipment')}
                 className={`px-4 py-2 rounded font-bold transition-all ${
                   activeTab === 'equipment'
-                    ? 'bg-blue-600 text-white shadow-md'
+                    ? 'bg-gradient-to-r from-purple-600 to-cyan-600 text-white shadow-md'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
                 }`}
               >
@@ -215,7 +215,7 @@ const GameContent = () => {
             {/* 탭 컨텐츠 - 이 영역만 스크롤 */}
             <div className="flex-1 overflow-y-auto">
               {activeTab === 'heroes' && <HeroList />}
-              {activeTab === 'equipment' && <Equipment />}
+              {activeTab === 'equipment' && <NewEquipment />}
               {activeTab === 'inventory' && <Consumables />}
               {activeTab === 'skills' && <SkillTree />}
               {activeTab === 'collection' && <Collection />}

@@ -1,14 +1,25 @@
 // 봉인구역 레이드 보스 시스템
 
-// 난이도별 배수
-export const RAID_DIFFICULTIES = {
-  normal: { name: '일반', multiplier: 1, color: 'text-gray-400' },
-  rare: { name: '희귀', multiplier: 3, color: 'text-green-400' },
-  epic: { name: '레어', multiplier: 10, color: 'text-blue-400' },
-  unique: { name: '유니크', multiplier: 30, color: 'text-purple-400' },
-  legendary: { name: '레전드', multiplier: 100, color: 'text-orange-400' },
-  mythic: { name: '신화', multiplier: 300, color: 'text-pink-400' },
-  dark: { name: '다크', multiplier: 1000, color: 'text-red-400' }
+// 난이도 레벨 시스템 (무한 레벨)
+// 레벨 1 = 1배, 레벨마다 1.5배씩 증가
+export const getDifficultyMultiplier = (level) => {
+  return Math.pow(1.5, level - 1);
+};
+
+// 난이도 레벨에 따른 색상
+export const getDifficultyColor = (level) => {
+  if (level <= 5) return 'text-gray-400';
+  if (level <= 10) return 'text-green-400';
+  if (level <= 20) return 'text-blue-400';
+  if (level <= 30) return 'text-purple-400';
+  if (level <= 50) return 'text-orange-400';
+  if (level <= 75) return 'text-pink-400';
+  return 'text-red-400';
+};
+
+// 난이도 레벨에 따른 이름
+export const getDifficultyName = (level) => {
+  return `Lv.${level}`;
 };
 
 // 죄수(레이드 보스) 정의
@@ -122,6 +133,26 @@ export const RAID_BOSSES = {
       gold: 1400,
       exp: 680
     }
+  },
+  gorath: {
+    id: 'gorath',
+    name: '강철심장 고라스',
+    icon: '⚙️',
+    description: '치명타 무효',
+    unlockFloor: 250, // 해금 조건: 250층 이상
+    pattern: {
+      type: 'crit_immunity',
+      critReduction: 100, // 치명타 데미지 100% 감소 (일반 데미지로 변환)
+      description: '모든 치명타 공격이 일반 공격으로 변환됨'
+    },
+    baseStats: {
+      hp: 150000,
+      defense: 200
+    },
+    rewards: {
+      gold: 1600,
+      exp: 750
+    }
   }
 };
 
@@ -132,37 +163,35 @@ export const checkBossUnlock = (bossId, playerFloor) => {
   return playerFloor >= boss.unlockFloor;
 };
 
-// 보스 코인 보상 계산 (난이도에 따라)
-export const calculateBossCoinReward = (difficulty) => {
-  const difficultyData = RAID_DIFFICULTIES[difficulty];
-  if (!difficultyData) return 10;
-
+// 보스 코인 보상 계산 (난이도 레벨에 따라)
+export const calculateBossCoinReward = (difficultyLevel) => {
   // 기본 10코인 * 난이도 배수
-  return Math.floor(10 * difficultyData.multiplier);
+  const multiplier = getDifficultyMultiplier(difficultyLevel);
+  return Math.floor(10 * multiplier);
 };
 
-// 난이도별 보스 스탯 계산
-export const calculateRaidBossStats = (bossId, difficulty, playerFloor = 1) => {
+// 난이도 레벨별 보스 스탯 계산
+export const calculateRaidBossStats = (bossId, difficultyLevel, playerFloor = 1) => {
   const boss = RAID_BOSSES[bossId];
-  const difficultyData = RAID_DIFFICULTIES[difficulty];
 
-  if (!boss || !difficultyData) return null;
+  if (!boss) return null;
 
+  const difficultyMultiplier = getDifficultyMultiplier(difficultyLevel);
   const floorMultiplier = 1 + (playerFloor * 0.05); // 층당 5% 증가
-  const totalMultiplier = difficultyData.multiplier * floorMultiplier;
+  const totalMultiplier = difficultyMultiplier * floorMultiplier;
 
   return {
     ...boss,
-    difficulty,
-    difficultyName: difficultyData.name,
-    difficultyColor: difficultyData.color,
+    difficultyLevel,
+    difficultyName: getDifficultyName(difficultyLevel),
+    difficultyColor: getDifficultyColor(difficultyLevel),
     hp: Math.floor(boss.baseStats.hp * totalMultiplier),
     maxHp: Math.floor(boss.baseStats.hp * totalMultiplier),
     defense: Math.floor(boss.baseStats.defense * totalMultiplier),
     rewards: {
       gold: Math.floor(boss.rewards.gold * totalMultiplier),
       exp: Math.floor(boss.rewards.exp * totalMultiplier),
-      bossCoins: calculateBossCoinReward(difficulty) // 보스 코인 추가
+      bossCoins: calculateBossCoinReward(difficultyLevel)
     }
   };
 };

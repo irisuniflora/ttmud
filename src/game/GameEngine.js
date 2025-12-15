@@ -1,7 +1,7 @@
 import { getMonsterForStage, getCollectionBonus, RARE_MONSTER_COLLECTION_CHANCE, LEGENDARY_MONSTER_COLLECTION_CHANCE } from '../data/monsters.js';
 import { HEROES, getHeroById, getHeroStats, getNextGrade, getUpgradeCost, getStarUpgradeCost } from '../data/heroes.js';
 import { generateItem, rerollItemWithOrb, perfectSingleStat, calculateStatPercentage } from '../data/items.js';
-import { getTotalSkillEffects } from '../data/skills.js';
+import { getTotalSkillEffects, getSkillCost } from '../data/skills.js';
 import { getTotalRelicEffects, PRESTIGE_RELICS, getRelicGachaCost, getRelicUpgradeCost } from '../data/prestigeRelics.js';
 import {
   GAME_CONFIG,
@@ -17,6 +17,23 @@ import {
   getMonstersPerFloor
 } from '../data/gameBalance.js';
 import { isWorldBossActive, WORLD_BOSS_CONFIG, AUCTION_CONFIG, AUCTION_ITEMS } from '../data/worldBoss.js';
+// 새 장비 시스템
+import {
+  EQUIPMENT_SLOTS,
+  EQUIPMENT_SETS,
+  generateNormalItem,
+  generateSetItem,
+  rollItemDrop,
+  calculateEquipmentStats,
+  calculateTotalSetEffects,
+  getActiveSetBonuses,
+  calculateSetCounts,
+  getDisassembleFragments,
+  upgradeItemLevel,
+  getUpgradeCost as getEquipmentUpgradeCost,
+  canUpgradeItem,
+  awakenItem
+} from '../data/equipmentSets.js';
 
 export class GameEngine {
   constructor(initialState) {
@@ -101,13 +118,16 @@ export class GameEngine {
         necklace: 0,
         ring: 0
       },
-      inventory: [],
+      inventory: [], // 기존 아이템 인벤토리 (레거시)
+      newInventory: [], // 새 장비 시스템 인벤토리
+      equipmentFragments: 100, // 장비조각 (테스트용 100개)
       upgradeCoins: 5000, // 등급업 코인 (테스트용 5000개)
       orbs: 0, // 오브 (아이템 옵션 재조정 아이템)
       skillLevels: {},
       settings: {
         autoSellEnabled: false, // 자동 판매 활성화 여부
-        autoSellRarity: 'common' // 자동 판매할 최대 등급
+        autoSellRarity: 'common', // 자동 판매할 최대 등급
+        autoDisassemble: false // 노말템 자동 분해 여부
       },
       combatLog: [], // 전투 로그
       collection: {
@@ -549,8 +569,11 @@ export class GameEngine {
     const expGained = Math.floor(EXP_CONFIG.baseExpPerKill * (1 + ((skillEffects.expPercent || 0) + equipmentExpBonus + heroBuffs.expBonus) / 100));
     this.gainExp(expGained);
     
-    // 아이템 드랍
+    // 아이템 드랍 (기존 시스템)
     this.tryDropItem();
+
+    // 새 장비 드랍 (새 시스템)
+    this.tryDropNewItem(currentMonster.isBoss);
 
     // 영웅 카드 드랍
     this.tryDropHeroCard();
@@ -733,6 +756,8 @@ export class GameEngine {
         player.floor++;
         if (player.floor > player.highestFloor) {
           player.highestFloor = player.floor;
+          // 층수 업적 체크
+          this.checkFloorAchievements();
         }
       }
       // 층 고정이든 아니든 상태 초기화
@@ -862,11 +887,13 @@ export class GameEngine {
         } else {
           // 설정한 등급보다 높으면 인벤토리에 추가
           inventory.push(item);
+          this.sortInventory();
           this.addCombatLog(`${item.name} 획득!`, 'acquired', item.rarity);
         }
       } else {
         // 자동 판매 비활성화 시 인벤토리에 추가
         inventory.push(item);
+        this.sortInventory();
         this.addCombatLog(`${item.name} 획득!`, 'acquired', item.rarity);
       }
 
@@ -1350,6 +1377,7 @@ export class GameEngine {
     if (equipment[item.slot]) {
       equipment[item.slot].equipped = false;
       inventory.push(equipment[item.slot]);
+      this.sortInventory();
     }
     
     // 새 장비 장착
@@ -1371,7 +1399,15 @@ export class GameEngine {
       equipment[slot].equipped = false;
       inventory.push(equipment[slot]);
       equipment[slot] = null;
+      this.sortInventory();
     }
+  }
+
+  // 인벤토리 정렬 (등급 높은 순)
+  sortInventory() {
+    const { inventory } = this.state;
+    const rarityOrder = { dark: 7, mythic: 6, legendary: 5, unique: 4, epic: 3, rare: 2, common: 1 };
+    inventory.sort((a, b) => rarityOrder[b.rarity] - rarityOrder[a.rarity]);
   }
 
   // 자동 장착 (슬롯별 가장 높은 등급)
@@ -1479,7 +1515,7 @@ export class GameEngine {
     const currentLevel = skillLevels[skillId] || 0;
     if (currentLevel >= skill.maxLevel) return false;
 
-    const cost = Math.floor(skill.costPerLevel * Math.pow(skill.costMultiplier, currentLevel));
+    const cost = getSkillCost(skill, currentLevel);
     const costType = skill.costType || 'gold';
 
     if (costType === 'pp') {
@@ -1534,7 +1570,7 @@ export class GameEngine {
 
     const baseMonstersPerFloor = getMonstersPerFloor(player.floor);
     const totalReduction = equipmentMonsterReduction + collectionBonus.monsterReduction + relicMonsterReduction;
-    const actualMonstersPerFloor = Math.max(1, baseMonstersPerFloor - totalReduction);
+    const actualMonstersPerFloor = Math.max(5, baseMonstersPerFloor - totalReduction);
 
     // 몬스터 감소가 스테이지 몬스터 수보다 크면 바로 보스방
     if (totalReduction >= baseMonstersPerFloor) {
@@ -1561,7 +1597,6 @@ export class GameEngine {
     player.floorState = 'boss_battle';
 
     // 유물: 시간의 모래시계 (보스 제한시간 증가)
-    const relicEffects = this.getRelicEffects();
     const bossTimeBonus = relicEffects.bossTimeLimit || 0;
     player.bossTimer = FLOOR_CONFIG.bossTimeLimit + bossTimeBonus;
 
@@ -1668,6 +1703,8 @@ export class GameEngine {
     player.floor++;
     if (player.floor > player.highestFloor) {
       player.highestFloor = player.floor;
+      // 층수 업적 체크
+      this.checkFloorAchievements();
     }
     player.monstersKilledInFloor = 0;
     player.floorState = 'farming';
@@ -2789,6 +2826,7 @@ export class GameEngine {
               const legendaryItem = generateItem('legendary', this.state.player.floor);
               this.state.inventory.push(legendaryItem);
             }
+            this.sortInventory();
             this.addCombatLog(`🎉 경매 낙찰! ${itemInfo.name} ${auctionData.quantity}개 획득!`, 'boss');
             break;
 
@@ -2953,5 +2991,367 @@ export class GameEngine {
       newLevel: relicInstance.level + 1,
       message: `${relic.icon} ${relic.name} Lv.${relicInstance.level + 1} 달성!`
     };
+  }
+
+  // ===== 새 장비 시스템 메서드들 =====
+
+  // 새 장비 장착
+  equipNewItem(itemId) {
+    const { newInventory = [], equipment } = this.state;
+    const itemIndex = newInventory.findIndex(item => item.id === itemId);
+
+    if (itemIndex === -1) {
+      return { success: false, message: '아이템을 찾을 수 없습니다' };
+    }
+
+    const item = newInventory[itemIndex];
+    const slot = item.slot;
+
+    // 기존 장착 아이템이 있으면 인벤토리로 이동
+    const currentEquipped = equipment[slot];
+    if (currentEquipped) {
+      newInventory.push(currentEquipped);
+    }
+
+    // 새 아이템 장착
+    equipment[slot] = item;
+
+    // 인벤토리에서 제거
+    newInventory.splice(itemIndex, 1);
+
+    this.addCombatLog(`⚔️ ${item.name} 장착!`, 'equipment');
+
+    return {
+      success: true,
+      message: `${item.name} 장착 완료!`,
+      item,
+      unequipped: currentEquipped
+    };
+  }
+
+  // 새 장비 해제
+  unequipNewItem(slot) {
+    const { equipment, newInventory = [] } = this.state;
+    const item = equipment[slot];
+
+    if (!item) {
+      return { success: false, message: '장착된 아이템이 없습니다' };
+    }
+
+    // 인벤토리로 이동
+    if (!this.state.newInventory) {
+      this.state.newInventory = [];
+    }
+    this.state.newInventory.push(item);
+
+    // 슬롯 비우기
+    equipment[slot] = null;
+
+    return {
+      success: true,
+      message: `${item.name} 해제 완료!`,
+      item
+    };
+  }
+
+  // 새 아이템 분해 (장비조각 획득)
+  disassembleNewItem(itemId) {
+    const { newInventory = [] } = this.state;
+    const itemIndex = newInventory.findIndex(item => item.id === itemId);
+
+    if (itemIndex === -1) {
+      return { success: false, message: '아이템을 찾을 수 없습니다' };
+    }
+
+    const item = newInventory[itemIndex];
+    const fragments = getDisassembleFragments(item);
+
+    // 인벤토리에서 제거
+    newInventory.splice(itemIndex, 1);
+
+    // 장비조각 추가
+    this.state.equipmentFragments = (this.state.equipmentFragments || 0) + fragments;
+
+    const itemType = item.setId ? '세트' : '노말';
+    this.addCombatLog(`🔨 ${item.name} 분해 → 장비조각 +${fragments}`, 'disassemble');
+
+    return {
+      success: true,
+      message: `${item.name} 분해! 장비조각 +${fragments}`,
+      fragments,
+      totalFragments: this.state.equipmentFragments
+    };
+  }
+
+  // 일괄 분해 (노말템만)
+  disassembleAllNormal() {
+    const { newInventory = [] } = this.state;
+    const normalItems = newInventory.filter(item => item.type === 'normal');
+
+    if (normalItems.length === 0) {
+      return { success: false, message: '분해할 노말 아이템이 없습니다' };
+    }
+
+    let totalFragments = 0;
+    normalItems.forEach(item => {
+      totalFragments += getDisassembleFragments(item);
+    });
+
+    // 노말템 제거
+    this.state.newInventory = newInventory.filter(item => item.type !== 'normal');
+
+    // 장비조각 추가
+    this.state.equipmentFragments = (this.state.equipmentFragments || 0) + totalFragments;
+
+    this.addCombatLog(`🔨 노말템 ${normalItems.length}개 일괄 분해 → 장비조각 +${totalFragments}`, 'disassemble');
+
+    return {
+      success: true,
+      message: `노말템 ${normalItems.length}개 분해! 장비조각 +${totalFragments}`,
+      count: normalItems.length,
+      fragments: totalFragments,
+      totalFragments: this.state.equipmentFragments
+    };
+  }
+
+  // 장비 템렙 강화
+  upgradeEquipmentLevel(slot) {
+    const { equipment, equipmentFragments = 0 } = this.state;
+    const item = equipment[slot];
+
+    if (!item) {
+      return { success: false, message: '장착된 아이템이 없습니다' };
+    }
+
+    const result = upgradeItemLevel(item, equipmentFragments);
+
+    if (result.success) {
+      this.state.equipmentFragments = equipmentFragments - result.cost;
+      this.addCombatLog(`⬆️ ${item.name} ${result.message}`, 'upgrade');
+    }
+
+    return result;
+  }
+
+  // 장비 각성 (업글 횟수 리셋)
+  awakenEquipment(slot) {
+    const { equipment, awakenStones = 0 } = this.state;
+    const item = equipment[slot];
+
+    if (!item) {
+      return { success: false, message: '장착된 아이템이 없습니다' };
+    }
+
+    if (awakenStones < 1) {
+      return { success: false, message: '각성석이 부족합니다' };
+    }
+
+    const result = awakenItem(item);
+
+    if (result.success) {
+      this.state.awakenStones = awakenStones - 1;
+      this.addCombatLog(`✨ ${item.name} ${result.message}`, 'upgrade');
+    }
+
+    return result;
+  }
+
+  // 세트 선택권 사용 (원하는 세트 + 슬롯 선택)
+  useSetSelector(selectorType, setId, slot) {
+    const { setSelectors = {} } = this.state;
+    const count = setSelectors[selectorType] || 0;
+
+    if (count <= 0) {
+      return { success: false, message: '세트 선택권이 없습니다' };
+    }
+
+    // 선택권 타입에 따른 드랍층 결정
+    const floorMap = {
+      'floor50': 50,
+      'floor100': 100,
+      'floor200': 200
+    };
+    const floor = floorMap[selectorType] || 50;
+
+    // 세트 아이템 생성
+    const newItem = generateSetItem(slot, floor, setId);
+
+    // 인벤토리에 추가
+    if (!this.state.newInventory) {
+      this.state.newInventory = [];
+    }
+    this.state.newInventory.push(newItem);
+
+    // 선택권 차감
+    this.state.setSelectors = {
+      ...setSelectors,
+      [selectorType]: count - 1
+    };
+
+    this.addCombatLog(`🎁 세트 선택권으로 ${newItem.name} 획득!`, 'reward');
+
+    return {
+      success: true,
+      item: newItem,
+      message: `${newItem.name} (Lv.${newItem.itemLevel}) 획득!`
+    };
+  }
+
+  // 세트 선택권 지급 (업적 보상 등에서 호출)
+  grantSetSelector(selectorType, amount = 1) {
+    if (!this.state.setSelectors) {
+      this.state.setSelectors = {};
+    }
+    this.state.setSelectors[selectorType] = (this.state.setSelectors[selectorType] || 0) + amount;
+    return { success: true };
+  }
+
+  // 층수 업적 체크 (50/100/200층)
+  checkFloorAchievements() {
+    const { player, achievements = {} } = this.state;
+
+    if (!this.state.achievements) {
+      this.state.achievements = {};
+    }
+
+    const floorRewards = [
+      { floor: 50, key: 'floor50', selector: 'floor50' },
+      { floor: 100, key: 'floor100', selector: 'floor100' },
+      { floor: 200, key: 'floor200', selector: 'floor200' }
+    ];
+
+    const newRewards = [];
+
+    floorRewards.forEach(({ floor, key, selector }) => {
+      if (player.highestFloor >= floor && !this.state.achievements[key]) {
+        this.state.achievements[key] = true;
+        this.grantSetSelector(selector, 1);
+        newRewards.push({ floor, selector });
+        this.addCombatLog(`🏆 ${floor}층 달성! 세트 선택권 획득!`, 'achievement');
+      }
+    });
+
+    return newRewards;
+  }
+
+  // 세트 효과 가져오기
+  getSetBonuses() {
+    const { equipment } = this.state;
+    return getActiveSetBonuses(equipment);
+  }
+
+  // 세트 개수 가져오기
+  getSetCounts() {
+    const { equipment } = this.state;
+    return calculateSetCounts(equipment);
+  }
+
+  // 장비 총 스탯 계산
+  getEquipmentTotalStats() {
+    const { equipment } = this.state;
+    return calculateEquipmentStats(equipment);
+  }
+
+  // 세트 효과 총합 계산
+  getTotalSetEffects() {
+    const { equipment } = this.state;
+    return calculateTotalSetEffects(equipment);
+  }
+
+  // 새 아이템 드랍 시도 (몬스터 처치 시)
+  tryDropNewItem(isBoss = false) {
+    const { player, newInventory = [], settings = {} } = this.state;
+
+    // 세트 드랍률 보너스 계산
+    const setEffects = this.getTotalSetEffects();
+    const setDropBonus = setEffects.setDropRate || 0;
+
+    // 아이템 드랍
+    const droppedItems = rollItemDrop(player.floor, isBoss, setDropBonus);
+
+    if (droppedItems.length === 0) {
+      return { dropped: false, items: [] };
+    }
+
+    // 자동 분해 설정 확인
+    const processedItems = [];
+    let autoFragments = 0;
+
+    droppedItems.forEach(item => {
+      if (settings.autoDisassemble && item.type === 'normal') {
+        // 노말템 자동 분해
+        const fragments = getDisassembleFragments(item);
+        autoFragments += fragments;
+      } else {
+        // 인벤토리에 추가
+        if (!this.state.newInventory) {
+          this.state.newInventory = [];
+        }
+        this.state.newInventory.push(item);
+        processedItems.push(item);
+
+        // 로그
+        if (item.type === 'set') {
+          this.addCombatLog(`✨ [세트] ${item.name} 획득! (Lv.${item.itemLevel})`, 'set_item');
+        } else {
+          this.addCombatLog(`📦 ${item.name} 획득 (Lv.${item.itemLevel})`, 'normal_item');
+        }
+      }
+    });
+
+    // 자동 분해 조각 추가
+    if (autoFragments > 0) {
+      this.state.equipmentFragments = (this.state.equipmentFragments || 0) + autoFragments;
+    }
+
+    return {
+      dropped: true,
+      items: processedItems,
+      autoDisassembled: droppedItems.length - processedItems.length,
+      autoFragments
+    };
+  }
+
+  // 인벤토리 정렬 (새 시스템)
+  sortNewInventory(sortBy = 'itemLevel') {
+    if (!this.state.newInventory) return;
+
+    this.state.newInventory.sort((a, b) => {
+      // 세트템 우선
+      if (a.type === 'set' && b.type !== 'set') return -1;
+      if (a.type !== 'set' && b.type === 'set') return 1;
+
+      // 그 다음 정렬 기준
+      if (sortBy === 'itemLevel') {
+        return b.itemLevel - a.itemLevel;
+      } else if (sortBy === 'slot') {
+        const slotOrder = ['weapon', 'armor', 'gloves', 'boots', 'necklace', 'ring'];
+        return slotOrder.indexOf(a.slot) - slotOrder.indexOf(b.slot);
+      }
+      return 0;
+    });
+  }
+
+  // 새 인벤토리 최대 템렙 아이템 가져오기 (슬롯별)
+  getBestItemsPerSlot() {
+    const { newInventory = [], equipment } = this.state;
+    const bestItems = {};
+
+    EQUIPMENT_SLOTS.forEach(slot => {
+      const slotItems = newInventory.filter(item => item.slot === slot);
+      const equipped = equipment[slot];
+
+      // 인벤토리 + 장착 중인 아이템 중 최고 템렙
+      let best = equipped;
+      slotItems.forEach(item => {
+        if (!best || item.itemLevel > best.itemLevel) {
+          best = item;
+        }
+      });
+
+      bestItems[slot] = best;
+    });
+
+    return bestItems;
   }
 }

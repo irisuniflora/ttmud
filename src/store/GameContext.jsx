@@ -292,6 +292,63 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
+  // ===== 새 장비 시스템 =====
+  const equipNewItem = (itemId) => {
+    const result = engineRef.current.equipNewItem(itemId);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const unequipNewItem = (slot) => {
+    const result = engineRef.current.unequipNewItem(slot);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const disassembleNewItem = (itemId) => {
+    const result = engineRef.current.disassembleNewItem(itemId);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const disassembleAllNormal = () => {
+    const result = engineRef.current.disassembleAllNormal();
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const upgradeEquipmentLevel = (slot) => {
+    const result = engineRef.current.upgradeEquipmentLevel(slot);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const awakenEquipment = (slot) => {
+    const result = engineRef.current.awakenEquipment(slot);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const useSetSelector = (selectorType, setId, slot) => {
+    const result = engineRef.current.useSetSelector(selectorType, setId, slot);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
   // 보스 타이머 업데이트 (1초마다)
   useEffect(() => {
     const timerInterval = setInterval(() => {
@@ -345,6 +402,14 @@ export const GameProvider = ({ children }) => {
       placeBid,
       gachaRelic,
       upgradeRelic,
+      // 새 장비 시스템
+      equipNewItem,
+      unequipNewItem,
+      disassembleNewItem,
+      disassembleAllNormal,
+      upgradeEquipmentLevel,
+      awakenEquipment,
+      useSetSelector,
       engine: engineRef.current
     }}>
       {children}

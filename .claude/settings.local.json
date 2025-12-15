@@ -16,7 +16,10 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git rm:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(find:*)",
+      "Bash(ls -la \"c:\\Users\\welch\\Desktop\\ttmud\\public\\images\\Pool\"\" 2>/dev/null || dir \"c:UserswelchDesktopttmudpublicimagesPool \")",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []

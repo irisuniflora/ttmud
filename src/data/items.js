@@ -54,9 +54,9 @@ const BASE_VALUES = {
   expBonus: 0.12, // 영웅 경험치 15%의 1/120 수준 (1/10로 감소)
   dropRate: 0.04, // 영웅 드랍율 5%의 1/120 수준 (1/10로 감소)
   goldBonus: 0.08, // 영웅 골드 10%의 1/120 수준 (1/10로 감소)
-  monstersPerStageReduction: 0.05, // 스테이지 당 몬스터 감소 (아직 미구현, 1/10로 감소)
-  bossDamageIncrease: 0.1, // 보스 데미지 증가 (아직 미구현, 보스 도감 연동 예정, 1/10로 감소)
-  normalMonsterDamageIncrease: 0.1 // 일반 몬스터 데미지 증가 (아직 미구현, 1/10로 감소)
+  monstersPerStageReduction: 1, // 스테이지 당 몬스터 감소 (미사용 - 등급별 고정값 사용: 전설2~3, 신화4~5, 다크7~9)
+  bossDamageIncrease: 0.1, // 보스 데미지 증가 (1/10로 감소)
+  normalMonsterDamageIncrease: 0.1 // 일반 몬스터 데미지 증가 (1/10로 감소)
 };
 
 // 등급별 배수 범위
@@ -138,9 +138,9 @@ export const generateItem = (slot, playerFloor = 1) => {
 
     // 몬스터 감소 옵션은 고정값
     if (randomStatKey === 'monstersPerStageReduction') {
-      let reductionValue = 1; // 전설: -1
-      if (rarity === 'mythic') reductionValue = 2; // 신화: -2
-      if (rarity === 'dark') reductionValue = Math.random() < 0.5 ? 3 : 4; // 다크: -3 또는 -4
+      let reductionValue = 2 + Math.floor(Math.random() * 2); // 전설: 2~3
+      if (rarity === 'mythic') reductionValue = 4 + Math.floor(Math.random() * 2); // 신화: 4~5
+      if (rarity === 'dark') reductionValue = 7 + Math.floor(Math.random() * 3); // 다크: 7~9
 
       stats.push({
         id: statDef.id,
@@ -302,9 +302,9 @@ export const rerollItemWithOrb = (item, playerFloor = 1) => {
 
     // 몬스터 감소 옵션은 고정값
     if (randomStatKey === 'monstersPerStageReduction') {
-      let reductionValue = 1;
-      if (item.rarity === 'mythic') reductionValue = 2;
-      if (item.rarity === 'dark') reductionValue = Math.random() < 0.5 ? 3 : 4;
+      let reductionValue = 2 + Math.floor(Math.random() * 2); // 전설: 2~3
+      if (item.rarity === 'mythic') reductionValue = 4 + Math.floor(Math.random() * 2); // 신화: 4~5
+      if (item.rarity === 'dark') reductionValue = 7 + Math.floor(Math.random() * 3); // 다크: 7~9
 
       item.stats.push({
         id: statDef.id,
