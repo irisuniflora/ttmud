@@ -264,7 +264,9 @@ export const getUpgradeCost = (item) => {
 
 // 업글 가능 여부 확인
 export const canUpgradeItem = (item) => {
-  return (item.upgradesLeft || 0) > 0;
+  // upgradesLeft가 undefined면 기본값(10) 사용
+  const upgradesLeft = item.upgradesLeft ?? ITEM_LEVEL_CONFIG.defaultUpgradesLeft;
+  return upgradesLeft > 0;
 };
 
 // ===== 장비조각 시스템 =====

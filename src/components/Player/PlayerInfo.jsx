@@ -4,16 +4,18 @@ import { formatNumber, formatNumberWithCommas, getHPPercent } from '../../utils/
 import { getTotalSkillEffects } from '../../data/skills';
 import { getHeroById, getHeroStats } from '../../data/heroes';
 import { EQUIPMENT_CONFIG, getMonstersPerFloor } from '../../data/gameBalance';
+import { getTotalRelicEffects } from '../../data/prestigeRelics';
 
 const PlayerInfo = () => {
   const { gameState, enterBossBattle, toggleFloorLock, goDownFloor, engine } = useGame();
-  const { player, currentMonster, orbs = 0, upgradeCoins = 0, equipment = {}, skillLevels = {}, slotEnhancements = {}, heroes = {} } = gameState;
+  const { player, currentMonster, orbs = 0, upgradeCoins = 0, equipment = {}, skillLevels = {}, slotEnhancements = {}, heroes = {}, relics = {} } = gameState;
 
   const hpPercent = getHPPercent(currentMonster.hp, currentMonster.maxHp);
 
   // 전투력 계산
   const calculateCombatPower = () => {
     const skillEffects = getTotalSkillEffects(skillLevels);
+    const relicEffects = getTotalRelicEffects(relics);
 
     // 영웅 버프 계산
     let heroAttack = 0;
@@ -50,12 +52,15 @@ const PlayerInfo = () => {
     });
 
     const totalAttack = Math.floor(player.stats.baseAtk + equipmentAttack + heroAttack);
-    const totalCritChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroCritChance;
-    const totalCritDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroCritDmg;
+    const totalCritChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroCritChance + (relicEffects.critChance || 0);
+    const totalCritDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroCritDmg + (relicEffects.critDmg || 0);
 
     const critChanceMultiplier = Math.min(totalCritChance, 100) / 100;
     const avgDamagePerHit = totalAttack * (1 + critChanceMultiplier * (totalCritDmg / 100));
-    return Math.floor(avgDamagePerHit * 10 * 30);
+
+    // 유물 데미지 보너스 적용
+    const relicDamageMultiplier = 1 + (relicEffects.damagePercent || 0) / 100;
+    return Math.floor(avgDamagePerHit * 10 * 30 * relicDamageMultiplier);
   };
 
   const combatPower = calculateCombatPower();
@@ -75,8 +80,12 @@ const PlayerInfo = () => {
   // 도감 보너스 계산
   const collectionBonus = engine ? engine.calculateCollectionBonus() : { monsterReduction: 0 };
 
+  // 유물 효과 (몬스터 감소)
+  const relicEffectsForMonster = getTotalRelicEffects(relics);
+  const relicMonsterReduction = Math.floor(relicEffectsForMonster.monstersPerStageReduction || 0);
+
   const baseMonstersPerFloor = getMonstersPerFloor(player.floor);
-  const actualMonstersPerFloor = Math.max(5, baseMonstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction);
+  const actualMonstersPerFloor = Math.max(5, baseMonstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction - relicMonsterReduction);
 
   // 보스방 입장 가능 여부
   const canEnterBoss = player.monstersKilledInFloor >= actualMonstersPerFloor && player.floorState !== 'boss_battle';

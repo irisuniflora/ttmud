@@ -274,8 +274,8 @@ const Collection = () => {
                     const legendaryReleaseData = releaseData.releasedMonsters?.[legendaryId];
                     const legendaryReleaseCount = legendaryReleaseData?.releaseCount || 0;
 
-                    // 방생 가능 여부 (최대 1회)
-                    const canReleaseRare = rareUnlocked && rareReleaseCount < 1 && (!legendaryUnlocked || legendaryReleaseCount >= 1);
+                    // 방생 가능 여부 (최대 1회) - 개별적으로 방생 가능
+                    const canReleaseRare = rareUnlocked && rareReleaseCount < 1;
                     const canReleaseLegendary = legendaryUnlocked && legendaryReleaseCount < 1;
 
                     return (

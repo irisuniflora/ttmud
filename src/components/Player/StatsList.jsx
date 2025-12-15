@@ -4,13 +4,15 @@ import { formatNumber, formatPercent } from '../../utils/formatter';
 import { getTotalSkillEffects } from '../../data/skills';
 import { getHeroById, getHeroStats } from '../../data/heroes';
 import { EQUIPMENT_CONFIG } from '../../data/gameBalance';
+import { getTotalRelicEffects } from '../../data/prestigeRelics';
 
 const StatsList = () => {
   const { gameState, engine } = useGame();
-  const { player, skillLevels, equipment, slotEnhancements = {}, heroes } = gameState;
+  const { player, skillLevels, equipment, slotEnhancements = {}, heroes, relics = {} } = gameState;
 
   const totalDPS = engine.calculateTotalDPS();
   const skillEffects = getTotalSkillEffects(skillLevels);
+  const relicEffects = getTotalRelicEffects(relics);
 
   // 영웅 버프 계산
   let heroBuffs = {
@@ -96,20 +98,21 @@ const StatsList = () => {
   const rangeStart = Math.floor((baseFloor - 1) / 5) * 5 + 1;
   const releaseBonus = engine ? engine.calculateReleaseBonus(rangeStart) : { damageBonus: 0, dropRateBonus: 0 };
 
-  // 총 크리티컬 확률과 데미지
-  const totalCritChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroBuffs.critChance;
-  const totalCritDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroBuffs.critDmg;
+  // 총 크리티컬 확률과 데미지 (유물 효과 포함)
+  const totalCritChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroBuffs.critChance + (relicEffects.critChance || 0);
+  const totalCritDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroBuffs.critDmg + (relicEffects.critDmg || 0);
 
   const stats = [
     // DPS 관련 스탯 (와인색)
     { icon: '⚔️', name: '공격력', value: formatNumber(totalAttack), color: 'text-rose-400' },
     { icon: '💥', name: '치명타 확률', value: formatPercent(totalCritChance), color: 'text-rose-400' },
     { icon: '🎯', name: '치명타 데미지', value: formatPercent(totalCritDmg), color: 'text-rose-400' },
-    { icon: '👑', name: '보스 데미지', value: '+' + formatPercent(equipmentBossDamageIncrease), color: 'text-rose-400' },
+    { icon: '👑', name: '보스 데미지', value: '+' + formatPercent(equipmentBossDamageIncrease + (relicEffects.bossDamage || 0)), color: 'text-rose-400' },
     { icon: '🗡️', name: '일반몹 데미지', value: '+' + formatPercent(equipmentNormalMonsterDamageIncrease), color: 'text-rose-400' },
+    { icon: '💎', name: '유물 데미지', value: '+' + formatPercent(relicEffects.damagePercent || 0), color: 'text-pink-400', hide: (relicEffects.damagePercent || 0) === 0 },
 
     // 보너스 관련 스탯 (금색)
-    { icon: '💰', name: '골드 획득량', value: '+' + formatPercent(player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus), color: 'text-yellow-400' },
+    { icon: '💰', name: '골드 획득량', value: '+' + formatPercent(player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus + (relicEffects.goldPercent || 0)), color: 'text-yellow-400' },
     { icon: '🍀', name: '드랍율', value: formatPercent(player.stats.dropRate + equipmentDropRate + (skillEffects.dropRate || 0) + heroBuffs.dropRate), color: 'text-yellow-400' },
     { icon: '📚', name: '경험치 증가량', value: '+' + formatPercent(equipmentExpBonus + heroBuffs.expBonus), color: 'text-yellow-400', hide: (equipmentExpBonus + heroBuffs.expBonus) === 0 },
     { icon: '💀', name: '체력퍼뎀', value: `${formatPercent(heroBuffs.hpPercentDmgChance)} (${Math.floor(heroBuffs.hpPercentDmgValue)}%HP)`, color: 'text-yellow-400', hide: heroBuffs.hpPercentDmgChance === 0 },
@@ -134,11 +137,11 @@ const StatsList = () => {
       tooltip: `${rangeStart}~${rangeStart+4}층 구간에 적용`
     },
 
-    // 몬스터 감소 (맨 아래, 초록색) - 장비 + 도감 보너스
+    // 몬스터 감소 (맨 아래, 초록색) - 장비 + 도감 + 유물 보너스
     {
       icon: '➖',
       name: '몬스터 감소',
-      value: `${Math.floor(equipmentMonstersPerStageReduction) + (engine ? engine.calculateCollectionBonus().monsterReduction : 0)}`,
+      value: `${Math.floor(equipmentMonstersPerStageReduction) + (engine ? engine.calculateCollectionBonus().monsterReduction : 0) + Math.floor(relicEffects.monstersPerStageReduction || 0)}`,
       color: 'text-green-400'
     },
 

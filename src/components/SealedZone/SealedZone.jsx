@@ -10,6 +10,59 @@ const getBossImage = (bossId) => {
   return `/images/raid_bosses/${bossId}.png`;
 };
 
+// 문양 이미지 경로 가져오기
+const getInscriptionImage = (inscriptionId) => {
+  return `/images/inscriptions/${inscriptionId}.png`;
+};
+
+// 등급별 카드 스타일 (테두리, 배경, 그림자)
+const getGradeCardStyle = (grade, isSelected = false) => {
+  if (isSelected) {
+    return {
+      className: 'bg-blue-900 border-blue-500 ring-2 ring-blue-400 shadow-lg shadow-blue-500/50',
+      borderStyle: {}
+    };
+  }
+
+  switch (grade) {
+    case 'common':
+      return {
+        className: 'bg-gray-800/80 border-gray-600 hover:bg-gray-700',
+        borderStyle: {}
+      };
+    case 'uncommon':
+      return {
+        className: 'bg-gradient-to-b from-green-900/40 to-gray-800 border-green-500/70 hover:border-green-400 shadow-sm shadow-green-500/20',
+        borderStyle: {}
+      };
+    case 'rare':
+      return {
+        className: 'bg-gradient-to-b from-blue-900/50 to-gray-800 border-blue-500 hover:border-blue-400 shadow-md shadow-blue-500/30',
+        borderStyle: {}
+      };
+    case 'epic':
+      return {
+        className: 'bg-gradient-to-b from-purple-900/50 to-gray-800 border-purple-500 hover:border-purple-400 shadow-md shadow-purple-500/40',
+        borderStyle: {}
+      };
+    case 'legendary':
+      return {
+        className: 'bg-gradient-to-b from-yellow-900/50 to-gray-800 border-yellow-500 hover:border-yellow-400 shadow-lg shadow-yellow-500/40',
+        borderStyle: { borderWidth: '2px' }
+      };
+    case 'mythic':
+      return {
+        className: 'bg-gradient-to-b from-red-900/60 via-orange-900/40 to-gray-800 border-red-500 hover:border-red-400 shadow-lg shadow-red-500/50 animate-pulse',
+        borderStyle: { borderWidth: '2px' }
+      };
+    default:
+      return {
+        className: 'bg-gray-800 border-gray-700 hover:bg-gray-700',
+        borderStyle: {}
+      };
+  }
+};
+
 const SealedZone = () => {
   const [activeSubTab, setActiveSubTab] = useState('boss'); // 'boss' 또는 'inscription'
   const { gameState, setGameState } = useGame();
@@ -744,7 +797,7 @@ const SealedZone = () => {
 
       {/* 보스 도전 탭 */}
       {activeSubTab === 'boss' && (
-        <div className="bg-game-panel border border-game-border rounded-lg p-4 shadow-md overflow-hidden">
+        <div className="bg-game-panel border border-game-border rounded-lg p-4 shadow-md">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold text-gray-100">🔒 봉인구역</h2>
             <div className="text-sm text-gray-300">
@@ -763,9 +816,9 @@ const SealedZone = () => {
                 key={bossId}
                 onClick={() => unlocked && setSelectedBoss(bossId)}
                 disabled={!unlocked}
-                className={`flex-shrink-0 w-20 p-2 rounded-lg border-2 relative overflow-hidden transition-all ${
+                className={`flex-shrink-0 w-20 p-2 rounded-lg border-2 relative transition-all ${
                   selectedBoss === bossId
-                    ? 'bg-red-900/60 border-red-500 shadow-lg shadow-red-500/40 scale-105'
+                    ? 'bg-red-900/60 border-red-500 shadow-lg shadow-red-500/40 scale-105 z-10'
                     : unlocked
                     ? 'bg-gray-800/80 border-gray-600 hover:bg-gray-700 hover:border-gray-500'
                     : 'bg-gray-900/50 border-gray-800 opacity-40 cursor-not-allowed'
@@ -800,36 +853,127 @@ const SealedZone = () => {
         </div>
       </div>
 
-      {/* 선택된 보스 상세 정보 */}
+      {/* 선택된 보스 상세 정보 + 문양 슬롯 */}
       {selectedBoss && (
-        <div className="mb-4 bg-gradient-to-r from-red-900/30 to-gray-800/50 border border-red-500/30 rounded-lg p-3">
-          <div className="flex items-center gap-4">
-            {/* 큰 초상화 */}
-            <div className="flex-shrink-0">
-              <img
-                src={getBossImage(selectedBoss)}
-                alt={RAID_BOSSES[selectedBoss].name}
-                className="w-24 h-24 object-contain"
-                style={{
-                  imageRendering: 'pixelated',
-                  filter: 'drop-shadow(0 0 10px #ef4444)'
-                }}
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'flex';
-                }}
-              />
-              <div className="text-5xl hidden items-center justify-center w-24 h-24">{RAID_BOSSES[selectedBoss].icon}</div>
-            </div>
-            {/* 보스 정보 */}
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-red-400">{RAID_BOSSES[selectedBoss].name}</h3>
-              <div className="text-xs text-gray-400 mb-2">{RAID_BOSSES[selectedBoss].description}</div>
-              <div className="text-sm text-orange-400 font-bold mb-1">
-                ⚔️ {RAID_BOSSES[selectedBoss].pattern.description}
+        <div className="mb-4 bg-gradient-to-r from-red-900/30 to-gray-800/50 border border-red-500/30 rounded-lg p-4">
+          <div className="flex gap-4">
+            {/* 왼쪽: 보스 초상화 + 정보 */}
+            <div className="flex items-center gap-4 flex-1">
+              {/* 큰 초상화 */}
+              <div className="flex-shrink-0 p-2">
+                <img
+                  src={getBossImage(selectedBoss)}
+                  alt={RAID_BOSSES[selectedBoss].name}
+                  className="w-28 h-28 object-contain"
+                  style={{
+                    imageRendering: 'pixelated',
+                    filter: 'drop-shadow(0 0 10px #ef4444)'
+                  }}
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
+                />
+                <div className="text-5xl hidden items-center justify-center w-28 h-28">{RAID_BOSSES[selectedBoss].icon}</div>
               </div>
-              <div className="text-xs text-gray-500">
-                HP: {formatNumber(calculateRaidBossStats(selectedBoss, selectedDifficulty, player.floor).hp)}
+              {/* 보스 정보 */}
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-red-400">{RAID_BOSSES[selectedBoss].name}</h3>
+                <div className="text-xs text-gray-400 mb-2">{RAID_BOSSES[selectedBoss].description}</div>
+                <div className="text-sm text-orange-400 font-bold mb-1">
+                  ⚔️ {RAID_BOSSES[selectedBoss].pattern.description}
+                </div>
+                <div className="text-xs text-gray-500">
+                  HP: {formatNumber(calculateRaidBossStats(selectedBoss, selectedDifficulty, player.floor).hp)}
+                </div>
+              </div>
+            </div>
+
+            {/* 오른쪽: 문양 슬롯 */}
+            <div className="w-80 flex-shrink-0 border-l border-gray-700 pl-4">
+              {/* 슬롯 헤더 */}
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-300 font-bold">
+                  슬롯: {activeInscriptions.length}/{unlockedInscriptionSlots}
+                </span>
+                {unlockedInscriptionSlots < INSCRIPTION_SLOT_CONFIG.maxSlots && (
+                  <button
+                    onClick={() => {
+                      const nextSlot = unlockedInscriptionSlots + 1;
+                      const cost = INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${nextSlot}`];
+                      const bossCoins = sealedZone.bossCoins || 0;
+                      if (bossCoins >= cost) {
+                        if (confirm(`${nextSlot}번째 슬롯을 ${formatNumber(cost)} 보스코인으로 해금하시겠습니까?`)) {
+                          setGameState(prev => ({
+                            ...prev,
+                            sealedZone: {
+                              ...prev.sealedZone,
+                              bossCoins: (prev.sealedZone.bossCoins || 0) - cost,
+                              unlockedInscriptionSlots: nextSlot
+                            }
+                          }));
+                        }
+                      } else {
+                        alert('보스코인이 부족합니다!');
+                      }
+                    }}
+                    className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-0.5 rounded"
+                  >
+                    🔓 해금 ({formatNumber(INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${unlockedInscriptionSlots + 1}`])} 🪙)
+                  </button>
+                )}
+              </div>
+
+              {/* 문양 슬롯 (컴팩트) */}
+              <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                {Array.from({ length: unlockedInscriptionSlots }).map((_, idx) => {
+                  const inscriptionId = activeInscriptions[idx];
+                  const inscription = inscriptionId ? ownedInscriptions.find(i => i.id === inscriptionId) : null;
+                  const inscriptionData = inscription ? calculateInscriptionStats(inscription.inscriptionId, migrateGrade(inscription.grade)) : null;
+                  const inscriptionBase = inscription ? INSCRIPTIONS[inscription.inscriptionId] : null;
+                  const slotGradeStyle = inscription ? getGradeCardStyle(migrateGrade(inscription.grade)) : null;
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`border rounded-lg p-2 ${
+                        inscription
+                          ? slotGradeStyle.className
+                          : 'bg-gray-800 border-gray-600 border-dashed'
+                      }`}
+                      style={inscription ? slotGradeStyle.borderStyle : {}}
+                    >
+                      {inscription ? (
+                        <div className="flex items-center gap-2">
+                          {/* 문양 이미지 */}
+                          <img
+                            src={getInscriptionImage(inscription.inscriptionId)}
+                            alt={inscriptionData.name}
+                            className="w-8 h-8 object-contain"
+                            style={{ imageRendering: 'pixelated' }}
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                          {/* 문양 정보 (간략) */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1">
+                              <span className={`text-[10px] font-bold ${inscriptionData.gradeColor}`}>
+                                {inscriptionData.gradeName}
+                              </span>
+                              <span className="text-[10px] text-gray-100 truncate">{inscriptionData.name}</span>
+                            </div>
+                            <div className="text-[9px] text-gray-400">
+                              ATK +{formatNumber(inscriptionData.attack)} | 치확 +{inscriptionData.critChance.toFixed(1)}%
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-1">
+                          <span className="text-gray-600 text-[10px]">슬롯 {idx + 1} - 비어있음</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -838,206 +982,259 @@ const SealedZone = () => {
 
       {selectedBoss && (
         <>
-          {/* 난이도 선택 */}
-          <div className="mb-4">
-            <h3 className="text-sm font-bold text-gray-200 mb-2">난이도 선택</h3>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setSelectedDifficulty(Math.max(1, selectedDifficulty - 10))}
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold"
-              >
-                -10
-              </button>
-              <button
-                onClick={() => setSelectedDifficulty(Math.max(1, selectedDifficulty - 1))}
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold"
-              >
-                -1
-              </button>
-              <div className="flex-1 text-center">
-                <div className={`text-xl font-bold ${getDifficultyColor(selectedDifficulty)}`}>
-                  {getDifficultyName(selectedDifficulty)}
-                </div>
-                <div className="text-xs text-gray-400">
-                  배율: x{getDifficultyMultiplier(selectedDifficulty).toFixed(1)}
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedDifficulty(selectedDifficulty + 1)}
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold"
-              >
-                +1
-              </button>
-              <button
-                onClick={() => setSelectedDifficulty(selectedDifficulty + 10)}
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold"
-              >
-                +10
-              </button>
-            </div>
-          </div>
-
-          {/* 문양 슬롯 해금 상태 */}
-          <div className="mb-2 bg-gray-800 border border-gray-700 rounded p-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-300">
-                문양 슬롯: {activeInscriptions.length}/{unlockedInscriptionSlots} (최대 {INSCRIPTION_SLOT_CONFIG.maxSlots})
-              </span>
-              {unlockedInscriptionSlots < INSCRIPTION_SLOT_CONFIG.maxSlots && (
-                <button
-                  onClick={() => {
-                    const nextSlot = unlockedInscriptionSlots + 1;
-                    const cost = INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${nextSlot}`];
-                    const bossCoins = sealedZone.bossCoins || 0;
-                    if (bossCoins >= cost) {
-                      if (confirm(`${nextSlot}번째 슬롯을 ${formatNumber(cost)} 보스코인으로 해금하시겠습니까?`)) {
-                        setGameState(prev => ({
-                          ...prev,
-                          sealedZone: {
-                            ...prev.sealedZone,
-                            bossCoins: (prev.sealedZone.bossCoins || 0) - cost,
-                            unlockedInscriptionSlots: nextSlot
-                          }
-                        }));
-                      }
-                    } else {
-                      alert('보스코인이 부족합니다!');
-                    }
-                  }}
-                  className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 rounded"
-                >
-                  🔓 다음 슬롯 해금 ({formatNumber(INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${unlockedInscriptionSlots + 1}`])} 🪙)
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* 문양 슬롯 시각화 */}
-          <div className="mb-4">
-            <h3 className="text-sm font-bold text-gray-200 mb-2">문양 슬롯</h3>
-            <div className="flex gap-2 mb-3">
-              {Array.from({ length: unlockedInscriptionSlots }).map((_, idx) => {
-                const inscriptionId = activeInscriptions[idx];
-                const inscription = inscriptionId ? ownedInscriptions.find(i => i.id === inscriptionId) : null;
-                const inscriptionData = inscription ? calculateInscriptionStats(inscription.inscriptionId, inscription.grade) : null;
-
-                return (
-                  <div
-                    key={idx}
-                    className={`flex-1 border-2 rounded-lg p-2 text-center ${
-                      inscription
-                        ? 'bg-blue-900 border-blue-500 shadow-lg shadow-blue-500/30'
-                        : 'bg-gray-800 border-gray-600 border-dashed'
-                    }`}
+          {/* 2열 레이아웃: 왼쪽 난이도/도전, 오른쪽 문양 */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* 왼쪽: 난이도 선택 + 도전 버튼 */}
+            <div>
+              {/* 난이도 선택 */}
+              <div className="mb-4">
+                <h3 className="text-sm font-bold text-gray-200 mb-2">난이도 선택</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setSelectedDifficulty(Math.max(1, selectedDifficulty - 10))}
+                    className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold text-sm"
                   >
-                    <div className="text-xs text-gray-400 mb-1">슬롯 {idx + 1}</div>
-                    {inscription ? (
-                      <>
-                        <div className="text-2xl mb-1">📿</div>
-                        <div className={`text-xs font-bold ${inscriptionData.gradeColor}`}>
-                          {inscriptionData.gradeName}
-                        </div>
-                        <div className="text-xs text-gray-300 truncate">{inscriptionData.name}</div>
-                      </>
-                    ) : (
-                      <div className="text-gray-600 text-xs py-2">비어있음</div>
-                    )}
+                    -10
+                  </button>
+                  <button
+                    onClick={() => setSelectedDifficulty(Math.max(1, selectedDifficulty - 1))}
+                    className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold text-sm"
+                  >
+                    -1
+                  </button>
+                  <div className="flex-1 text-center">
+                    <div className={`text-lg font-bold ${getDifficultyColor(selectedDifficulty)}`}>
+                      {getDifficultyName(selectedDifficulty)}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      배율: x{getDifficultyMultiplier(selectedDifficulty).toFixed(1)}
+                    </div>
                   </div>
-                );
-              })}
+                  <button
+                    onClick={() => setSelectedDifficulty(selectedDifficulty + 1)}
+                    className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold text-sm"
+                  >
+                    +1
+                  </button>
+                  <button
+                    onClick={() => setSelectedDifficulty(selectedDifficulty + 10)}
+                    className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold text-sm"
+                  >
+                    +10
+                  </button>
+                </div>
+              </div>
+
+              {/* 보유 문양 선택 */}
+              <div className="mb-4">
+                <h3 className="text-sm font-bold text-gray-200 mb-2">보유 문양 (클릭: 선택/해제)</h3>
+                {ownedInscriptions.length === 0 ? (
+                  <div className="text-xs text-gray-500 text-center py-4 bg-gray-800 rounded border border-gray-700">
+                    보유한 문양이 없습니다
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-1.5 max-h-[200px] overflow-y-auto p-1">
+                    {(() => {
+                      const groupedInscriptions = {};
+                      ownedInscriptions.forEach(inscription => {
+                        const migratedGrade = migrateGrade(inscription.grade);
+                        const key = `${inscription.inscriptionId}_${migratedGrade}`;
+                        if (!groupedInscriptions[key]) {
+                          groupedInscriptions[key] = {
+                            inscriptionId: inscription.inscriptionId,
+                            grade: migratedGrade,
+                            items: []
+                          };
+                        }
+                        groupedInscriptions[key].items.push(inscription);
+                      });
+
+                      return Object.entries(groupedInscriptions).map(([key, group]) => {
+                        const inscriptionData = calculateInscriptionStats(group.inscriptionId, group.grade);
+                        const selectedItems = group.items.filter(item => activeInscriptions.includes(item.id));
+                        const selectedCount = selectedItems.length;
+                        const totalCount = group.items.length;
+                        const gradeStyle = getGradeCardStyle(group.grade, selectedCount > 0);
+
+                        return (
+                          <button
+                            key={key}
+                            onClick={() => {
+                              if (selectedCount > 0) {
+                                toggleInscriptionSelection(selectedItems[selectedItems.length - 1].id);
+                              } else {
+                                toggleInscriptionSelection(group.items[0].id);
+                              }
+                            }}
+                            className={`p-1.5 rounded-lg border relative transition-all ${gradeStyle.className}`}
+                            style={gradeStyle.borderStyle}
+                          >
+                            {totalCount > 1 && (
+                              <div className="absolute -top-1.5 -left-1.5 bg-gray-900 text-white text-[9px] min-w-[18px] h-[18px] px-0.5 rounded-full flex items-center justify-center font-bold shadow-md border border-gray-500">
+                                {selectedCount > 0 ? `${selectedCount}/${totalCount}` : `x${totalCount}`}
+                              </div>
+                            )}
+                            {selectedCount > 0 && (
+                              <div className="absolute -top-1.5 -right-1.5 bg-blue-500 text-white text-[9px] w-[18px] h-[18px] rounded-full flex items-center justify-center font-bold shadow-md border border-blue-300">
+                                {activeInscriptions.indexOf(selectedItems[0].id) + 1}
+                              </div>
+                            )}
+                            {/* 문양 이미지 */}
+                            <div className="flex justify-center mb-1">
+                              <img
+                                src={getInscriptionImage(group.inscriptionId)}
+                                alt={inscriptionData.name}
+                                className="w-10 h-10 object-contain drop-shadow-lg"
+                                style={{ imageRendering: 'pixelated' }}
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  e.target.nextSibling.style.display = 'block';
+                                }}
+                              />
+                              <span className="text-xl hidden">📿</span>
+                            </div>
+                            <div className={`text-[10px] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]`}>
+                              {inscriptionData.gradeName}
+                            </div>
+                            <div className="text-[9px] text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] truncate">{inscriptionData.name}</div>
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              {/* 도전 버튼 */}
+              <button
+                onClick={startBattle}
+                disabled={tickets <= 0 || activeInscriptions.length === 0}
+                className={`w-full py-3 rounded font-bold ${
+                  tickets <= 0 || activeInscriptions.length === 0
+                    ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                    : 'bg-red-600 hover:bg-red-700 text-white'
+                }`}
+              >
+                ⚔️ 도전하기 (도전권 -1)
+              </button>
+            </div>
+
+            {/* 오른쪽: 문양 슬롯 */}
+            <div>
+              {/* 문양 슬롯 해금 상태 */}
+              <div className="mb-2 bg-gray-800 border border-gray-700 rounded p-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-300">
+                    슬롯: {activeInscriptions.length}/{unlockedInscriptionSlots}
+                  </span>
+                  {unlockedInscriptionSlots < INSCRIPTION_SLOT_CONFIG.maxSlots && (
+                    <button
+                      onClick={() => {
+                        const nextSlot = unlockedInscriptionSlots + 1;
+                        const cost = INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${nextSlot}`];
+                        const bossCoins = sealedZone.bossCoins || 0;
+                        if (bossCoins >= cost) {
+                          if (confirm(`${nextSlot}번째 슬롯을 ${formatNumber(cost)} 보스코인으로 해금하시겠습니까?`)) {
+                            setGameState(prev => ({
+                              ...prev,
+                              sealedZone: {
+                                ...prev.sealedZone,
+                                bossCoins: (prev.sealedZone.bossCoins || 0) - cost,
+                                unlockedInscriptionSlots: nextSlot
+                              }
+                            }));
+                          }
+                        } else {
+                          alert('보스코인이 부족합니다!');
+                        }
+                      }}
+                      className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 rounded"
+                    >
+                      🔓 해금 ({formatNumber(INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${unlockedInscriptionSlots + 1}`])} 🪙)
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 문양 슬롯 시각화 (세로 배열) */}
+              <div className="space-y-2">
+                {Array.from({ length: unlockedInscriptionSlots }).map((_, idx) => {
+                  const inscriptionId = activeInscriptions[idx];
+                  const inscription = inscriptionId ? ownedInscriptions.find(i => i.id === inscriptionId) : null;
+                  const inscriptionData = inscription ? calculateInscriptionStats(inscription.inscriptionId, migrateGrade(inscription.grade)) : null;
+                  const inscriptionBase = inscription ? INSCRIPTIONS[inscription.inscriptionId] : null;
+                  const slotGradeStyle = inscription ? getGradeCardStyle(migrateGrade(inscription.grade)) : null;
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`border-2 rounded-lg p-3 ${
+                        inscription
+                          ? slotGradeStyle.className
+                          : 'bg-gray-800 border-gray-600 border-dashed'
+                      }`}
+                      style={inscription ? slotGradeStyle.borderStyle : {}}
+                    >
+                      {inscription ? (
+                        <div className="flex items-start gap-3">
+                          {/* 문양 이미지 */}
+                          <div className="flex-shrink-0">
+                            <img
+                              src={getInscriptionImage(inscription.inscriptionId)}
+                              alt={inscriptionData.name}
+                              className="w-14 h-14 object-contain drop-shadow-lg"
+                              style={{ imageRendering: 'pixelated' }}
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextSibling.style.display = 'flex';
+                              }}
+                            />
+                            <div className="text-3xl hidden items-center justify-center w-14 h-14">📿</div>
+                          </div>
+                          {/* 문양 정보 */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className={`text-sm font-bold ${inscriptionData.gradeColor} drop-shadow-sm`}>
+                                {inscriptionData.gradeName}
+                              </span>
+                              <span className="text-sm text-gray-100 truncate font-semibold">{inscriptionData.name}</span>
+                            </div>
+                            {/* 주요 스탯 */}
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+                              <div className="text-gray-300">공격력 <span className="text-red-400 font-bold">+{formatNumber(inscriptionData.attack)}</span></div>
+                              <div className="text-gray-300">치확 <span className="text-yellow-400 font-bold">+{inscriptionData.critChance.toFixed(1)}%</span></div>
+                              <div className="text-gray-300">관통 <span className="text-purple-400 font-bold">+{inscriptionData.penetration.toFixed(1)}%</span></div>
+                              <div className="text-gray-300">명중 <span className="text-blue-400 font-bold">+{inscriptionData.accuracy.toFixed(1)}%</span></div>
+                            </div>
+                            {/* 특수 능력 */}
+                            {inscriptionBase?.specialAbility && (
+                              <div className="mt-1.5 text-[11px] text-cyan-400 font-semibold">
+                                ✨ {inscriptionBase.specialAbility.name}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center py-4">
+                          <span className="text-gray-600 text-xs">슬롯 {idx + 1} - 비어있음</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
-
-          {/* 문양 선택 - 스택으로 표시 */}
-          <div className="mb-4">
-            <h3 className="text-sm font-bold text-gray-200 mb-2">보유 문양 (클릭: 선택, 다시 클릭: 해제)</h3>
-            {ownedInscriptions.length === 0 ? (
-              <div className="text-xs text-gray-500 text-center py-4">
-                보유한 문양이 없습니다
-              </div>
-            ) : (
-              <div className="grid grid-cols-5 gap-1.5">
-                {(() => {
-                  // 동일 문양 그룹화 (inscriptionId + grade 기준)
-                  const groupedInscriptions = {};
-                  ownedInscriptions.forEach(inscription => {
-                    const key = `${inscription.inscriptionId}_${inscription.grade}`;
-                    if (!groupedInscriptions[key]) {
-                      groupedInscriptions[key] = {
-                        inscriptionId: inscription.inscriptionId,
-                        grade: inscription.grade,
-                        items: []
-                      };
-                    }
-                    groupedInscriptions[key].items.push(inscription);
-                  });
-
-                  return Object.entries(groupedInscriptions).map(([key, group]) => {
-                    const inscriptionData = calculateInscriptionStats(group.inscriptionId, group.grade);
-                    // 선택된 아이템들 찾기
-                    const selectedItems = group.items.filter(item => activeInscriptions.includes(item.id));
-                    const selectedCount = selectedItems.length;
-                    const totalCount = group.items.length;
-                    // 첫 번째 미선택 아이템
-                    const nextToSelect = group.items.find(item => !activeInscriptions.includes(item.id));
-
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => {
-                          if (selectedCount > 0) {
-                            // 선택된 게 있으면 마지막 선택 해제
-                            toggleInscriptionSelection(selectedItems[selectedItems.length - 1].id);
-                          } else {
-                            // 미선택: 첫 번째 아이템 선택
-                            toggleInscriptionSelection(group.items[0].id);
-                          }
-                        }}
-                        className={`p-1.5 rounded border relative transition-all ${
-                          selectedCount > 0
-                            ? 'bg-blue-900 border-blue-500 ring-1 ring-blue-400 shadow-lg'
-                            : 'bg-gray-800 border-gray-700 hover:bg-gray-700'
-                        }`}
-                      >
-                        {/* 수량 표시 */}
-                        {totalCount > 1 && (
-                          <div className="absolute -top-1 -left-1 bg-gray-700 text-white text-[9px] min-w-[16px] h-[16px] px-0.5 rounded-full flex items-center justify-center font-bold shadow-md border border-gray-500">
-                            {selectedCount > 0 ? `${selectedCount}/${totalCount}` : `x${totalCount}`}
-                          </div>
-                        )}
-                        {/* 선택 슬롯 번호 */}
-                        {selectedCount > 0 && (
-                          <div className="absolute -top-1 -right-1 bg-blue-500 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold shadow-md">
-                            {activeInscriptions.indexOf(selectedItems[0].id) + 1}
-                          </div>
-                        )}
-                        <div className="text-lg mb-0.5">📿</div>
-                        <div className={`text-[9px] font-bold ${inscriptionData.gradeColor}`}>
-                          {inscriptionData.gradeName}
-                        </div>
-                        <div className="text-[9px] text-gray-300 truncate">{inscriptionData.name}</div>
-                      </button>
-                    );
-                  });
-                })()}
-              </div>
-            )}
-          </div>
-
-          {/* 도전 버튼 */}
-          <button
-            onClick={startBattle}
-            disabled={tickets <= 0 || activeInscriptions.length === 0}
-            className={`w-full py-3 rounded font-bold ${
-              tickets <= 0 || activeInscriptions.length === 0
-                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                : 'bg-red-600 hover:bg-red-700 text-white'
-            }`}
-          >
-            도전하기 (도전권 -1)
-          </button>
         </>
       )}
+
+      {/* 구분선 - 선택된 보스 없을때만 표시 */}
+      {!selectedBoss && (
+        <div className="text-center text-gray-500 text-sm py-8">
+          위에서 보스를 선택하세요
+        </div>
+      )}
+
         </div>
       )}
 
@@ -1143,10 +1340,10 @@ const SealedZone = () => {
                       }`}
                     >
                       <div className="text-2xl mb-1">📿</div>
-                      <div className={`text-xs font-bold ${inscriptionData.gradeColor}`}>
+                      <div className={`text-xs font-bold ${inscriptionData.gradeColor} drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]`}>
                         {inscriptionData.gradeName}
                       </div>
-                      <div className="text-xs text-gray-300 truncate">{inscriptionData.name}</div>
+                      <div className="text-xs text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] truncate">{inscriptionData.name}</div>
                     </button>
                   );
                 })}

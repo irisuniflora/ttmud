@@ -2162,23 +2162,9 @@ export class GameEngine {
         return { success: false, message: '수집되지 않은 몬스터입니다' };
       }
 
-      // 전설 우선 방생 확인 (전설이 수집되어 있고 아직 방생 안 했으면 전설 먼저)
-      const legendaryId = monsterId.replace('rare_', 'legendary_');
-      const legendaryCollected = collection.legendaryMonsters?.[legendaryId]?.unlocked || false;
-      const legendaryReleaseData = collection.release.releasedMonsters[legendaryId];
-      const legendaryReleased = (legendaryReleaseData?.releaseCount || 0) >= 1;
-
-      // 전설이 수집되어 있고 방생 안 했으면 방생 불가
+      // 방생 횟수 확인 (최대 1회)
       const rareReleaseData = collection.release.releasedMonsters[monsterId];
       const rareReleaseCount = rareReleaseData?.releaseCount || 0;
-
-      if (legendaryCollected && !legendaryReleased) {
-        const monsterName = collection.rareMonsters[monsterId].name;
-        return {
-          success: false,
-          message: `${monsterName}의 전설 버전을 먼저 방생해야 합니다!`
-        };
-      }
 
       // 방생 횟수 확인 (최대 1회)
       if (rareReleaseCount >= 1) {
@@ -3086,7 +3072,12 @@ export class GameEngine {
   // 일괄 분해 (노말템만)
   disassembleAllNormal() {
     const { newInventory = [] } = this.state;
-    const normalItems = newInventory.filter(item => item.type === 'normal');
+    // type이 없거나 'normal'인 경우, 또는 setId가 없는 경우 노말템으로 판단
+    const isNormalItem = (item) => {
+      if (item.type === 'set' || item.setId) return false;
+      return item.type === 'normal' || !item.type;
+    };
+    const normalItems = newInventory.filter(isNormalItem);
 
     if (normalItems.length === 0) {
       return { success: false, message: '분해할 노말 아이템이 없습니다' };
@@ -3098,7 +3089,7 @@ export class GameEngine {
     });
 
     // 노말템 제거
-    this.state.newInventory = newInventory.filter(item => item.type !== 'normal');
+    this.state.newInventory = newInventory.filter(item => !isNormalItem(item));
 
     // 장비조각 추가
     this.state.equipmentFragments = (this.state.equipmentFragments || 0) + totalFragments;

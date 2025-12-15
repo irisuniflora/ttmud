@@ -19,6 +19,20 @@ const getSetItemImage = (setId, slot) => {
   return `/images/equipment/sets/${setId}/${slot}.png`;
 };
 
+// 배경색에 따라 적절한 텍스트 색상 반환 (밝은 배경 -> 어두운 텍스트)
+const getContrastTextColor = (hexColor) => {
+  if (!hexColor) return 'text-white';
+  // hex -> RGB
+  const hex = hexColor.replace('#', '');
+  const r = parseInt(hex.substr(0, 2), 16);
+  const g = parseInt(hex.substr(2, 2), 16);
+  const b = parseInt(hex.substr(4, 2), 16);
+  // 밝기 계산 (YIQ formula)
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  // 밝으면 어두운 텍스트, 어두우면 밝은 텍스트
+  return brightness > 128 ? '#1a1a1a' : '#ffffff';
+};
+
 const NewEquipment = () => {
   const { gameState, equipNewItem, unequipNewItem, disassembleNewItem, disassembleAllNormal, upgradeEquipmentLevel, awakenEquipment, useSetSelector, updateSettings } = useGame();
   const { equipment, newInventory = [], equipmentFragments = 0, settings = {}, setSelectors = {} } = gameState;
@@ -153,7 +167,6 @@ const NewEquipment = () => {
   });
 
   const setCounts = getSetCounts();
-  const activeBonuses = getActiveSetBonuses();
   const awakenStones = gameState.awakenStones || 0;
 
   return (
@@ -306,7 +319,7 @@ const NewEquipment = () => {
                         <img
                           src={getSetItemImage(selectedSetId, slot)}
                           alt={slot}
-                          className="w-8 h-8"
+                          className="w-8 h-8 object-contain"
                           style={{ imageRendering: 'pixelated' }}
                         />
                         <span className="text-xs text-gray-300">{EQUIPMENT_SLOT_NAMES[slot]}</span>
@@ -315,20 +328,6 @@ const NewEquipment = () => {
                   </div>
                 </div>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* 활성 세트 효과 */}
-        {activeBonuses.length > 0 && (
-          <div className="bg-gradient-to-r from-purple-900/50 to-blue-900/50 border border-purple-500/50 rounded-lg p-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-purple-400 font-bold">활성:</span>
-              {activeBonuses.map((bonus, idx) => (
-                <span key={idx} className="text-xs bg-purple-800/50 px-2 py-0.5 rounded text-white">
-                  {bonus.setName} ({bonus.tier}셋)
-                </span>
-              ))}
             </div>
           </div>
         )}
@@ -371,11 +370,44 @@ const NewEquipment = () => {
           </div>
         )}
 
+        {/* 활성 세트 효과 표시 */}
+        {(() => {
+          const activeBonuses = getActiveSetBonuses();
+          if (activeBonuses.length === 0) return null;
+          return (
+            <div className="mb-3 p-2 bg-gray-900/80 border border-gray-600 rounded-lg">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-gray-300 font-bold">✨ 세트 효과:</span>
+                {activeBonuses.map((bonus, idx) => {
+                  const setData = EQUIPMENT_SETS[bonus.setId];
+                  return (
+                    <span
+                      key={idx}
+                      className="text-xs font-bold px-2 py-1 rounded border"
+                      style={{
+                        backgroundColor: `${setData?.color}20`,
+                        borderColor: setData?.color,
+                        color: setData?.color,
+                        textShadow: '0 1px 2px rgba(0,0,0,0.8)'
+                      }}
+                    >
+                      {setData?.icon} {bonus.setName} ({bonus.tier}세트)
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* 장착 슬롯 */}
         <div className="grid grid-cols-6 gap-2">
           {EQUIPMENT_SLOTS.map(slot => {
             const item = equipment[slot];
             const setData = item?.setId ? EQUIPMENT_SETS[item.setId] : null;
+            const setCounts = getSetCounts();
+            const setCount = item?.setId ? (setCounts[item.setId] || 0) : 0;
+            const isSetActive = setCount >= 3;
             const upgradeCost = item ? getUpgradeCost(item) : 0;
             const upgradesLeft = item?.upgradesLeft ?? 10;
             const canUpgrade = item && equipmentFragments >= upgradeCost && upgradesLeft > 0;
@@ -429,15 +461,21 @@ const NewEquipment = () => {
                     {/* 아이템 이름 */}
                     {item.type === 'set' ? (
                       <div
-                        className="relative rounded px-1 py-0.5 mb-1"
+                        className={`relative rounded px-1 py-0.5 mb-1 ${isSetActive ? 'ring-1 ring-yellow-400' : ''}`}
                         style={{ backgroundColor: setData?.color }}
                       >
-                        <p className="text-[10px] truncate font-bold text-center text-white">
+                        <p
+                          className="text-[10px] font-bold text-center leading-tight"
+                          style={{ color: getContrastTextColor(setData?.color) }}
+                        >
                           {setData?.name}
                         </p>
+                        {isSetActive && (
+                          <div className="absolute -top-1 -right-1 text-[8px]">✨</div>
+                        )}
                       </div>
                     ) : (
-                      <p className="relative text-[10px] truncate mb-1 font-bold text-center text-gray-400">
+                      <p className="relative text-[10px] mb-1 font-bold text-center text-gray-400 leading-tight">
                         {EQUIPMENT_SLOT_NAMES[slot]}
                       </p>
                     )}
@@ -597,8 +635,14 @@ const NewEquipment = () => {
 
                             {/* 세트명 */}
                             {isSet && (
-                              <p className="relative text-[7px] truncate text-center" style={{ color: setData?.color }}>
-                                {setData?.name?.substring(0, 4)}
+                              <p
+                                className="relative text-[7px] text-center font-bold"
+                                style={{
+                                  color: setData?.color,
+                                  textShadow: '0 1px 2px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.5)'
+                                }}
+                              >
+                                {setData?.name}
                               </p>
                             )}
 
