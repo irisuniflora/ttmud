@@ -110,8 +110,8 @@ const PlayerInfo = () => {
             💰 {formatNumber(player.gold)}
           </p>
           {player.totalPrestiges > 0 && (
-            <p className="text-pink-400 font-bold" title="유물 조각&#10;환생 시 획득&#10;환생유물 탭에서 사용">
-              💎 {gameState.relicFragments || 0}
+            <p className="text-pink-400 font-bold" title="고대 유물&#10;환생 시 획득&#10;고대유물 탭에서 사용">
+              🏺 {gameState.relicFragments || 0}
             </p>
           )}
           <p className="text-blue-400 font-bold" title="스킬 포인트&#10;레벨업 시 1개씩 획득&#10;스킬 탭에서 사용 가능">

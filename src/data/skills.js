@@ -36,8 +36,8 @@ export const SKILL_TREES = {
       },
       {
         id: 'hero_boost',
-        name: '영웅 강화',
-        description: '모든 영웅의 데미지 증가',
+        name: '동료 강화',
+        description: '모든 동료의 데미지 증가',
         maxLevel: 25,
         costPerLevel: 2,
         costMultiplier: 1.6,

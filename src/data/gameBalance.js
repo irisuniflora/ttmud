@@ -316,7 +316,7 @@ export const PRESTIGE_CONFIG = {
   ppPerStage: 10,
 };
 
-// ===== 환생 유물 시스템 =====
+// ===== 고대 유물 시스템 =====
 export const RELIC_CONFIG = {
   // 가챠 시스템
   gacha: {
@@ -382,7 +382,7 @@ export const RELIC_CONFIG = {
     },
   },
 
-  // 환생당 유물 조각 획득량
+  // 환생당 고대 유물 획득량
   relicFragments: {
     basePerPrestige: 10, // 기본 획득량
     bonusPerFloor: 0.1,  // 층당 추가 획득 %

@@ -1,13 +1,13 @@
 // 유물 등급 시스템 제거 - 이제 유물은 도감처럼 개별 관리됨
 // 가챠로 랜덤 유물을 얻으며, 중복 획득 시 자동 레벨업
 
-// 환생 유물 목록 (36개)
+// 고대 유물 목록 (36개)
 export const PRESTIGE_RELICS = {
   // === 환생 & 유물 관련 ===
   book_of_abyss: {
     id: 'book_of_abyss',
     name: '심연의 서',
-    description: '환생당 유물 조각 획득량 증가',
+    description: '환생당 고대 유물 획득량 증가',
     icon: '📖',
     category: 'prestige',
     effectPerLevel: {

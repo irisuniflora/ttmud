@@ -217,14 +217,14 @@ export const MAIN_STATS = {
   // 악세서리 슬롯 (선형 증가)
   boots: { id: 'monstersPerStageReduction', name: '몬스터 감소', base: 5, perLevel: 1, suffix: '', roundTo: 0, growth: 'linear', isReduction: true },
   necklace: { id: 'skipChance', name: '스킵 확률', base: 5, perLevel: 0.5, suffix: '%', roundTo: 1, growth: 'linear' },
-  ring: { id: 'ppBonus', name: '환생 포인트', base: 10, perLevel: 2, suffix: '%', roundTo: 0, growth: 'linear' }
+  ring: { id: 'ppBonus', name: '고대 유물', base: 10, perLevel: 2, suffix: '%', roundTo: 0, growth: 'linear' }
 };
 
 // ===== 잠재 옵션 (랜덤) =====
 export const POTENTIAL_STATS = {
   // 딜링 잠재옵션 (무기, 갑옷, 장갑)
   // 10레벨 구간마다 tierGrowth만큼 추가 (Lv.1-10: base, Lv.11-20: base+tierGrowth, ...)
-  attackPercent: { base: 9, tierGrowth: 3, name: '공격력%', suffix: '%' },
+  attackPercent: { base: 9, tierGrowth: 3, name: '공격력', suffix: '%' },
   critDmg: { base: 6, tierGrowth: 2, name: '치명타 데미지', suffix: '%' },
   bossDamageIncrease: { base: 6, tierGrowth: 2, name: '보스 추가 데미지', suffix: '%' },
 
@@ -243,6 +243,17 @@ export const OPTION_GRADES = {
   LOW: 0,    // 하옵 80%
   MID: 1,    // 중옵 90%
   HIGH: 2    // 극옵 100%
+};
+
+// ===== 고대 등급 시스템 =====
+// 세트템 드랍 시 10% 확률로 고대 등급
+// 고대 등급: 모든 잠재옵션 극옵 고정, 기본능력치 1.5배
+export const ANCIENT_CONFIG = {
+  dropChance: 0.10,        // 10% 확률
+  mainStatMultiplier: 1.5, // 기본능력치 1.5배
+  icon: '🏛️',              // 고대 아이콘
+  color: '#FFD700',        // 금색 테두리
+  glowColor: '#FFA500'     // 주황색 글로우
 };
 
 export const OPTION_GRADE_MULTIPLIERS = {
@@ -346,27 +357,65 @@ export const FRAGMENT_CONFIG = {
   setDisassemble: 50
 };
 
-// 노말템 분해 시 획득 조각 계산
+// 노말템 분해 시 획득 조각 계산 (등급별 차등)
 export const getDisassembleFragments = (item) => {
   if (item.setId) {
     return FRAGMENT_CONFIG.setDisassemble;
   }
   const { base, perFloor } = FRAGMENT_CONFIG.normalDisassemble;
-  return Math.floor(base + (item.itemLevel * perFloor));
+  const baseFragments = Math.floor(base + (item.itemLevel * perFloor));
+
+  // 등급별 배율: 흰색 1x, 파랑 2x, 보라 3x
+  const gradeMultiplier = item.normalGrade === 'purple' ? 3 : item.normalGrade === 'blue' ? 2 : 1;
+  return baseFragments * gradeMultiplier;
+};
+
+// ===== 일반템 등급 시스템 =====
+// 흰색(40%) < 파랑(60%) < 보라(80%) < 세트(100%)
+export const NORMAL_GRADES = {
+  white: {
+    id: 'white',
+    name: '일반',
+    color: '#9CA3AF',     // 회색
+    statMultiplier: 0.4,  // 세트템 대비 40%
+    dropWeight: 60        // 드랍 가중치 60%
+  },
+  blue: {
+    id: 'blue',
+    name: '고급',
+    color: '#3B82F6',     // 파랑
+    statMultiplier: 0.6,  // 세트템 대비 60%
+    dropWeight: 30        // 드랍 가중치 30%
+  },
+  purple: {
+    id: 'purple',
+    name: '희귀',
+    color: '#A855F7',     // 보라
+    statMultiplier: 0.8,  // 세트템 대비 80%
+    dropWeight: 10        // 드랍 가중치 10%
+  }
+};
+
+// 일반템 등급 굴림
+export const rollNormalGrade = () => {
+  const roll = Math.random() * 100;
+  if (roll < NORMAL_GRADES.white.dropWeight) return 'white';
+  if (roll < NORMAL_GRADES.white.dropWeight + NORMAL_GRADES.blue.dropWeight) return 'blue';
+  return 'purple';
 };
 
 // ===== 드랍률 =====
 export const DROP_RATES = {
-  // 노말템 드랍률
+  // 일반템 드랍률 (세 등급 합계)
   normal: {
-    monster: 0.15,  // 15%
-    boss: 0.80      // 80%
+    monster: 0.20,  // 20%
+    boss: 0.90      // 90%
   },
 
-  // 세트템 드랍률
+  // 세트템 드랍률 (매우 희귀)
   set: {
-    monster: 0.003, // 0.3%
-    boss: 0.03      // 3%
+    monster: 0.001, // 0.1%
+    boss: 0.01      // 1%
   }
 };
 
@@ -415,34 +464,40 @@ export const calculatePotentialValue = (statId, itemLevel) => {
 // 기존 호환용
 export const calculateStatValue = calculatePotentialValue;
 
-// 노말 아이템 생성 (세트템 대비 60% 성능)
-export const generateNormalItem = (slot, floor) => {
+// 노말 아이템 생성 (등급별 성능: 흰색 40%, 파랑 60%, 보라 80%)
+export const generateNormalItem = (slot, floor, forceGrade = null) => {
   const statType = SLOT_STAT_TYPES[slot];
   const potentialIds = statType === 'damage' ? DAMAGE_POTENTIAL_IDS : UTILITY_POTENTIAL_IDS;
   const itemLevel = getDropLevel(floor);
 
-  // 기본옵션 생성 (세트템의 60%)
+  // 등급 결정 (강제 지정 또는 랜덤)
+  const grade = forceGrade || rollNormalGrade();
+  const gradeData = NORMAL_GRADES[grade];
+  const statMultiplier = gradeData.statMultiplier;
+
+  // 기본옵션 생성 (등급별 배율 적용)
   const mainStatConfig = MAIN_STATS[slot];
   const mainStat = {
     id: mainStatConfig.id,
     name: mainStatConfig.name,
-    value: calculateMainStatValue(slot, itemLevel) * 0.6,
+    value: calculateMainStatValue(slot, itemLevel) * statMultiplier,
     suffix: mainStatConfig.suffix,
     isMain: true,
-    max: mainStatConfig.max ? mainStatConfig.max * 0.6 : null
+    max: mainStatConfig.max ? mainStatConfig.max * statMultiplier : null
   };
 
-  // 잠재옵션 3개 (세트템과 동일 개수, 하지만 최대치가 60%)
+  // 잠재옵션 개수: 흰색 1개, 파랑 2개, 보라 3개
+  const potentialCount = grade === 'white' ? 1 : grade === 'blue' ? 2 : 3;
   const potentials = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < potentialCount; i++) {
     const statId = potentialIds[Math.floor(Math.random() * potentialIds.length)];
     const statConfig = POTENTIAL_STATS[statId];
     const baseValue = calculatePotentialValue(statId, itemLevel);
     const optionGrade = rollOptionGrade(false); // 노말템
     const gradeMultiplier = getGradeMultiplier(optionGrade);
 
-    // 노말템 60% 페널티 적용 + 반올림(소수점 첫째자리)
-    const rawValue = baseValue * gradeMultiplier * 0.6;
+    // 등급별 배율 적용 + 반올림(소수점 첫째자리)
+    const rawValue = baseValue * gradeMultiplier * statMultiplier;
     const finalValue = Math.round(rawValue * 10) / 10;
 
     potentials.push({
@@ -459,10 +514,12 @@ export const generateNormalItem = (slot, floor) => {
   const stats = [mainStat, ...potentials];
 
   return {
-    id: `normal_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+    id: `normal_${grade}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
     type: 'normal',
+    normalGrade: grade,         // 일반템 등급 (white/blue/purple)
+    normalGradeData: gradeData, // 등급 데이터
     slot,
-    name: EQUIPMENT_SLOT_NAMES[slot],
+    name: `${gradeData.name} ${EQUIPMENT_SLOT_NAMES[slot]}`,
     itemLevel,
     baseItemLevel: itemLevel,
     dropFloor: floor,
@@ -476,34 +533,39 @@ export const generateNormalItem = (slot, floor) => {
 };
 
 // 세트 아이템 생성
-export const generateSetItem = (slot, floor, setId = null) => {
+export const generateSetItem = (slot, floor, setId = null, forceAncient = false) => {
   // 세트 랜덤 선택 (지정되지 않은 경우)
   const setIds = Object.keys(EQUIPMENT_SETS);
   const selectedSetId = setId || setIds[Math.floor(Math.random() * setIds.length)];
   const setData = EQUIPMENT_SETS[selectedSetId];
   const itemLevel = getDropLevel(floor);
 
+  // 고대 등급 판정 (10% 확률 또는 강제 지정)
+  const isAncient = forceAncient || Math.random() < ANCIENT_CONFIG.dropChance;
+
   const statType = SLOT_STAT_TYPES[slot];
   const potentialIds = statType === 'damage' ? DAMAGE_POTENTIAL_IDS : UTILITY_POTENTIAL_IDS;
 
-  // 기본옵션 생성
+  // 기본옵션 생성 (고대 등급이면 1.5배)
   const mainStatConfig = MAIN_STATS[slot];
+  const mainStatMultiplier = isAncient ? ANCIENT_CONFIG.mainStatMultiplier : 1;
   const mainStat = {
     id: mainStatConfig.id,
     name: mainStatConfig.name,
-    value: calculateMainStatValue(slot, itemLevel),
+    value: calculateMainStatValue(slot, itemLevel) * mainStatMultiplier,
     suffix: mainStatConfig.suffix,
     isMain: true,
-    max: mainStatConfig.max || null
+    max: mainStatConfig.max ? mainStatConfig.max * mainStatMultiplier : null
   };
 
-  // 세트템 잠재옵션 3개 (세트템은 하옵 확률 낮춤)
+  // 세트템 잠재옵션 3개 (고대 등급이면 모두 극옵)
   const potentials = [];
   for (let i = 0; i < 3; i++) {
     const statId = potentialIds[Math.floor(Math.random() * potentialIds.length)];
     const statConfig = POTENTIAL_STATS[statId];
     const baseValue = calculatePotentialValue(statId, itemLevel);
-    const optionGrade = rollOptionGrade(true); // 세트템
+    // 고대 등급이면 무조건 극옵, 아니면 랜덤
+    const optionGrade = isAncient ? OPTION_GRADES.HIGH : rollOptionGrade(true);
     const gradeMultiplier = getGradeMultiplier(optionGrade);
 
     // 반올림(소수점 첫째자리)
@@ -540,6 +602,81 @@ export const generateSetItem = (slot, floor, setId = null) => {
     stats,
     mainStat, // 기본옵션 별도 저장
     potentials, // 잠재옵션 별도 저장
+    isAncient, // 고대 등급 여부
+    createdAt: Date.now()
+  };
+};
+
+// 상점용 랜덤 세트템 생성 (고대 등급 불가, 템렙 10 고정)
+export const generateShopSetItem = () => {
+  // 랜덤 세트 선택
+  const setIds = Object.keys(EQUIPMENT_SETS);
+  const selectedSetId = setIds[Math.floor(Math.random() * setIds.length)];
+  const setData = EQUIPMENT_SETS[selectedSetId];
+
+  // 랜덤 슬롯 선택
+  const randomSlot = EQUIPMENT_SLOTS[Math.floor(Math.random() * EQUIPMENT_SLOTS.length)];
+
+  // 고정값
+  const itemLevel = 10; // 템렙 10 고정
+
+  const statType = SLOT_STAT_TYPES[randomSlot];
+  const potentialIds = statType === 'damage' ? DAMAGE_POTENTIAL_IDS : UTILITY_POTENTIAL_IDS;
+
+  // 기본옵션 생성
+  const mainStatConfig = MAIN_STATS[randomSlot];
+  const mainStat = {
+    id: mainStatConfig.id,
+    name: mainStatConfig.name,
+    value: calculateMainStatValue(randomSlot, itemLevel),
+    suffix: mainStatConfig.suffix,
+    isMain: true,
+    max: mainStatConfig.max || null
+  };
+
+  // 잠재옵션 3개
+  const potentials = [];
+  for (let i = 0; i < 3; i++) {
+    const statId = potentialIds[Math.floor(Math.random() * potentialIds.length)];
+    const statConfig = POTENTIAL_STATS[statId];
+    const baseValue = calculatePotentialValue(statId, itemLevel);
+    const optionGrade = rollOptionGrade(true); // 세트템 확률
+    const gradeMultiplier = getGradeMultiplier(optionGrade);
+
+    const rawValue = baseValue * gradeMultiplier;
+    const finalValue = Math.round(rawValue * 10) / 10;
+
+    potentials.push({
+      id: statId,
+      name: statConfig.name,
+      value: Math.max(0, finalValue),
+      suffix: statConfig.suffix,
+      optionGrade,
+      isMain: false
+    });
+  }
+
+  const stats = [mainStat, ...potentials];
+
+  return {
+    id: `shop_set_${selectedSetId}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+    type: 'set',
+    setId: selectedSetId,
+    setName: setData.name,
+    setColor: setData.color,
+    setIcon: setData.icon,
+    slot: randomSlot,
+    name: `${setData.name} ${EQUIPMENT_SLOT_NAMES[randomSlot]}`,
+    itemLevel,
+    baseItemLevel: itemLevel,
+    dropFloor: 100, // 상점 구매
+    upgradesLeft: ITEM_LEVEL_CONFIG.defaultUpgradesLeft,
+    totalUpgrades: 0,
+    stats,
+    mainStat,
+    potentials,
+    isAncient: false, // 절대 고대 불가
+    fromShop: true, // 상점 구매 표시
     createdAt: Date.now()
   };
 };
@@ -754,7 +891,7 @@ export const awakenItem = (item) => {
   };
 };
 
-// 장비 오브로 잠재옵션 재굴림
+// 카르마 오브로 잠재옵션 재굴림
 // 아이템의 현재 템렙 기준으로 잠재옵션을 새로 굴림
 // 옵션 등급: 극옵 100% (20% 확률, 빨간색), 중옵 90% (40% 확률, 연두색), 하옵 80% (40% 확률, 회색)
 export const rerollItemPotentials = (item) => {
@@ -790,7 +927,11 @@ export const rerollItemPotentials = (item) => {
   }
 
   // stats 배열에서 기본옵션(isMain)만 유지하고 잠재옵션 교체
-  const mainStat = item.stats.find(s => s.isMain);
+  // 기존 데이터 호환: isMain이 없으면 첫 번째 스탯(기본옵션)을 유지
+  const mainStat = item.stats.find(s => s.isMain) || item.stats[0];
+  if (mainStat && !mainStat.isMain) {
+    mainStat.isMain = true; // 기존 데이터에 isMain 플래그 추가
+  }
   item.stats = mainStat ? [mainStat, ...newPotentials] : newPotentials;
   item.potentials = newPotentials;
 

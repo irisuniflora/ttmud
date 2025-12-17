@@ -2,11 +2,16 @@ import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
 import { HEROES, getHeroById, getHeroStats, HERO_GRADES, getNextGrade, getUpgradeCost, getStarUpgradeCost } from '../../data/heroes';
 import { formatNumber } from '../../utils/formatter';
+import { getTotalSkillEffects } from '../../data/skills';
 import NotificationModal from '../UI/NotificationModal';
 
 const HeroList = () => {
   const { gameState, inscribeHero, upgradeHeroGrade, upgradeHeroStar, bulkUpgradeHeroStars, bulkUpgradeHeroGrades } = useGame();
-  const { player, heroes, collection } = gameState;
+  const { player, heroes, collection, skillLevels = {} } = gameState;
+
+  // 스킬 효과 가져오기 (동료 강화 %)
+  const skillEffects = getTotalSkillEffects(skillLevels);
+  const heroDmgBonus = 1 + (skillEffects.heroDmgPercent || 0) / 100;
 
   const [notification, setNotification] = useState({
     isOpen: false,
@@ -273,7 +278,7 @@ const HeroList = () => {
                 {/* 스탯 표시 */}
                 <div className="text-center mb-2 text-[10px] text-gray-100 font-semibold space-y-0.5"
                   style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
-                  <div>⚔️ {Math.floor(stats.attack || 0)}</div>
+                  <div>⚔️ {formatNumber(Math.floor((stats.attack || 0) * heroDmgBonus))}{heroDmgBonus > 1 && <span className="text-green-400 ml-1">(+{Math.round((heroDmgBonus - 1) * 100)}%)</span>}</div>
                   {stats.critChance && <div className="text-yellow-300">💥 {stats.critChance.toFixed(1)}%</div>}
                   {stats.critDmg && <div className="text-red-400">🎯 {Math.floor(stats.critDmg)}%</div>}
                   {stats.hpPercentDmgChance && <div className="text-purple-400">💀 {stats.hpPercentDmgChance.toFixed(1)}% ({Math.floor(stats.hpPercentDmgValue)}%HP)</div>}

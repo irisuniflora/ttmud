@@ -59,7 +59,7 @@ export const WORLD_BOSS_INFO = {
 export const AUCTION_ITEMS = [
   {
     id: 'gear_orb',
-    name: '장비 오브',
+    name: '카르마 오브',
     description: '장비 옵션을 재굴림',
     icon: '🔮',
     rarity: 'epic',
@@ -70,7 +70,7 @@ export const AUCTION_ITEMS = [
     id: 'stat_max_item',
     name: '완벽의 정수',
     description: '장비의 현재 옵션을 최대치로 고정',
-    icon: '🔷',
+    icon: '⚙️',
     rarity: 'mythic',
     minBid: 500,
     quantity: 3

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
-import { EQUIPMENT_SLOTS, EQUIPMENT_SLOT_NAMES, EQUIPMENT_SETS, getUpgradeCost, OPTION_GRADES } from '../../data/equipmentSets';
+import { EQUIPMENT_SLOTS, EQUIPMENT_SLOT_NAMES, EQUIPMENT_SETS, getUpgradeCost, OPTION_GRADES, ANCIENT_CONFIG, NORMAL_GRADES } from '../../data/equipmentSets';
 import { formatNumber, formatStatValue } from '../../utils/formatter';
 import NotificationModal from '../UI/NotificationModal';
 
@@ -17,6 +17,11 @@ const SLOT_ICONS = {
 // 세트 아이템 이미지 경로 가져오기
 const getSetItemImage = (setId, slot) => {
   return `/images/equipment/sets/${setId}/${slot}.png`;
+};
+
+// 일반 아이템 이미지 경로 가져오기
+const getNormalItemImage = (normalGrade, slot) => {
+  return `/images/equipment/normal/${normalGrade}/${slot}.png`;
 };
 
 // 배경색에 따라 적절한 텍스트 색상 반환 (밝은 배경 -> 어두운 텍스트)
@@ -41,6 +46,7 @@ const NewEquipment = () => {
   const [showSelector, setShowSelector] = useState(false);
   const [selectedSelectorType, setSelectedSelectorType] = useState(null);
   const [selectedSetId, setSelectedSetId] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null); // { item, isEquipped, slot } 형태로 선택된 아이템
   const [notification, setNotification] = useState({
     isOpen: false,
     title: '',
@@ -150,20 +156,31 @@ const NewEquipment = () => {
   // 총 선택권 개수
   const totalSelectors = (setSelectors.floor50 || 0) + (setSelectors.floor100 || 0) + (setSelectors.floor200 || 0);
 
-  // 인벤토리 정렬: 세트템 우선, 템렙 높은 순
-  const sortedInventory = [...newInventory].sort((a, b) => {
-    // 세트템 우선
-    if (a.type === 'set' && b.type !== 'set') return -1;
-    if (a.type !== 'set' && b.type === 'set') return 1;
-    // 템렙 높은 순
-    return b.itemLevel - a.itemLevel;
-  });
+  // 모든 아이템 (장착 + 인벤토리) 통합 - 장착중 표시 포함
+  const getAllItemsForSlot = (slot) => {
+    const equippedItem = equipment[slot];
+    const inventoryItems = newInventory.filter(item => item.slot === slot);
 
-  // 슬롯별 그룹화
-  const inventoryBySlot = {};
-  EQUIPMENT_SLOTS.forEach(slot => {
-    inventoryBySlot[slot] = sortedInventory.filter(item => item.slot === slot);
-  });
+    // 장착중인 아이템 먼저, 그 다음 인벤토리 (세트템 우선, 템렙 높은 순)
+    const items = [];
+    if (equippedItem) {
+      items.push({ ...equippedItem, _isEquipped: true, _equippedSlot: slot });
+    }
+
+    const sortedInvItems = [...inventoryItems].sort((a, b) => {
+      if (a.type === 'set' && b.type !== 'set') return -1;
+      if (a.type !== 'set' && b.type === 'set') return 1;
+      return b.itemLevel - a.itemLevel;
+    });
+
+    items.push(...sortedInvItems);
+    return items;
+  };
+
+  // 딜링 슬롯 (왼쪽)
+  const DEALING_SLOTS = ['weapon', 'armor', 'gloves'];
+  // 악세 슬롯 (오른쪽)
+  const ACCESSORY_SLOTS = ['boots', 'necklace', 'ring'];
 
   const setCounts = getSetCounts();
   const consumables = gameState.consumables || {};
@@ -180,7 +197,7 @@ const NewEquipment = () => {
     }
   };
 
-  // 장비 오브 사용
+  // 카르마 오브 사용
   const handleUseOrb = (slot) => {
     const result = useOrb(slot);
     if (result.success) {
@@ -205,17 +222,17 @@ const NewEquipment = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h3 className="text-xl font-bold text-white">⚔️ 장비</h3>
-            <span className="text-xs bg-game-panel px-2 py-1 rounded text-cyan-400">
-              🔧 조각: <span className="text-yellow-400 font-bold">{formatNumber(equipmentFragments)}</span>
+            <span className="text-xs bg-game-panel px-2 py-1 rounded text-yellow-400">
+              ⚡ 조각: <span className="text-yellow-300 font-bold">{formatNumber(equipmentFragments)}</span>
             </span>
             <span className="text-xs bg-game-panel px-2 py-1 rounded text-purple-400">
               ✨ 각성석: <span className="text-purple-300 font-bold">{awakenStones}</span>
             </span>
             <span className="text-xs bg-game-panel px-2 py-1 rounded text-pink-400">
-              💎 정수: <span className="text-pink-300 font-bold">{perfectEssences}</span>
+              ⚙️ 정수: <span className="text-pink-300 font-bold">{perfectEssences}</span>
             </span>
             <span className="text-xs bg-game-panel px-2 py-1 rounded text-blue-400">
-              🔮 오브: <span className="text-blue-300 font-bold">{orbs}</span>
+              🔮 카르마: <span className="text-blue-300 font-bold">{orbs}</span>
             </span>
           </div>
 
@@ -243,8 +260,8 @@ const NewEquipment = () => {
 
         {/* 세트 선택권 모달 */}
         {showSelector && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-            <div className="bg-game-dark border border-game-border rounded-lg p-4 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
+            <div className="bg-gray-900 border border-purple-500 rounded-lg p-4 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto shadow-xl">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-white">🎁 세트 선택권</h3>
                 <button
@@ -276,8 +293,8 @@ const NewEquipment = () => {
                         disabled={count === 0}
                         className={`w-full p-3 rounded border text-left ${
                           count > 0
-                            ? 'border-yellow-500 bg-yellow-900/20 hover:bg-yellow-900/40'
-                            : 'border-gray-700 bg-gray-800/20 opacity-50'
+                            ? 'border-yellow-500 bg-yellow-900/50 hover:bg-yellow-900/70'
+                            : 'border-gray-700 bg-gray-800/50 opacity-50'
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -427,270 +444,320 @@ const NewEquipment = () => {
           );
         })()}
 
-        {/* 장착 슬롯 */}
-        <div className="grid grid-cols-6 gap-2">
-          {EQUIPMENT_SLOTS.map(slot => {
-            const item = equipment[slot];
-            const setData = item?.setId ? EQUIPMENT_SETS[item.setId] : null;
-            const setCounts = getSetCounts();
-            const setCount = item?.setId ? (setCounts[item.setId] || 0) : 0;
-            const isSetActive = setCount >= 3;
-            const upgradeCost = item ? getUpgradeCost(item) : 0;
-            const upgradesLeft = item?.upgradesLeft ?? 10;
-            const canUpgrade = item && equipmentFragments >= upgradeCost && upgradesLeft > 0;
-            const canAwaken = item && upgradesLeft === 0 && awakenStones > 0;
+        {/* 상단: 장비 슬롯 + 상세정보 패널 */}
+        <div className="bg-game-panel border border-game-border rounded-lg p-4">
+          <div className="flex gap-6">
+            {/* 좌측: 장비 아이콘 그리드 (2x3) */}
+            <div className="flex-shrink-0 flex flex-col justify-center">
+              <div className="grid grid-cols-2 gap-2">
+                {EQUIPMENT_SLOTS.map(slot => {
+                  const item = equipment[slot];
+                  const setData = item?.setId ? EQUIPMENT_SETS[item.setId] : null;
+                  const isSelected = selectedItem?._equippedSlot === slot && selectedItem?._isEquipped;
 
-            return (
-              <div key={slot} className="bg-game-panel border border-game-border rounded-lg p-2">
-                {/* 슬롯 헤더 */}
-                <div className="flex items-center gap-1 mb-1">
-                  <span className="text-sm">{SLOT_ICONS[slot]}</span>
-                  <span className="text-xs text-gray-400">{EQUIPMENT_SLOT_NAMES[slot]}</span>
-                </div>
+                  return (
+                    <div
+                      key={slot}
+                      onClick={() => {
+                        if (item) {
+                          setSelectedItem(isSelected ? null : { ...item, _isEquipped: true, _equippedSlot: slot });
+                        }
+                      }}
+                      className={`relative rounded cursor-pointer transition-all duration-200 overflow-hidden ${
+                        isSelected ? 'ring-2 ring-cyan-400' : 'hover:brightness-125'
+                      }`}
+                      style={{
+                        width: '80px',
+                        height: '80px',
+                        background: '#1a1a2e',
+                        border: isSelected ? '2px solid #22d3ee' : '1px solid #444'
+                      }}
+                    >
+                      {item ? (
+                        <>
+                          {/* 아이콘 */}
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            {item.type === 'set' ? (
+                              <img
+                                src={getSetItemImage(item.setId, slot)}
+                                alt={item.name}
+                                className="w-16 h-16 object-contain"
+                                style={{
+                                  filter: item.isAncient
+                                    ? `drop-shadow(0 0 6px ${ANCIENT_CONFIG.color})`
+                                    : `drop-shadow(0 0 4px ${setData?.color})`,
+                                  imageRendering: 'pixelated'
+                                }}
+                              />
+                            ) : (
+                              <img
+                                src={getNormalItemImage(item.normalGrade || 'white', slot)}
+                                alt={item.name}
+                                className="w-16 h-16 object-contain"
+                                style={{
+                                  filter: item.normalGrade && NORMAL_GRADES[item.normalGrade]
+                                    ? `drop-shadow(0 0 3px ${NORMAL_GRADES[item.normalGrade].color})`
+                                    : 'none',
+                                  imageRendering: 'pixelated'
+                                }}
+                              />
+                            )}
+                          </div>
 
-                {item ? (
-                  <div
-                    className={`relative overflow-hidden rounded-lg ${
-                      item.type === 'set' ? 'bg-gradient-to-b from-gray-800 to-gray-900' : 'bg-gradient-to-b from-gray-700 to-gray-800'
-                    }`}
-                    style={item.type === 'set' ? {
-                      border: `2px solid ${setData?.color}`,
-                      boxShadow: `0 0 15px ${setData?.color}50, inset 0 0 20px ${setData?.color}15`
-                    } : { border: '1px solid #4B5563' }}
-                  >
-                    {/* 상단 장식 라인 */}
-                    {item.type === 'set' && (
-                      <div
-                        className="absolute top-0 left-0 right-0 h-0.5"
-                        style={{ background: `linear-gradient(90deg, transparent, ${setData?.color}, transparent)` }}
-                      />
-                    )}
-
-                    {/* 배경 글로우 */}
-                    {item.type === 'set' && (
-                      <div
-                        className="absolute inset-0 opacity-30"
-                        style={{
-                          background: `radial-gradient(ellipse at top, ${setData?.color}40 0%, transparent 60%)`
-                        }}
-                      />
-                    )}
-
-                    {/* 아이템 이미지 영역 */}
-                    <div className="relative flex justify-center py-4 mb-2">
-                      {/* 아이콘 배경 원형 글로우 */}
-                      {item.type === 'set' && (
-                        <div
-                          className="absolute inset-0 flex items-center justify-center"
-                        >
+                          {/* 레벨 - 하단 반투명 */}
                           <div
-                            className="w-16 h-16 rounded-full opacity-40 blur-sm"
-                            style={{ background: `radial-gradient(circle, ${setData?.color}60 0%, transparent 70%)` }}
-                          />
-                        </div>
-                      )}
-                      {item.type === 'set' ? (
-                        <img
-                          src={getSetItemImage(item.setId, slot)}
-                          alt={item.name}
-                          className="w-14 h-14 object-contain relative z-10"
-                          style={{
-                            filter: `drop-shadow(0 0 8px ${setData?.color}) drop-shadow(0 2px 4px rgba(0,0,0,0.5))`,
-                            imageRendering: 'pixelated'
-                          }}
-                        />
-                      ) : (
-                        <span className="text-4xl relative z-10 drop-shadow-lg">{SLOT_ICONS[slot]}</span>
-                      )}
-                    </div>
-
-                    {/* 정보 영역 */}
-                    <div className="relative px-2 pb-2">
-                      {/* 아이템 이름 */}
-                      {item.type === 'set' ? (
-                        <div
-                          className={`relative rounded-md px-1.5 py-1 mb-2 ${isSetActive ? 'ring-2 ring-yellow-400/70' : ''}`}
-                          style={{
-                            backgroundColor: setData?.color,
-                            boxShadow: `0 2px 8px ${setData?.color}50`
-                          }}
-                        >
-                          <p
-                            className="text-[11px] font-bold text-center leading-tight tracking-wide"
+                            className="absolute bottom-0 left-0 right-0 text-center"
                             style={{
-                              color: getContrastTextColor(setData?.color),
-                              textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+                              background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+                              padding: '8px 0 2px 0'
                             }}
                           >
-                            {setData?.name}
-                          </p>
-                          {isSetActive && (
-                            <div className="absolute -top-1.5 -right-1.5 text-sm animate-pulse">✨</div>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="relative text-[11px] mb-2 font-bold text-center text-gray-400 leading-tight bg-gray-700/50 rounded py-1">
-                          {EQUIPMENT_SLOT_NAMES[slot]}
-                        </p>
-                      )}
-
-                      {/* 템렙 & 각성 & 업글 횟수 */}
-                      <div className="relative flex items-center justify-between mb-2 px-1">
-                        <div className="flex items-center gap-1">
-                          <div className="flex items-center bg-yellow-900/40 px-1.5 py-0.5 rounded border border-yellow-600/30">
-                            <span className="text-[9px] text-yellow-400 font-bold leading-none">Lv.{item.itemLevel}</span>
+                            <span
+                              className="text-[11px] font-black drop-shadow-lg"
+                              style={{
+                                color: item.isAncient ? ANCIENT_CONFIG.color : '#fff'
+                              }}
+                            >
+                              Lv.{item.itemLevel}
+                            </span>
                           </div>
-                          {(item.awakeningCount || 0) > 0 && (
-                            <div className="flex items-center bg-purple-900/40 px-1.5 py-0.5 rounded border border-purple-600/30">
-                              <span className="text-[9px] text-purple-400 font-bold leading-none">⭐{item.awakeningCount}</span>
+
+                          {/* 고대 마크 - 우상단 */}
+                          {item.isAncient && (
+                            <div className="absolute top-1 right-1 text-[11px]">
+                              {ANCIENT_CONFIG.icon}
                             </div>
                           )}
-                        </div>
-                        <div className={`flex items-center px-1.5 py-0.5 rounded border ${upgradesLeft > 0 ? 'bg-cyan-900/40 border-cyan-600/30' : 'bg-red-900/40 border-red-600/30'}`}>
-                          <span className={`text-[9px] font-bold leading-none ${upgradesLeft > 0 ? 'text-cyan-400' : 'text-red-400'}`}>
-                            {upgradesLeft}회
-                          </span>
-                        </div>
-                      </div>
 
-                      {/* 스탯 - 기본옵션 + 잠재옵션 분리 */}
-                      <div className="relative text-[9px] bg-black/20 rounded p-1.5 mb-2 min-h-[60px]">
-                        {/* 기본 옵션 */}
-                        {item.stats.filter(s => s.isMain).map((stat, idx) => {
-                          // 몬스터 감소는 - 표시
-                          const isReduction = stat.id === 'monstersPerStageReduction';
-                          return (
-                            <div key={`main-${idx}`} className="flex justify-between items-center text-cyan-300">
-                              <span className="truncate max-w-[60px]">{stat.name}</span>
-                              <span className="font-medium">{isReduction ? '-' : '+'}{formatStatValue(stat.value, stat.suffix)}{stat.suffix}</span>
+                          {/* 각성 배지 - 우상단 (고대 아닐때만) */}
+                          {(item.awakeningCount || 0) > 0 && !item.isAncient && (
+                            <div className="absolute top-1 right-1 text-[10px] text-yellow-300 font-bold">
+                              ⭐{item.awakeningCount}
                             </div>
-                          );
-                        })}
-                        {/* 구분선 */}
-                        <div className="border-t border-dashed border-gray-600 my-1"></div>
-                        {/* 잠재 옵션 */}
-                        {item.stats.map((stat, idx) => {
-                          if (stat.isMain) return null;
-                          const optionGrade = stat.optionGrade ?? OPTION_GRADES.LOW;
-                          const isMaxed = optionGrade === OPTION_GRADES.HIGH;
-
-                          // 하옵: 회색, 중옵: 연두색, 극옵: 빨간색
-                          let optionColorClass = 'text-gray-400';
-                          if (optionGrade === OPTION_GRADES.HIGH) {
-                            optionColorClass = 'text-red-400';
-                          } else if (optionGrade === OPTION_GRADES.MID) {
-                            optionColorClass = 'text-green-400';
-                          }
-
-                          const canPerfect = perfectEssences > 0 && !isMaxed && stat.id !== 'monstersPerStageReduction';
-
-                          return (
-                            <div key={`pot-${idx}`} className="flex justify-between items-center group">
-                              <span className={`truncate ${optionColorClass}`}>
-                                {stat.name}
-                              </span>
-                              <div className="flex items-center gap-1">
-                                <span className={`font-medium ${optionGrade === OPTION_GRADES.HIGH ? 'text-red-400' : optionGrade === OPTION_GRADES.MID ? 'text-green-400' : 'text-gray-400'}`}>
-                                  +{formatStatValue(stat.value, stat.suffix)}{stat.suffix}
-                                </span>
-                                {canPerfect && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleUsePerfectEssence(slot, idx);
-                                    }}
-                                    className="text-[7px] px-1 py-0.5 bg-pink-600 hover:bg-pink-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                                    title="완벽의 정수 사용 (극옵화)"
-                                  >
-                                    💎
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* 버튼들 */}
-                      <div className="relative space-y-1.5">
-                        {upgradesLeft > 0 ? (
-                          <button
-                            onClick={() => handleUpgrade(slot)}
-                            disabled={!canUpgrade}
-                            className={`w-full py-1.5 rounded-lg text-[11px] font-bold transition-all duration-200 ${
-                              canUpgrade
-                                ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-400/50 hover:scale-[1.02] active:scale-100'
-                                : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
-                            }`}
-                          >
-                            <span className="flex items-center justify-center gap-1">
-                              <span className="text-yellow-300">⚡</span> +1
-                              <span className={`text-[9px] ${equipmentFragments >= upgradeCost ? 'opacity-80' : 'text-red-400'}`}>
-                                ({equipmentFragments}/{upgradeCost})
-                              </span>
-                            </span>
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleAwaken(slot)}
-                            disabled={!canAwaken}
-                            className={`w-full py-1.5 rounded-lg text-[11px] font-bold transition-all duration-200 ${
-                              canAwaken
-                                ? 'bg-gradient-to-r from-purple-500 via-pink-500 to-purple-500 hover:from-purple-400 hover:via-pink-400 hover:to-purple-400 text-white shadow-lg shadow-purple-500/40 hover:shadow-purple-400/60 hover:scale-[1.02] active:scale-100 animate-pulse'
-                                : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
-                            }`}
-                          >
-                            <span className="flex items-center justify-center gap-1">
-                              <span>✨</span> 각성
-                              <span className={`text-[9px] ${awakenStones > 0 ? 'opacity-80' : 'text-red-400'}`}>
-                                (💎{awakenStones})
-                              </span>
-                            </span>
-                          </button>
-                        )}
-                        {/* 오브 재굴림 버튼 */}
-                        {orbs > 0 && (
-                          <button
-                            onClick={() => handleUseOrb(slot)}
-                            className="w-full py-1 rounded-lg text-[10px] font-bold bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white transition-all"
-                          >
-                            🔮 옵션 재굴림 ({orbs})
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleUnequip(slot)}
-                          className="w-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-gray-200 text-[10px] py-1 rounded border border-gray-700 hover:border-gray-600 transition-all"
-                        >
-                          해제
-                        </button>
-                      </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center opacity-30">
+                          <span className="text-3xl text-gray-500">{SLOT_ICONS[slot]}</span>
+                        </div>
+                      )}
                     </div>
+                  );
+                })}
+              </div>
+            </div>
 
-                    {/* 하단 장식 라인 */}
-                    {item.type === 'set' && (
-                      <div
-                        className="absolute bottom-0 left-0 right-0 h-0.5"
-                        style={{ background: `linear-gradient(90deg, transparent, ${setData?.color}60, transparent)` }}
-                      />
-                    )}
-                  </div>
+            {/* 우측: 상세정보 패널 (고정) */}
+            <div className="flex-1 min-w-0 flex flex-col">
+              <div className="text-xs text-gray-400 font-bold mb-2 pb-1 border-b border-gray-700">📋 상세정보</div>
+
+              <div className="flex-1 overflow-y-auto" style={{ minHeight: '200px' }}>
+                {selectedItem ? (
+                  (() => {
+                    // 장착된 아이템이면 최신 equipment 데이터 사용 (강화/각성 실시간 반영)
+                    const isEquipped = selectedItem._isEquipped;
+                    const equippedSlot = selectedItem._equippedSlot;
+                    const item = isEquipped && equipment[equippedSlot]
+                      ? { ...equipment[equippedSlot], _isEquipped: true, _equippedSlot: equippedSlot }
+                      : selectedItem;
+                    const setData = item?.setId ? EQUIPMENT_SETS[item.setId] : null;
+                    const normalGradeData = item.normalGrade ? NORMAL_GRADES[item.normalGrade] : null;
+                    const currentSetCounts = getSetCounts();
+                    const setCount = item?.setId ? (currentSetCounts[item.setId] || 0) : 0;
+                    const isSetActive = setCount >= 3;
+                    const upgradeCost = getUpgradeCost(item);
+                    const upgradesLeft = item.upgradesLeft ?? 10;
+                    const canUpgrade = equipmentFragments >= upgradeCost && upgradesLeft > 0;
+                    const canAwaken = upgradesLeft === 0 && awakenStones > 0;
+
+                    return (
+                      <div className="flex flex-col h-full">
+                        {/* 헤더 */}
+                        <div className="flex items-center gap-2 flex-wrap mb-3 pb-2 border-b border-gray-700">
+                          {item.isAncient && (
+                            <span
+                              className="text-xs font-bold px-2 py-1 rounded"
+                              style={{
+                                background: `linear-gradient(135deg, ${ANCIENT_CONFIG.color}, ${ANCIENT_CONFIG.glowColor})`,
+                                color: '#000'
+                              }}
+                            >
+                              {ANCIENT_CONFIG.icon} 고대
+                            </span>
+                          )}
+                          {item.type === 'set' ? (
+                            <span
+                              className="text-xs font-bold px-2 py-1 rounded"
+                              style={{ backgroundColor: setData?.color, color: getContrastTextColor(setData?.color) }}
+                            >
+                              {setData?.icon} {setData?.name}
+                            </span>
+                          ) : (
+                            <span
+                              className="text-xs font-bold px-2 py-1 rounded"
+                              style={{ backgroundColor: normalGradeData?.color || '#666', color: '#000' }}
+                            >
+                              {normalGradeData?.name || '일반'}
+                            </span>
+                          )}
+                          <span className="text-sm text-gray-400">{EQUIPMENT_SLOT_NAMES[item.slot]}</span>
+                          {isSetActive && <span className="text-yellow-400">✨</span>}
+                          {isEquipped && <span className="text-xs bg-green-600 text-white px-1.5 py-0.5 rounded">장착중</span>}
+                          <div className="ml-auto flex items-center gap-2">
+                            <span className="text-sm bg-yellow-800 text-yellow-300 px-2 py-0.5 rounded font-bold">Lv.{item.itemLevel}</span>
+                            <span className={`text-sm px-2 py-0.5 rounded font-bold ${
+                              upgradesLeft > 0
+                                ? 'bg-emerald-800 text-emerald-300'
+                                : 'bg-gray-700 text-gray-400'
+                            }`}>
+                              ⚡{upgradesLeft}/10
+                            </span>
+                            {(item.awakeningCount || 0) > 0 && (
+                              <span className="text-sm bg-purple-800 text-purple-300 px-2 py-0.5 rounded font-bold">⭐{item.awakeningCount}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 능력치 영역 - 좌우 분할 */}
+                        <div className="flex gap-4 flex-1">
+                          {/* 기본 능력치 */}
+                          <div className="flex-1 bg-black/30 rounded p-3">
+                            <div className="text-xs text-gray-400 mb-2 font-bold border-b border-gray-700 pb-1">기본 능력치</div>
+                            {item.stats.filter(s => s.isMain).map((stat, idx) => {
+                              const isReduction = stat.id === 'monstersPerStageReduction';
+                              return (
+                                <div key={`main-${idx}`} className="flex justify-between items-center py-1">
+                                  <span className="text-sm text-cyan-300">{stat.name}</span>
+                                  <span className="text-sm font-bold text-cyan-300">
+                                    {isReduction ? '-' : '+'}{formatStatValue(stat.value, stat.suffix)}{stat.suffix}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* 잠재 능력치 */}
+                          <div className="flex-1 bg-black/30 rounded p-3">
+                            <div className="text-xs text-gray-400 mb-2 font-bold border-b border-gray-700 pb-1">잠재 능력치</div>
+                            {item.stats.map((stat, idx) => {
+                              if (stat.isMain) return null;
+                              const optionGrade = stat.optionGrade ?? OPTION_GRADES.LOW;
+                              const isMaxed = optionGrade === OPTION_GRADES.HIGH;
+                              const colorClass = optionGrade === OPTION_GRADES.HIGH ? 'text-red-400' : optionGrade === OPTION_GRADES.MID ? 'text-green-400' : 'text-gray-400';
+                              const canPerfect = isEquipped && perfectEssences > 0 && !isMaxed && stat.id !== 'monstersPerStageReduction';
+
+                              return (
+                                <div key={`pot-${idx}`} className="flex justify-between items-center py-1 group">
+                                  <span className={`text-sm ${colorClass}`}>{stat.name}</span>
+                                  <div className="flex items-center gap-2">
+                                    {canPerfect && (
+                                      <button
+                                        onClick={() => handleUsePerfectEssence(equippedSlot, idx)}
+                                        className="text-[10px] px-1.5 py-0.5 bg-pink-600 hover:bg-pink-500 text-white rounded opacity-0 group-hover:opacity-100"
+                                      >
+                                        극옵화
+                                      </button>
+                                    )}
+                                    <span className={`text-sm font-bold ${colorClass}`}>
+                                      +{formatStatValue(stat.value, stat.suffix)}{stat.suffix}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* 버튼 영역 */}
+                        <div className="flex items-center gap-2 pt-3 mt-3 border-t border-gray-700">
+                          {isEquipped ? (
+                            <>
+                              {upgradesLeft > 0 ? (
+                                <button
+                                  onClick={() => handleUpgrade(equippedSlot)}
+                                  disabled={!canUpgrade}
+                                  className={`px-4 py-2 rounded text-sm font-bold ${
+                                    canUpgrade
+                                      ? 'bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white'
+                                      : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                                  }`}
+                                >
+                                  ⚡ 강화 ({formatNumber(equipmentFragments)}/{formatNumber(upgradeCost)})
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleAwaken(equippedSlot)}
+                                  disabled={!canAwaken}
+                                  className={`px-4 py-2 rounded text-sm font-bold ${
+                                    canAwaken
+                                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                                      : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                                  }`}
+                                >
+                                  ✨ 각성 (💎{awakenStones})
+                                </button>
+                              )}
+                              {orbs > 0 && (
+                                <button
+                                  onClick={() => handleUseOrb(equippedSlot)}
+                                  className="px-4 py-2 rounded text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white"
+                                >
+                                  🔮 재굴림
+                                </button>
+                              )}
+                              <button
+                                onClick={() => {
+                                  handleUnequip(equippedSlot);
+                                  setSelectedItem(null);
+                                }}
+                                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded ml-auto"
+                              >
+                                해제
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => {
+                                  handleEquip(item.id);
+                                  setSelectedItem(null);
+                                }}
+                                className="px-4 py-2 rounded text-sm font-bold bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white"
+                              >
+                                ⚔️ 장착
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleDisassemble(item.id);
+                                  setSelectedItem(null);
+                                }}
+                                className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-sm rounded ml-auto"
+                              >
+                                🔨 분해
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()
                 ) : (
-                  <div className="border border-dashed border-gray-700 rounded h-24 flex items-center justify-center">
-                    <span className="text-gray-600 text-[10px]">빈 슬롯</span>
+                  <div className="h-full flex items-center justify-center text-gray-500">
+                    <div className="text-center">
+                      <div className="text-4xl mb-2 opacity-30">⚔️</div>
+                      <p className="text-sm">장비를 선택하세요</p>
+                    </div>
                   </div>
                 )}
               </div>
-            );
-          })}
+            </div>
+          </div>
         </div>
 
-        {/* 인벤토리 */}
-        <div className="bg-game-panel border border-game-border rounded-lg p-3 overflow-visible">
-          {/* 인벤토리 헤더 */}
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-sm font-bold text-white">
-              🎒 인벤토리 ({newInventory.length})
-            </h4>
+        {/* 하단: 인벤토리 (딜링/악세 구분) */}
+        <div className="bg-game-panel border border-game-border rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-bold text-gray-300">🎒 인벤토리</h4>
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-1 cursor-pointer">
                 <input
@@ -703,109 +770,236 @@ const NewEquipment = () => {
               </label>
               <button
                 onClick={handleDisassembleAll}
-                className="px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded text-[10px]"
+                className="px-2 py-1 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded text-[10px]"
               >
                 🔨 일괄분해
               </button>
             </div>
           </div>
 
-          {newInventory.length === 0 ? (
-            <div className="text-center py-4 text-gray-500 text-sm">
-              인벤토리가 비어있습니다
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[250px] overflow-y-auto py-1">
-              {EQUIPMENT_SLOTS.map(slot => {
-                const items = inventoryBySlot[slot];
-                if (items.length === 0) return null;
-
-                return (
-                  <div key={slot}>
-                    <div className="text-[10px] text-cyan-400 font-bold mb-1">
-                      {SLOT_ICONS[slot]} {EQUIPMENT_SLOT_NAMES[slot]} ({items.length})
+          <div className="flex gap-4">
+            {/* 왼쪽: 딜링 장비 (무기, 갑옷, 장갑) */}
+            <div className="flex-1">
+              <div className="text-[10px] text-gray-500 font-bold mb-2 pb-1 border-b border-gray-700">⚔️ 딜링 장비</div>
+              <div className="space-y-2">
+                {DEALING_SLOTS.map(slot => {
+                  const items = getAllItemsForSlot(slot);
+                  if (items.length === 0) return (
+                    <div key={slot} className="text-[10px] text-gray-600">
+                      {SLOT_ICONS[slot]} {EQUIPMENT_SLOT_NAMES[slot]} - 비어있음
                     </div>
-                    <div className="grid grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1">
-                      {items.map(item => {
-                        const setData = item.setId ? EQUIPMENT_SETS[item.setId] : null;
-                        const isSet = item.type === 'set';
+                  );
 
-                        return (
-                          <div
-                            key={item.id}
-                            className={`border rounded p-1 relative group cursor-pointer hover:scale-110 hover:z-10 transition-all ${
-                              isSet ? 'border-purple-500 bg-purple-900/20' : 'border-gray-700 bg-gray-800/20'
-                            }`}
-                            style={isSet ? {
-                              borderColor: setData?.color,
-                              boxShadow: `0 0 6px ${setData?.color}30`
-                            } : {}}
-                            onClick={() => handleEquip(item.id)}
-                          >
-                            {/* 세트 아이템 글로우 */}
-                            {isSet && (
+                  return (
+                    <div key={slot}>
+                      <div className="text-[10px] text-gray-400 font-bold mb-1">
+                        {SLOT_ICONS[slot]} {EQUIPMENT_SLOT_NAMES[slot]} ({items.length})
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {items.map(item => {
+                          const setData = item.setId ? EQUIPMENT_SETS[item.setId] : null;
+                          const isSet = item.type === 'set';
+                          const isAncient = item.isAncient;
+                          const normalGradeData = item.normalGrade ? NORMAL_GRADES[item.normalGrade] : null;
+                          const isEquippedItem = item._isEquipped;
+                          const isSelected = selectedItem?.id === item.id || (selectedItem?._isEquipped && selectedItem?._equippedSlot === item._equippedSlot && item._isEquipped);
+
+                          // 세트템: 세트 고유 색상 테두리 + 글로우 (고대는 금색) / 일반템: 테두리 없음
+                          const borderStyle = isSet
+                            ? {
+                                border: isAncient
+                                  ? `2px solid ${ANCIENT_CONFIG.color}`
+                                  : `2px solid ${setData?.color || '#888'}`,
+                                boxShadow: isAncient
+                                  ? `0 0 8px ${ANCIENT_CONFIG.color}, inset 0 0 4px ${ANCIENT_CONFIG.glowColor}40`
+                                  : `0 0 6px ${setData?.color}80`
+                              }
+                            : {};
+
+                          return (
+                            <div
+                              key={item.id || `equipped-${slot}`}
+                              className={`w-12 h-12 relative group cursor-pointer transition-all rounded ${isSelected ? 'ring-2 ring-cyan-400' : 'hover:brightness-125'}`}
+                              style={{
+                                background: isEquippedItem ? '#1a2e1a' : '#1a1a2e',
+                                ...borderStyle
+                              }}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setSelectedItem(null);
+                                } else {
+                                  setSelectedItem(item);
+                                }
+                              }}
+                            >
+                              {/* 아이콘 */}
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                {isSet ? (
+                                  <img
+                                    src={getSetItemImage(item.setId, item.slot)}
+                                    alt={item.name}
+                                    className="w-9 h-9 object-contain"
+                                    style={{
+                                      filter: isAncient
+                                        ? `drop-shadow(0 0 6px ${ANCIENT_CONFIG.color}) drop-shadow(0 0 3px ${ANCIENT_CONFIG.glowColor})`
+                                        : `drop-shadow(0 0 4px ${setData?.color})`,
+                                      imageRendering: 'pixelated'
+                                    }}
+                                  />
+                                ) : (
+                                  <img
+                                    src={getNormalItemImage(item.normalGrade || 'white', item.slot)}
+                                    alt={item.name}
+                                    className="w-9 h-9 object-contain"
+                                    style={{
+                                      imageRendering: 'pixelated'
+                                    }}
+                                  />
+                                )}
+                              </div>
+
+                              {/* 템렙 - 좌상단 */}
                               <div
-                                className="absolute inset-0 opacity-30"
+                                className="absolute top-0 left-0 text-[9px] font-black px-0.5 rounded-br"
                                 style={{
-                                  background: `radial-gradient(circle at center, ${setData?.color}20 0%, transparent 70%)`
-                                }}
-                              />
-                            )}
-
-                            {/* 아이템 이미지 */}
-                            <div className="relative flex justify-center">
-                              {isSet ? (
-                                <img
-                                  src={getSetItemImage(item.setId, item.slot)}
-                                  alt={item.name}
-                                  className="w-6 h-6 object-contain"
-                                  style={{
-                                    filter: `drop-shadow(0 0 2px ${setData?.color})`,
-                                    imageRendering: 'pixelated'
-                                  }}
-                                />
-                              ) : (
-                                <span className="text-base">{SLOT_ICONS[item.slot]}</span>
-                              )}
-                            </div>
-
-                            {/* 템렙 */}
-                            <div className="relative flex items-center justify-center">
-                              <span className="text-[8px] text-yellow-400 font-bold">Lv.{item.itemLevel}</span>
-                            </div>
-
-                            {/* 세트명 */}
-                            {isSet && (
-                              <p
-                                className="relative text-[7px] text-center font-bold text-black px-0.5 rounded"
-                                style={{
-                                  backgroundColor: setData?.color,
-                                  textShadow: '0 0 2px rgba(255,255,255,0.5)'
+                                  background: isSet ? (isAncient ? ANCIENT_CONFIG.color : setData?.color || '#888') : '#44403c',
+                                  color: isSet ? '#000' : '#a8a29e'
                                 }}
                               >
-                                {setData?.name}
-                              </p>
-                            )}
+                                {item.itemLevel}
+                              </div>
 
-                            {/* 분해 버튼 */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDisassemble(item.id);
-                              }}
-                              className="absolute -top-1 -right-1 bg-red-600 hover:bg-red-700 text-white text-[8px] w-4 h-4 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        );
-                      })}
+                              {/* 고대/장착 마크 - 우상단 */}
+                              {isAncient ? (
+                                <div className="absolute top-0 right-0 text-[8px]">
+                                  {ANCIENT_CONFIG.icon}
+                                </div>
+                              ) : isEquippedItem ? (
+                                <div className="absolute top-0 right-0 text-[8px] bg-green-600 text-white px-0.5 rounded-bl font-bold">
+                                  E
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          )}
+
+            {/* 오른쪽: 악세서리 (신발, 목걸이, 반지) */}
+            <div className="flex-1">
+              <div className="text-[10px] text-gray-500 font-bold mb-2 pb-1 border-b border-gray-700">💎 악세서리</div>
+              <div className="space-y-2">
+                {ACCESSORY_SLOTS.map(slot => {
+                  const items = getAllItemsForSlot(slot);
+                  if (items.length === 0) return (
+                    <div key={slot} className="text-[10px] text-gray-600">
+                      {SLOT_ICONS[slot]} {EQUIPMENT_SLOT_NAMES[slot]} - 비어있음
+                    </div>
+                  );
+
+                  return (
+                    <div key={slot}>
+                      <div className="text-[10px] text-gray-400 font-bold mb-1">
+                        {SLOT_ICONS[slot]} {EQUIPMENT_SLOT_NAMES[slot]} ({items.length})
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {items.map(item => {
+                          const setData = item.setId ? EQUIPMENT_SETS[item.setId] : null;
+                          const isSet = item.type === 'set';
+                          const isAncient = item.isAncient;
+                          const normalGradeData = item.normalGrade ? NORMAL_GRADES[item.normalGrade] : null;
+                          const isEquippedItem = item._isEquipped;
+                          const isSelected = selectedItem?.id === item.id || (selectedItem?._isEquipped && selectedItem?._equippedSlot === item._equippedSlot && item._isEquipped);
+
+                          // 세트템: 세트 고유 색상 테두리 + 글로우 (고대는 금색) / 일반템: 테두리 없음
+                          const borderStyle = isSet
+                            ? {
+                                border: isAncient
+                                  ? `2px solid ${ANCIENT_CONFIG.color}`
+                                  : `2px solid ${setData?.color || '#888'}`,
+                                boxShadow: isAncient
+                                  ? `0 0 8px ${ANCIENT_CONFIG.color}, inset 0 0 4px ${ANCIENT_CONFIG.glowColor}40`
+                                  : `0 0 6px ${setData?.color}80`
+                              }
+                            : {};
+
+                          return (
+                            <div
+                              key={item.id || `equipped-${slot}`}
+                              className={`w-12 h-12 relative group cursor-pointer transition-all rounded ${isSelected ? 'ring-2 ring-cyan-400' : 'hover:brightness-125'}`}
+                              style={{
+                                background: isEquippedItem ? '#1a2e1a' : '#1a1a2e',
+                                ...borderStyle
+                              }}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setSelectedItem(null);
+                                } else {
+                                  setSelectedItem(item);
+                                }
+                              }}
+                            >
+                              {/* 아이콘 */}
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                {isSet ? (
+                                  <img
+                                    src={getSetItemImage(item.setId, item.slot)}
+                                    alt={item.name}
+                                    className="w-9 h-9 object-contain"
+                                    style={{
+                                      filter: isAncient
+                                        ? `drop-shadow(0 0 6px ${ANCIENT_CONFIG.color}) drop-shadow(0 0 3px ${ANCIENT_CONFIG.glowColor})`
+                                        : `drop-shadow(0 0 4px ${setData?.color})`,
+                                      imageRendering: 'pixelated'
+                                    }}
+                                  />
+                                ) : (
+                                  <img
+                                    src={getNormalItemImage(item.normalGrade || 'white', item.slot)}
+                                    alt={item.name}
+                                    className="w-9 h-9 object-contain"
+                                    style={{
+                                      imageRendering: 'pixelated'
+                                    }}
+                                  />
+                                )}
+                              </div>
+
+                              {/* 템렙 - 좌상단 */}
+                              <div
+                                className="absolute top-0 left-0 text-[9px] font-black px-0.5 rounded-br"
+                                style={{
+                                  background: isSet ? (isAncient ? ANCIENT_CONFIG.color : setData?.color || '#888') : '#44403c',
+                                  color: isSet ? '#000' : '#a8a29e'
+                                }}
+                              >
+                                {item.itemLevel}
+                              </div>
+
+                              {/* 고대/장착 마크 - 우상단 */}
+                              {isAncient ? (
+                                <div className="absolute top-0 right-0 text-[8px]">
+                                  {ANCIENT_CONFIG.icon}
+                                </div>
+                              ) : isEquippedItem ? (
+                                <div className="absolute top-0 right-0 text-[8px] bg-green-600 text-white px-0.5 rounded-bl font-bold">
+                                  E
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </>

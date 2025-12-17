@@ -324,6 +324,15 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
+  // ===== 업적 시스템 =====
+  const claimAchievementReward = (achievementId) => {
+    const result = engineRef.current.claimAchievementReward(achievementId);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
   // 보스 타이머 업데이트 (1초마다)
   useEffect(() => {
     const timerInterval = setInterval(() => {
@@ -385,6 +394,7 @@ export const GameProvider = ({ children }) => {
       upgradeEquipmentLevel,
       awakenEquipment,
       useSetSelector,
+      claimAchievementReward,
       engine: engineRef.current
     }}>
       {children}

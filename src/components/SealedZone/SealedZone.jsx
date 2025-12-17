@@ -154,15 +154,18 @@ const SealedZone = () => {
     let isCrit = false;
     const critChance = inscriptionStats.critChance || 0;
 
+    // 고라스: 치명타 무효 (crit_immunity)
+    const hasCritImmunity = bossData.pattern?.type === 'crit_immunity';
+
     // 파괴의 문양: 이전 공격 실패 시 무조건 치명타
-    if (battleState.guaranteedCritNext) {
+    if (battleState.guaranteedCritNext && !hasCritImmunity) {
       isCrit = true;
-    } else {
+    } else if (!hasCritImmunity) {
       isCrit = Math.random() * 100 < critChance;
     }
 
-    // 치명타 데미지 적용
-    if (isCrit) {
+    // 치명타 데미지 적용 (치명타 무효 보스는 치명타 불가)
+    if (isCrit && !hasCritImmunity) {
       const critDamage = 150 + (inscriptionStats.critDamage || 0); // 기본 150%
       baseDamage *= (critDamage / 100);
     }
@@ -724,6 +727,15 @@ const SealedZone = () => {
                   <span className="text-purple-300">회피 {bossData.pattern.evasionRate}%</span>
                 </div>
               )}
+              {bossData.pattern?.type === 'crit_immunity' && (
+                <div
+                  className="flex items-center gap-1 text-xs cursor-help"
+                  title="모든 치명타 공격이 일반 공격으로 변환됩니다. 치명타에 의존하지 않는 순수 공격력/관통 빌드가 유리합니다."
+                >
+                  <span className="text-yellow-400">⚙️</span>
+                  <span className="text-yellow-300">치명타 무효</span>
+                </div>
+              )}
               {/* 치유 감소 디버프 체크 */}
               {(() => {
                 const hasHealReduction = activeInscriptions.some(inscId => {
@@ -742,7 +754,7 @@ const SealedZone = () => {
                   </div>
                 );
               })()}
-              {!bossPatternState.hasShield && !bossPatternState.isRegenerating && bossData.pattern?.evasionRate === 0 && (
+              {!bossPatternState.hasShield && !bossPatternState.isRegenerating && !bossData.pattern?.evasionRate && bossData.pattern?.type !== 'crit_immunity' && (
                 <div className="text-xs text-gray-500">효과 없음</div>
               )}
             </div>

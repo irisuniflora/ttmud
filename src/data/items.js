@@ -29,7 +29,7 @@ export const DAMAGE_STATS = {
   attack: { id: 'attack', name: '공격력', suffix: '' },
   critChance: { id: 'critChance', name: '치명타 확률', suffix: '%' },
   critDmg: { id: 'critDmg', name: '치명타 데미지', suffix: '%' },
-  attackPercent: { id: 'attackPercent', name: '공격력%', suffix: '%' },
+  attackPercent: { id: 'attackPercent', name: '공격력', suffix: '%' },
   bossDamageIncrease: { id: 'bossDamageIncrease', name: '보스 추뎀', suffix: '%' }
 };
 
@@ -42,7 +42,6 @@ export const UTILITY_STATS = {
   monstersPerStageReduction: { id: 'monstersPerStageReduction', name: '몬스터 감소', suffix: '' }
 };
 
-// 등급별 능력치 범위 (배수 기준: 1-3, 4-7, 8-14, 15-25, 26-43, 44-62, 63-109)
 // 기본값 설정: 영웅과 밸런스 맞춤 (6슬롯 * 3옵션 = 18개 스탯으로 영웅 1명과 비슷한 효과)
 const BASE_VALUES = {
   attack: 20, // 영웅 공격력 100의 1/5 수준 (깡 공격력은 유지)

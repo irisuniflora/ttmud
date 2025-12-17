@@ -1,6 +1,6 @@
 import { getMonsterForStage, getCollectionBonus, getBossCollectionBonus, RARE_MONSTER_COLLECTION_CHANCE, LEGENDARY_MONSTER_COLLECTION_CHANCE } from '../data/monsters.js';
 import { HEROES, getHeroById, getHeroStats, getNextGrade, getUpgradeCost, getStarUpgradeCost } from '../data/heroes.js';
-import { generateItem } from '../data/items.js';
+// import { generateItem } from '../data/items.js'; // 구 시스템 - 사용 안함
 import { getTotalSkillEffects, getSkillCost } from '../data/skills.js';
 import { getTotalRelicEffects, PRESTIGE_RELICS, getRelicGachaCost, getRelicUpgradeCost } from '../data/prestigeRelics.js';
 import {
@@ -37,6 +37,7 @@ import {
   perfectPotentialStat,
   OPTION_GRADES
 } from '../data/equipmentSets.js';
+import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js';
 
 export class GameEngine {
   constructor(initialState) {
@@ -172,8 +173,8 @@ export class GameEngine {
         rareMonstersCaptured: 0 // 수집한 희귀 몬스터 수
       },
       lastDailyRecharge: null, // 마지막 일일 충전 시간 (Date.now())
-      // 환생 유물 시스템
-      relicFragments: 500, // 테스트용 유물 조각 500개
+      // 고대 유물 시스템
+      relicFragments: 500, // 테스트용 고대 유물 500개
       relicGachaCount: 0,
       prestigeRelics: {}
     };
@@ -204,6 +205,12 @@ export class GameEngine {
     if (!this.lastDailyRechargeCheck || Date.now() - this.lastDailyRechargeCheck >= 60000) {
       this.checkDailyRecharge();
       this.lastDailyRechargeCheck = Date.now();
+    }
+
+    // 업적 체크 (5초마다)
+    if (!this.lastAchievementCheck || Date.now() - this.lastAchievementCheck >= 5000) {
+      this.checkAndCompleteAchievements();
+      this.lastAchievementCheck = Date.now();
     }
 
     // 월드보스/경매 체크 (비활성화)
@@ -878,62 +885,7 @@ export class GameEngine {
       dropChance *= (1 + releaseBonus.dropRateBonus / 100);
     }
 
-    if (Math.random() * 100 < dropChance) {
-      const slots = ['weapon', 'armor', 'gloves', 'boots', 'necklace', 'ring'];
-      const randomSlot = slots[Math.floor(Math.random() * slots.length)];
-      const item = generateItem(randomSlot, player.floor);
-
-      // 자동 판매 체크
-      const settings = this.state.settings || {};
-      if (settings.autoSellEnabled) {
-        const rarityOrder = ['common', 'rare', 'epic', 'unique', 'legendary', 'mythic', 'dark'];
-        const itemRarityIndex = rarityOrder.indexOf(item.rarity);
-        const maxRarityIndex = rarityOrder.indexOf(settings.autoSellRarity || 'common');
-
-        // 설정한 등급 이하면 즉시 판매
-        if (itemRarityIndex <= maxRarityIndex && itemRarityIndex !== -1) {
-          const rarityPrices = {
-            common: 10,
-            rare: 50,
-            epic: 200,
-            unique: 800,
-            legendary: 3000,
-            mythic: 12000,
-            dark: 50000
-          };
-          const basePrice = rarityPrices[item.rarity] || 10;
-          const statBonus = item.stats.reduce((sum, stat) => sum + stat.value, 0) * 2;
-          const price = Math.floor(basePrice + statBonus);
-
-          player.gold += price;
-          // 자동 판매된 아이템은 인벤토리에 추가하지 않음 (로그 없음)
-        } else {
-          // 설정한 등급보다 높으면 인벤토리에 추가
-          inventory.push(item);
-          this.sortInventory();
-          this.addCombatLog(`${item.name} 획득!`, 'acquired', item.rarity);
-        }
-      } else {
-        // 자동 판매 비활성화 시 인벤토리에 추가
-        inventory.push(item);
-        this.sortInventory();
-        this.addCombatLog(`${item.name} 획득!`, 'acquired', item.rarity);
-      }
-
-      statistics.totalItemsFound++;
-
-      // 도감 등록
-      const itemKey = `${item.slot}_${item.rarity}`;
-      if (!collection.items[itemKey]) {
-        collection.items[itemKey] = {
-          slot: item.slot,
-          rarity: item.rarity,
-          name: item.name,
-          count: 0
-        };
-      }
-      collection.items[itemKey].count++;
-    }
+    // 구 장비 드랍 시스템 제거됨 - 새 시스템(rollItemDrop)은 processNewItemDrops에서 처리
   }
 
   // 경험치 획득
@@ -1137,7 +1089,7 @@ export class GameEngine {
         this.state.consumables = {};
       }
       this.state.consumables.stat_max_item = (this.state.consumables.stat_max_item || 0) + 1;
-      this.addCombatLog('🔷 완벽의 정수 획득!', 'stat_max');
+      this.addCombatLog('⚙️ 완벽의 정수 획득!', 'stat_max');
       return true;
     }
     return false;
@@ -1487,7 +1439,7 @@ export class GameEngine {
     player.prestigePoints += ppGained;
     player.totalPrestiges++;
 
-    // 유물 조각 획득 공식: 기본 5 + floor / 20 + (floor > 100 ? (floor - 100) / 10 : 0)
+    // 고대 유물 획득 공식: 기본 5 + floor / 20 + (floor > 100 ? (floor - 100) / 10 : 0)
     // 50층: 5 + 2 = 7개
     // 100층: 5 + 5 = 10개
     // 200층: 5 + 10 + 10 = 25개
@@ -1497,11 +1449,32 @@ export class GameEngine {
     const highFloorBonus = player.floor > 100 ? Math.floor((player.floor - 100) / 10) : 0;
     let fragmentsGained = baseFragments + floorBonus + highFloorBonus;
 
-    // 유물: 심연의 서 (환생당 유물 조각 획득량 증가%)
+    // 유물 효과 가져오기
     const relicEffects = this.getRelicEffects();
-    if (relicEffects.relicFragmentPercent > 0) {
-      fragmentsGained = Math.floor(fragmentsGained * (1 + relicEffects.relicFragmentPercent / 100));
+
+    // 반지 장비의 ppBonus 스탯 (고대 유물 획득량 증가%)
+    const { equipment } = this.state;
+    let ringPpBonus = 0;
+    if (equipment.ring) {
+      const ppBonusStat = equipment.ring.stats.find(s => s.id === 'ppBonus');
+      if (ppBonusStat) {
+        // 유물 ringPercent 보너스 적용
+        const ringRelicBonus = 1 + (relicEffects.ringPercent || 0) / 100;
+        ringPpBonus = ppBonusStat.value * ringRelicBonus;
+      }
     }
+
+    // 유물: 심연의 서 (환생당 고대 유물 획득량 증가%)
+    let totalBonus = 1;
+    if (relicEffects.relicFragmentPercent > 0) {
+      totalBonus += relicEffects.relicFragmentPercent / 100;
+    }
+    // 반지 ppBonus 적용
+    if (ringPpBonus > 0) {
+      totalBonus += ringPpBonus / 100;
+    }
+
+    fragmentsGained = Math.floor(fragmentsGained * totalBonus);
 
     // 리셋 (일부 제외)
     const newState = this.getDefaultState();
@@ -2632,7 +2605,7 @@ export class GameEngine {
     const cost = getRelicGachaCost(relicGachaCount);
 
     if (relicFragments < cost) {
-      return { success: false, message: `유물 조각이 부족합니다! (필요: ${cost}개)` };
+      return { success: false, message: `고대 유물이 부족합니다! (필요: ${cost}개)` };
     }
 
     // 랜덤 유물 선택
@@ -2679,7 +2652,7 @@ export class GameEngine {
     const cost = getRelicUpgradeCost(relicInstance.level, costReduction);
 
     if (relicFragments < cost) {
-      return { success: false, message: `유물 조각이 부족합니다! (필요: ${cost}개)` };
+      return { success: false, message: `고대 유물이 부족합니다! (필요: ${cost}개)` };
     }
 
     // 상태 업데이트
@@ -2855,7 +2828,7 @@ export class GameEngine {
     }
 
     if (awakeningStones < 1) {
-      return { success: false, message: '각성석이 부족합니다! (보스상점에서 구매)' };
+      return { success: false, message: '각성석이 부족합니다! (상점에서 구매)' };
     }
 
     const result = awakenItem(item);
@@ -3068,5 +3041,84 @@ export class GameEngine {
     });
 
     return bestItems;
+  }
+
+  // ===== 업적 시스템 =====
+
+  // 업적 체크 및 자동 완료 처리
+  checkAndCompleteAchievements() {
+    if (!this.state.completedAchievements) {
+      this.state.completedAchievements = {};
+    }
+
+    const newlyCompleted = checkAchievements(this.state, this.state.completedAchievements);
+
+    newlyCompleted.forEach(achievement => {
+      this.state.completedAchievements[achievement.id] = {
+        completedAt: Date.now()
+      };
+      this.addCombatLog(`🏆 업적 달성: ${achievement.name}!`, 'achievement');
+    });
+
+    return newlyCompleted;
+  }
+
+  // 업적 보상 수령
+  claimAchievementReward(achievementId) {
+    const { completedAchievements = {}, claimedAchievements = {} } = this.state;
+
+    // 업적이 완료되지 않은 경우
+    if (!completedAchievements[achievementId]) {
+      return { success: false, message: '아직 달성하지 않은 업적입니다' };
+    }
+
+    // 이미 보상을 수령한 경우
+    if (claimedAchievements[achievementId]) {
+      return { success: false, message: '이미 보상을 수령했습니다' };
+    }
+
+    const achievement = ACHIEVEMENTS[achievementId];
+    if (!achievement) {
+      return { success: false, message: '존재하지 않는 업적입니다' };
+    }
+
+    // 보상 지급
+    const { type, amount } = achievement.reward;
+
+    switch (type) {
+      case 'gold':
+        this.state.player.gold += amount;
+        break;
+      case 'fragments':
+        this.state.equipmentFragments = (this.state.equipmentFragments || 0) + amount;
+        break;
+      case 'bossCoins':
+        if (!this.state.sealedZone) this.state.sealedZone = {};
+        this.state.sealedZone.bossCoins = (this.state.sealedZone.bossCoins || 0) + amount;
+        break;
+      case 'orbs':
+        this.state.orbs = (this.state.orbs || 0) + amount;
+        break;
+      case 'relicFragments':
+        this.state.relicFragments = (this.state.relicFragments || 0) + amount;
+        break;
+      case 'setSelector':
+        this.grantSetSelector('floor100', amount);
+        break;
+      default:
+        break;
+    }
+
+    // 수령 완료 표시
+    if (!this.state.claimedAchievements) {
+      this.state.claimedAchievements = {};
+    }
+    this.state.claimedAchievements[achievementId] = {
+      claimedAt: Date.now()
+    };
+
+    this.addCombatLog(`🎁 업적 보상 수령: ${achievement.name}`, 'reward');
+
+    return { success: true, message: `${achievement.name} 보상을 수령했습니다!` };
   }
 }

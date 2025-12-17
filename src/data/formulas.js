@@ -8,11 +8,11 @@
 // ============================================
 
 export const RELIC_FORMULAS = {
-  // === 환생 & 유물 관련 ===
+  // === 환생 & 고대 유물 관련 ===
   relicFragmentPercent: {
     name: '심연의 서',
-    description: '환생당 유물 조각 획득량 증가',
-    formula: '유물조각 = 기본획득량 × (1 + relicFragmentPercent / 100)',
+    description: '환생당 고대 유물 획득량 증가',
+    formula: '고대유물 = 기본획득량 × (1 + relicFragmentPercent / 100)',
     effectPerLevel: { mythic: 30 }, // %
     location: 'GameEngine.prestige()'
   },
@@ -313,12 +313,12 @@ export const RELIC_GACHA_FORMULAS = {
 };
 
 // ============================================
-// 환생 유물조각 획득 수식
+// 환생 고대유물 획득 수식
 // ============================================
 
 export const PRESTIGE_FORMULAS = {
   fragmentsGained: {
-    description: '환생 시 유물 조각 획득량',
+    description: '환생 시 고대 유물 획득량',
     formula: `
       baseFragments = 5;
       floorBonus = floor(player.floor / 20);

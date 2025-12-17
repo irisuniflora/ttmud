@@ -45,7 +45,7 @@ const SkillTree = () => {
                             critChance: '크리티컬',
                             critDmg: '치명타 데미지',
                             atkPercent: '공격력',
-                            heroDmgPercent: '영웅 데미지',
+                            heroDmgPercent: '동료 데미지',
                             goldPercent: '골드 획득',
                             dropRate: '드랍률',
                             expPercent: '경험치 획득',

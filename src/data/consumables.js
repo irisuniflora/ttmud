@@ -30,7 +30,7 @@ export const CONSUMABLES = {
   },
   [CONSUMABLE_TYPES.GEAR_ORB]: {
     id: CONSUMABLE_TYPES.GEAR_ORB,
-    name: '장비 오브',
+    name: '카르마 오브',
     description: '장비의 옵션을 재굴림할 수 있는 신비한 구슬',
     icon: '🔮',
     maxStack: 999,
@@ -41,7 +41,7 @@ export const CONSUMABLES = {
     id: CONSUMABLE_TYPES.STAT_MAX_ITEM,
     name: '완벽의 정수',
     description: '장비의 현재 옵션을 최대치로 고정시키는 아이템',
-    icon: '🔷',
+    icon: '⚙️',
     maxStack: 99,
     usable: true,
     rarity: 'mythic'
@@ -73,7 +73,7 @@ export const CONSUMABLE_SOURCES = {
     }
   },
 
-  // 장비 오브
+  // 카르마 오브
   GEAR_ORB: {
     // 보스 코인 상점에서 구매
     bossShop: {
@@ -122,7 +122,7 @@ export const useConsumable = (consumableId, gameState, targetData = null) => {
       return { success: true, message: '몬스터를 선택해주세요.', requiresUI: true };
 
     case CONSUMABLE_TYPES.GEAR_ORB:
-      // 장비 오브 사용 로직 (별도 UI에서 처리)
+      // 카르마 오브 사용 로직 (별도 UI에서 처리)
       return { success: true, message: '재굴림할 장비를 선택해주세요.', requiresUI: true };
 
     case CONSUMABLE_TYPES.STAT_MAX_ITEM:

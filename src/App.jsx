@@ -4,13 +4,14 @@ import PlayerInfo from './components/Player/PlayerInfo';
 import StatsList from './components/Player/StatsList';
 import HeroList from './components/Heroes/HeroList';
 import NewEquipment from './components/Equipment/NewEquipment';
-import Consumables from './components/Inventory/Consumables';
+import Achievements from './components/Achievements/Achievements';
 import SkillTree from './components/SkillTree/SkillTree';
 import Collection from './components/Collection/Collection';
 import SealedZone from './components/SealedZone/SealedZone';
 import BossCoinShop from './components/SealedZone/BossCoinShop';
 // import WorldBoss from './components/WorldBoss/WorldBoss'; // 월드보스 시스템 비활성화
 import PrestigeRelics from './components/Prestige/PrestigeRelics';
+import { getTotalRelicEffects } from './data/prestigeRelics';
 
 const GameContent = () => {
   const { gameState, isRunning, togglePause, saveGame, resetGame, prestige } = useGame();
@@ -39,14 +40,40 @@ const GameContent = () => {
       return;
     }
 
-    // 유물 조각 획득 공식 계산
+    // 고대 유물 획득 공식 계산
     const floor = gameState.player.floor;
     const baseFragments = 5;
     const floorBonus = Math.floor(floor / 20);
     const highFloorBonus = floor > 100 ? Math.floor((floor - 100) / 10) : 0;
-    const fragmentsGained = baseFragments + floorBonus + highFloorBonus;
+    let fragmentsGained = baseFragments + floorBonus + highFloorBonus;
 
-    if (window.confirm(`환생하시겠습니까?\n\n획득할 유물 조각: 💎 ${fragmentsGained}개\n\n게임이 처음부터 시작되지만 더 강해집니다!`)) {
+    // 유물 효과 가져오기
+    const relicEffects = getTotalRelicEffects(gameState.prestigeRelics || {});
+
+    // 반지 장비의 ppBonus 스탯 (고대 유물 획득량 증가%)
+    const { equipment } = gameState;
+    let ringPpBonus = 0;
+    if (equipment?.ring) {
+      const ppBonusStat = equipment.ring.stats?.find(s => s.id === 'ppBonus');
+      if (ppBonusStat) {
+        // 유물 ringPercent 보너스 적용
+        const ringRelicBonus = 1 + (relicEffects.ringPercent || 0) / 100;
+        ringPpBonus = ppBonusStat.value * ringRelicBonus;
+      }
+    }
+
+    // 총 보너스 계산
+    let totalBonus = 1;
+    if (relicEffects.relicFragmentPercent > 0) {
+      totalBonus += relicEffects.relicFragmentPercent / 100;
+    }
+    if (ringPpBonus > 0) {
+      totalBonus += ringPpBonus / 100;
+    }
+
+    fragmentsGained = Math.floor(fragmentsGained * totalBonus);
+
+    if (window.confirm(`환생하시겠습니까?\n\n획득할 고대 유물: 🏺 ${fragmentsGained}개\n\n게임이 처음부터 시작되지만 더 강해집니다!`)) {
       prestige();
     }
   };
@@ -141,14 +168,14 @@ const GameContent = () => {
                 ⚔️ 장비
               </button>
               <button
-                onClick={() => setActiveTab('inventory')}
+                onClick={() => setActiveTab('achievements')}
                 className={`px-4 py-2 rounded font-bold transition-all ${
-                  activeTab === 'inventory'
-                    ? 'bg-blue-600 text-white shadow-md'
+                  activeTab === 'achievements'
+                    ? 'bg-gradient-to-r from-yellow-600 to-orange-600 text-white shadow-md'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
                 }`}
               >
-                🎒 인벤토리
+                🏆 업적
               </button>
               <button
                 onClick={() => setActiveTab('skills')}
@@ -188,7 +215,7 @@ const GameContent = () => {
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
                 }`}
               >
-                🪙 보스상점
+                🪙 상점
               </button>
               {/* 월드보스 탭 비활성화
               <button
@@ -218,7 +245,7 @@ const GameContent = () => {
             <div className="flex-1 overflow-y-auto">
               {activeTab === 'heroes' && <HeroList />}
               {activeTab === 'equipment' && <NewEquipment />}
-              {activeTab === 'inventory' && <Consumables />}
+              {activeTab === 'achievements' && <Achievements />}
               {activeTab === 'skills' && <SkillTree />}
               {activeTab === 'collection' && <Collection />}
               {activeTab === 'sealedZone' && <SealedZone />}

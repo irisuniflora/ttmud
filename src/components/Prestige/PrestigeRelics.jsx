@@ -10,12 +10,49 @@ import {
 import { formatNumber } from '../../utils/formatter';
 import NotificationModal from '../UI/NotificationModal';
 
+// 유물 이미지 컴포넌트 (png → jpg → jpeg 순서로 시도, 모두 실패 시 이모지 fallback)
+const RelicImage = ({ relicId, icon, size = 48 }) => {
+  const [imgIndex, setImgIndex] = useState(0);
+  const extensions = ['jpg', 'png', 'jpeg', 'JPG', 'PNG', 'JPEG'];
+
+  const handleError = () => {
+    if (imgIndex < extensions.length - 1) {
+      setImgIndex(imgIndex + 1);
+    } else {
+      setImgIndex(-1); // 모든 확장자 실패
+    }
+  };
+
+  if (imgIndex === -1) {
+    return <span style={{ fontSize: size * 0.7 }}>{icon}</span>;
+  }
+
+  return (
+    <div
+      className="rounded-lg p-1"
+      style={{
+        background: 'radial-gradient(circle, rgba(147,51,234,0.3) 0%, rgba(30,30,40,0.8) 70%)',
+        boxShadow: '0 0 12px rgba(147,51,234,0.4), inset 0 0 8px rgba(147,51,234,0.2)'
+      }}
+    >
+      <img
+        src={`/images/relics/${relicId}.${extensions[imgIndex]}`}
+        alt={relicId}
+        className="object-contain rounded-md"
+        style={{ width: size, height: size }}
+        onError={handleError}
+      />
+    </div>
+  );
+};
+
 const PrestigeRelics = () => {
   const { gameState, gachaRelic: doGachaRelic, upgradeRelic: doUpgradeRelic } = useGame();
   const { player, prestigeRelics = {}, relicFragments = 0, relicGachaCount = 0 } = gameState;
 
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [notification, setNotification] = useState({ isOpen: false, title: '', message: '', type: 'info' });
+  const [showEffectsPopup, setShowEffectsPopup] = useState(false);
 
   const showNotification = (title, message, type = 'info') => {
     setNotification({ isOpen: true, title, message, type });
@@ -83,10 +120,10 @@ const PrestigeRelics = () => {
           {/* 왼쪽: 제목 + 보유 조각 */}
           <div className="flex items-center gap-3">
             <div>
-              <h2 className="text-lg font-bold text-purple-300">환생 유물</h2>
+              <h2 className="text-lg font-bold text-purple-300">고대 유물</h2>
               <p className="text-xs text-gray-400">미보유: {unownedRelicIds.length} / {Object.keys(PRESTIGE_RELICS).length}</p>
             </div>
-            <div className="text-2xl font-bold text-pink-400">💎 {relicFragments}</div>
+            <div className="text-2xl font-bold text-pink-400">🏺 {relicFragments}</div>
           </div>
 
           {/* 오른쪽: 소환 버튼 */}
@@ -101,7 +138,7 @@ const PrestigeRelics = () => {
                 : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg'
             }`}
           >
-            {hasAllRelics ? '✓ 모두 보유' : `소환 (💎 ${currentGachaCost})`}
+            {hasAllRelics ? '✓ 모두 보유' : `소환 (🏺 ${currentGachaCost})`}
           </button>
         </div>
       </div>
@@ -127,21 +164,29 @@ const PrestigeRelics = () => {
 
       {/* 보유 유물 */}
       <div className="bg-game-panel border border-game-border rounded-lg p-4">
-        <h3 className="text-lg font-bold text-white mb-3">
-          보유 유물 ({ownedRelics.length})
-          {relicUpgradeCostReduction > 0 && (
-            <span className="text-sm text-green-400 ml-2">
-              (강화 비용 -{relicUpgradeCostReduction.toFixed(0)}%)
-            </span>
-          )}
-        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-bold text-white">
+            보유 유물 ({ownedRelics.length})
+            {relicUpgradeCostReduction > 0 && (
+              <span className="text-sm text-green-400 ml-2">
+                (강화 비용 -{relicUpgradeCostReduction.toFixed(0)}%)
+              </span>
+            )}
+          </h3>
+          <button
+            onClick={() => setShowEffectsPopup(true)}
+            className="px-3 py-1 bg-purple-700 hover:bg-purple-600 text-white text-sm font-bold rounded transition-all"
+          >
+            📊 전체 효과
+          </button>
+        </div>
 
         {ownedRelics.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             {selectedCategory === 'all' ? '보유한 유물이 없습니다' : '이 카테고리의 유물이 없습니다'}
           </div>
         ) : (
-          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+          <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
             {ownedRelics.map(relicData => {
               const { relicId, level, name, icon, description, maxLevel, effectPerLevel, effectType, category } = relicData;
               const effect = calculateRelicEffect(relicId, level);
@@ -169,7 +214,7 @@ const PrestigeRelics = () => {
                 >
                   {/* 아이콘 + 레벨 */}
                   <div className="flex items-center justify-center mb-1">
-                    <span className="text-2xl">{icon}</span>
+                    <RelicImage relicId={relicId} icon={icon} size={56} />
                   </div>
                   <div className="text-[10px] font-bold text-purple-300 text-center truncate">{name}</div>
                   <div className="text-[9px] text-gray-400 text-center">Lv.{level}{maxLevel && `/${maxLevel}`}</div>
@@ -195,7 +240,7 @@ const PrestigeRelics = () => {
                         : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                     }`}
                   >
-                    {isMaxLevel ? 'MAX' : `강화 (💎 ${upgradeCost}개)`}
+                    {isMaxLevel ? 'MAX' : `강화 (🏺 ${upgradeCost})`}
                   </button>
                 </div>
               );
@@ -203,6 +248,83 @@ const PrestigeRelics = () => {
           </div>
         )}
       </div>
+
+      {/* 전체 효과 팝업 */}
+      {showEffectsPopup && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowEffectsPopup(false)}>
+          <div className="bg-gray-900 border-2 border-purple-500 rounded-lg p-4 max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-purple-300">📊 유물 전체 효과</h3>
+              <button onClick={() => setShowEffectsPopup(false)} className="text-gray-400 hover:text-white text-xl">✕</button>
+            </div>
+            <div className="space-y-2">
+              {Object.entries(totalRelicEffects).length === 0 ? (
+                <p className="text-gray-500 text-center py-4">보유한 유물이 없습니다</p>
+              ) : (
+                Object.entries(totalRelicEffects).map(([effectType, value]) => {
+                  const effectLabels = {
+                    relicFragmentPercent: '환생당 유물 조각 획득량',
+                    relicUpgradeCostReduction: '유물 강화 비용 감소',
+                    damagePerRelic: '유물당 데미지 증가',
+                    goldPercent: '모든 골드 획득량',
+                    normalMonsterGold: '일반 몬스터 골드',
+                    bossGold: '보스 골드',
+                    fairyGold: '요정 골드',
+                    rareMonsterGold: '희귀 몬스터 골드',
+                    treasureChestChance: '보물상자 출현 확률',
+                    miracleChance: '기적 발동 확률',
+                    allDamagePercent: '모든 데미지',
+                    damagePercent: '데미지 증가',
+                    critDamageBonus: '치명타 데미지',
+                    critDmg: '치명타 데미지',
+                    critChance: '치명타 확률',
+                    bossDamage: '보스 데미지',
+                    bossExtraDamage: '보스 추가 데미지',
+                    giantSlayerDamage: '보스 HP비례 추가 데미지',
+                    equipUpgradeCostReduction: '장비 업그레이드 비용 감소',
+                    equipmentUpgradeCostReduction: '장비 업그레이드 비용 감소',
+                    setEffectBonus: '세트 효과 보너스',
+                    inscriptionStatBonus: '문양 기본 스탯',
+                    inscriptionLevelBonus: '문양 레벨당 스탯',
+                    inscriptionUpgradeCostReduction: '문양 강화 비용 감소',
+                    collectionStatBonus: '도감 스탯 보너스',
+                    explorerBonus: '탐험 보너스',
+                    rareMonsterSpawnRate: '희귀 몬스터 출현율',
+                    rareMonsterRewardBonus: '희귀 몬스터 보상',
+                    monstersPerStageReduction: '스테이지당 몬스터 수 감소',
+                    bossTimeLimit: '보스 처치 제한시간',
+                    monsterHpReduction: '몬스터 HP 감소',
+                    challengeTokenBonus: '도전권 획득 보너스',
+                    goldRelicBonus: '유물 골드 보너스',
+                    gold10xChance: '골드 10배 확률',
+                    damageRelicBonus: '유물 데미지 보너스',
+                    equipmentPercent: '모든 장비 능력치',
+                    weaponPercent: '무기 능력치',
+                    helmetPercent: '투구 능력치',
+                    armorPercent: '갑옷 능력치',
+                    bootsPercent: '신발 능력치',
+                    necklacePercent: '목걸이 능력치',
+                    ringPercent: '반지 능력치',
+                    inscriptionDamage: '문양 데미지',
+                    inscriptionStats: '문양 스탯'
+                  };
+                  const suffix = effectType.includes('Percent') || effectType.includes('Chance') ||
+                    effectType.includes('Spawn') || effectType.includes('Reduction') ||
+                    effectType.includes('Bonus') || effectType.includes('Rate') || effectType.includes('Damage')
+                    ? '%' : effectType === 'bossTimeLimit' ? '초' : effectType === 'monstersPerStageReduction' ? '마리' : '';
+
+                  return (
+                    <div key={effectType} className="flex justify-between items-center bg-gray-800 rounded px-3 py-2">
+                      <span className="text-gray-300 text-sm">{effectLabels[effectType] || effectType}</span>
+                      <span className="text-yellow-400 font-bold">+{formatNumber(value)}{suffix}</span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 알림 모달 */}
       <NotificationModal
