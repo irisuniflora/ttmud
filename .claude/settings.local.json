@@ -21,7 +21,9 @@
       "Bash(ls -la \"c:\\Users\\welch\\Desktop\\ttmud\\public\\images\\Pool\"\" 2>/dev/null || dir \"c:UserswelchDesktopttmudpublicimagesPool \")",
       "Bash(mkdir:*)",
       "Bash(cat:*)",
-      "Bash(ls -la \"c:\\Users\\welch\\Desktop\\ttmud\\public\\images\\field\\characters\\base\"\" 2>/dev/null || dir \"c:UserswelchDesktopttmudpublicimagesfieldcharactersbase\" 2>nul || echo \"Directory not found \")"
+      "Bash(ls -la \"c:\\Users\\welch\\Desktop\\ttmud\\public\\images\\field\\characters\\base\"\" 2>/dev/null || dir \"c:UserswelchDesktopttmudpublicimagesfieldcharactersbase\" 2>nul || echo \"Directory not found \")",
+      "Bash(npm run deploy:*)",
+      "Bash(git push)"
     ],
     "deny": [],
     "ask": []
