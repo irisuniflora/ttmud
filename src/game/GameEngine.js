@@ -12,8 +12,8 @@ import {
   EQUIPMENT_CONFIG,
   calculateExpToNextLevel,
   calculateHeroCardDropChance,
-  calculateUpgradeCoinDropChance,
-  calculateUpgradeCoinAmount,
+  calculateHeroScrollDropChance,
+  calculateHeroScrollAmount,
   getMonstersPerFloor
 } from '../data/gameBalance.js';
 // import { isWorldBossActive, WORLD_BOSS_CONFIG, AUCTION_CONFIG, AUCTION_ITEMS } from '../data/worldBoss.js'; // 월드보스 시스템 비활성화
@@ -131,7 +131,8 @@ export class GameEngine {
       settings: {
         autoSellEnabled: false, // 자동 판매 활성화 여부
         autoSellRarity: 'common', // 자동 판매할 최대 등급
-        autoDisassemble: false // 노말템 자동 분해 여부
+        autoDisassemble: false, // 노말템 자동 분해 여부
+        autoDisassembleGrades: ['white', 'blue', 'purple'] // 자동 분해할 등급 목록
       },
       combatLog: [], // 전투 로그
       collection: {
@@ -229,8 +230,8 @@ export class GameEngine {
       }
     }
 
-    const damage = this.calculateTotalDPS();
-    this.dealDamage(damage);
+    const { damage, isCrit } = this.calculateTotalDPS();
+    this.dealDamage(damage, isCrit);
 
     // 월드보스 데미지 누적 (비활성화)
     // this.tickWorldBossDamage();
@@ -462,24 +463,31 @@ export class GameEngine {
     }
 
     // 크리티컬 발동 체크
-    if (Math.random() * 100 < critChance) {
-      return Math.floor(finalDmg * (critDmg / 100));
-    }
+    const isCrit = Math.random() * 100 < critChance;
+    const finalDamage = isCrit ? Math.floor(finalDmg * (critDmg / 100)) : Math.floor(finalDmg);
 
-    return Math.floor(finalDmg);
+    return { damage: finalDamage, isCrit };
   }
 
   // 데미지 적용
-  dealDamage(damage) {
+  dealDamage(damage, isCrit = false) {
     const { currentMonster, statistics } = this.state;
-    
+
     currentMonster.hp -= damage;
     statistics.totalDamageDealt += damage;
-    
+
+    // 매 틱마다 데미지 로그 추가 (BattleField 애니메이션용)
+    const formattedDamage = damage.toLocaleString();
+    if (isCrit) {
+      this.addCombatLog(`💥 치명타! ${formattedDamage} 데미지`, 'critical');
+    } else {
+      this.addCombatLog(`⚔️ ${formattedDamage} 데미지`, 'damage');
+    }
+
     if (currentMonster.hp <= 0) {
       this.killMonster();
     }
-    
+
     this.state = { ...this.state };
   }
 
@@ -1043,22 +1051,22 @@ export class GameEngine {
     return false;
   }
 
-  // 등급업 코인 드랍 시도
+  // 영웅의 서 드랍 시도 (100층마다 1.2배 복리, 고정 1개)
   tryDropUpgradeCoin() {
     const { player } = this.state;
 
-    // 드랍 확률 계산
-    const dropChance = calculateUpgradeCoinDropChance(player.floor);
+    // 드랍 확률 계산 (100층마다 1.2배 복리)
+    const dropChance = calculateHeroScrollDropChance(player.floor);
 
     if (Math.random() * 100 < dropChance) {
-      // 코인 수량 계산
-      const coinAmount = calculateUpgradeCoinAmount(player.floor);
-      this.state.upgradeCoins += coinAmount;
+      // 고정 1개 드랍
+      const scrollAmount = calculateHeroScrollAmount();
+      this.state.upgradeCoins += scrollAmount;
 
       // 로그 추가
-      this.addCombatLog(`📖 영웅의 서 획득! +${coinAmount}개`, 'upgrade_coin');
+      this.addCombatLog(`📖 영웅의 서 획득! +${scrollAmount}개`, 'upgrade_coin');
 
-      return coinAmount;
+      return scrollAmount;
     }
 
     return 0;
@@ -1117,29 +1125,54 @@ export class GameEngine {
       return INSCRIPTION_DROP_TABLE[rangeStart];
     };
 
+    // 문양 드랍률: 100층마다 1.2배 복리 (10% → 12% → 14.4% → ...)
     const getInscriptionDropRate = (floor) => {
       const dropInfo = getInscriptionIdByFloor(floor);
       if (!dropInfo) return 0;
 
       const hundredBlock = Math.floor((floor - 1) / 100);
-      const dropRate = dropInfo.baseDropRate * Math.pow(2, hundredBlock);
-      return Math.min(dropRate, 0.80);
+      const dropRate = dropInfo.baseDropRate * Math.pow(1.2, hundredBlock);
+      return Math.min(dropRate, 0.50); // 최대 50%
     };
 
-    const rollInscriptionGrade = () => {
-      const INSCRIPTION_DROP_RATES = {
+    // 문양 등급: 100층마다 고급 등급 1.5배 복리 증가
+    const rollInscriptionGrade = (floor) => {
+      // 기본 드랍률 (1-100층 기준)
+      const BASE_RATES = {
         common: 0.50,     // 50%
-        uncommon: 0.30,   // 30% (희귀)
+        uncommon: 0.27,   // 27% (희귀)
         rare: 0.15,       // 15% (레어)
-        unique: 0.04,     // 4%
-        legendary: 0.009, // 0.9%
-        mythic: 0.001     // 0.1%
+        unique: 0.05,     // 5%
+        legendary: 0.025, // 2.5%
+        mythic: 0.005     // 0.5%
       };
+
+      // 100층마다 고급 등급(unique 이상) 1.5배 복리
+      const hundredBlock = Math.floor((floor - 1) / 100);
+      const highGradeMultiplier = Math.pow(1.5, hundredBlock);
+
+      // 고급 등급 확률 증가
+      let adjustedRates = { ...BASE_RATES };
+      adjustedRates.unique *= highGradeMultiplier;
+      adjustedRates.legendary *= highGradeMultiplier;
+      adjustedRates.mythic *= highGradeMultiplier;
+
+      // 증가분만큼 일반 등급에서 차감
+      const extraHighGrade = (adjustedRates.unique - BASE_RATES.unique) +
+                             (adjustedRates.legendary - BASE_RATES.legendary) +
+                             (adjustedRates.mythic - BASE_RATES.mythic);
+      adjustedRates.common = Math.max(0.10, BASE_RATES.common - extraHighGrade);
+
+      // 정규화 (합이 1이 되도록)
+      const total = Object.values(adjustedRates).reduce((a, b) => a + b, 0);
+      for (const key in adjustedRates) {
+        adjustedRates[key] /= total;
+      }
 
       const roll = Math.random();
       let cumulative = 0;
 
-      for (const [grade, rate] of Object.entries(INSCRIPTION_DROP_RATES)) {
+      for (const [grade, rate] of Object.entries(adjustedRates)) {
         cumulative += rate;
         if (roll <= cumulative) return grade;
       }
@@ -1171,8 +1204,8 @@ export class GameEngine {
         };
       }
 
-      // 문양 등급 결정
-      const grade = rollInscriptionGrade();
+      // 문양 등급 결정 (층수에 따라 고급 등급 확률 증가)
+      const grade = rollInscriptionGrade(floor);
 
       const INSCRIPTION_GRADES = {
         common: { name: '일반', color: 'text-gray-400', sellDust: 1 },
@@ -1383,6 +1416,34 @@ export class GameEngine {
     const { inventory } = this.state;
     const rarityOrder = { dark: 7, mythic: 6, legendary: 5, unique: 4, epic: 3, rare: 2, common: 1 };
     inventory.sort((a, b) => rarityOrder[b.rarity] - rarityOrder[a.rarity]);
+  }
+
+  // 새 장비 인벤토리 정렬 (품질 순: 세트 > 노말, 고대 > 일반, 등급순, 템렙순)
+  sortNewInventory() {
+    if (!this.state.newInventory) return;
+
+    // 등급 우선순위 (높은 순)
+    const normalGradeOrder = { purple: 3, blue: 2, white: 1 };
+
+    this.state.newInventory.sort((a, b) => {
+      // 1. 세트템 우선
+      if (a.type === 'set' && b.type !== 'set') return -1;
+      if (a.type !== 'set' && b.type === 'set') return 1;
+
+      // 2. 고대 아이템 우선
+      if (a.isAncient && !b.isAncient) return -1;
+      if (!a.isAncient && b.isAncient) return 1;
+
+      // 3. 노말템끼리는 등급순 (보라 > 파랑 > 흰색)
+      if (a.type !== 'set' && b.type !== 'set') {
+        const gradeA = normalGradeOrder[a.normalGrade] || 0;
+        const gradeB = normalGradeOrder[b.normalGrade] || 0;
+        if (gradeA !== gradeB) return gradeB - gradeA;
+      }
+
+      // 4. 템렙 높은 순
+      return (b.itemLevel || 0) - (a.itemLevel || 0);
+    });
   }
 
   // 자동 장착 (슬롯별 가장 높은 등급)
@@ -2698,6 +2759,9 @@ export class GameEngine {
     // 인벤토리에서 제거
     newInventory.splice(itemIndex, 1);
 
+    // 인벤토리 정렬
+    this.sortNewInventory();
+
     this.addCombatLog(`⚔️ ${item.name} 장착!`, 'equipment');
 
     return {
@@ -2722,6 +2786,7 @@ export class GameEngine {
       this.state.newInventory = [];
     }
     this.state.newInventory.push(item);
+    this.sortNewInventory();
 
     // 슬롯 비우기
     equipment[slot] = null;
@@ -2762,37 +2827,79 @@ export class GameEngine {
     };
   }
 
-  // 일괄 분해 (노말템만)
-  disassembleAllNormal() {
+  // 아이템 잠금 토글
+  toggleItemLock(itemId) {
     const { newInventory = [] } = this.state;
+    const itemIndex = newInventory.findIndex(item => item.id === itemId);
+
+    if (itemIndex === -1) {
+      return { success: false, message: '아이템을 찾을 수 없습니다' };
+    }
+
+    const item = newInventory[itemIndex];
+    const newLockState = !item.locked;
+
+    this.state.newInventory = newInventory.map((it, idx) =>
+      idx === itemIndex ? { ...it, locked: newLockState } : it
+    );
+
+    this.addCombatLog(`🔒 ${item.name} ${newLockState ? '잠금' : '잠금 해제'}`, 'lock');
+
+    return {
+      success: true,
+      message: `${item.name} ${newLockState ? '잠금됨' : '잠금 해제됨'}`,
+      locked: newLockState
+    };
+  }
+
+  // 일괄 분해 (옵션: 등급 선택, 잠금 아이템 보호)
+  // options: { grades: ['white', 'blue', 'purple'] } - 분해할 등급 선택 (기본: 전체 노말)
+  disassembleAllNormal(options = {}) {
+    const { newInventory = [] } = this.state;
+    const { grades = null } = options; // null이면 전체 노말템
+
     // type이 없거나 'normal'인 경우, 또는 setId가 없는 경우 노말템으로 판단
     const isNormalItem = (item) => {
       if (item.type === 'set' || item.setId) return false;
       return item.type === 'normal' || !item.type;
     };
-    const normalItems = newInventory.filter(isNormalItem);
 
-    if (normalItems.length === 0) {
-      return { success: false, message: '분해할 노말 아이템이 없습니다' };
+    // 분해 대상 필터링: 노말템 + 잠금 안된 것 + (등급 선택 시 해당 등급만)
+    const targetItems = newInventory.filter(item => {
+      if (!isNormalItem(item)) return false;
+      if (item.locked) return false; // 잠금된 아이템은 제외
+      if (grades && grades.length > 0) {
+        // 등급 필터링 (white/blue/purple)
+        return grades.includes(item.normalGrade);
+      }
+      return true;
+    });
+
+    if (targetItems.length === 0) {
+      return { success: false, message: '분해할 아이템이 없습니다 (잠금 아이템 제외)' };
     }
 
     let totalFragments = 0;
-    normalItems.forEach(item => {
+    targetItems.forEach(item => {
       totalFragments += getDisassembleFragments(item);
     });
 
-    // 노말템 제거
-    this.state.newInventory = newInventory.filter(item => !isNormalItem(item));
+    // 대상 아이템 ID 목록
+    const targetIds = new Set(targetItems.map(item => item.id));
+
+    // 대상 아이템 제거
+    this.state.newInventory = newInventory.filter(item => !targetIds.has(item.id));
 
     // 장비조각 추가
     this.state.equipmentFragments = (this.state.equipmentFragments || 0) + totalFragments;
 
-    this.addCombatLog(`🔨 노말템 ${normalItems.length}개 일괄 분해 → 장비조각 +${totalFragments}`, 'disassemble');
+    const gradeLabel = grades ? grades.join('/') + ' 등급' : '노말템';
+    this.addCombatLog(`🔨 ${gradeLabel} ${targetItems.length}개 일괄 분해 → 장비조각 +${totalFragments}`, 'disassemble');
 
     return {
       success: true,
-      message: `노말템 ${normalItems.length}개 분해! 장비조각 +${totalFragments}`,
-      count: normalItems.length,
+      message: `${gradeLabel} ${targetItems.length}개 분해! 장비조각 +${totalFragments}`,
+      count: targetItems.length,
       fragments: totalFragments,
       totalFragments: this.state.equipmentFragments
     };
@@ -2869,6 +2976,7 @@ export class GameEngine {
       this.state.newInventory = [];
     }
     this.state.newInventory.push(newItem);
+    this.sortNewInventory();
 
     // 선택권 차감
     this.state.setSelectors = {
@@ -2965,9 +3073,18 @@ export class GameEngine {
     const processedItems = [];
     let autoFragments = 0;
 
+    // 슬롯별 최대 인벤토리 개수 (3줄 * 약 10개 = 30개, 장착 포함하면 29개 인벤)
+    const MAX_ITEMS_PER_SLOT = 30;
+
     droppedItems.forEach(item => {
-      if (settings.autoDisassemble && item.type === 'normal') {
-        // 노말템 자동 분해
+      // 자동 분해: 노말템이고, 자동분해 설정이 켜져있고, 해당 등급이 자동분해 대상인 경우
+      const autoDisassembleGrades = settings.autoDisassembleGrades || ['white', 'blue', 'purple'];
+      const shouldAutoDisassemble = settings.autoDisassemble &&
+        item.type === 'normal' &&
+        autoDisassembleGrades.includes(item.normalGrade);
+
+      if (shouldAutoDisassemble) {
+        // 노말템 자동 분해 (선택된 등급만)
         const fragments = getDisassembleFragments(item);
         autoFragments += fragments;
       } else {
@@ -2975,6 +3092,33 @@ export class GameEngine {
         if (!this.state.newInventory) {
           this.state.newInventory = [];
         }
+
+        // 슬롯별 현재 아이템 개수 확인 (장착 포함)
+        const slotItemCount = this.state.newInventory.filter(i => i.slot === item.slot).length +
+          (this.state.equipment[item.slot] ? 1 : 0);
+
+        if (slotItemCount >= MAX_ITEMS_PER_SLOT) {
+          // 인벤토리 가득 참 - 가장 낮은 가치 아이템 자동 분해 (잠금 아이템 제외)
+          const slotItems = this.state.newInventory.filter(i => i.slot === item.slot && !i.locked);
+
+          // 정렬: 일반템 먼저, 그 다음 템렙 낮은 순
+          const sortedItems = [...slotItems].sort((a, b) => {
+            // 세트템은 보존 우선
+            if (a.type === 'set' && b.type !== 'set') return 1;
+            if (a.type !== 'set' && b.type === 'set') return -1;
+            // 템렙 낮은 순
+            return a.itemLevel - b.itemLevel;
+          });
+
+          // 가장 낮은 가치 아이템 분해
+          const toDisassemble = sortedItems[0];
+          if (toDisassemble) {
+            const fragments = getDisassembleFragments(toDisassemble);
+            autoFragments += fragments;
+            this.state.newInventory = this.state.newInventory.filter(i => i.id !== toDisassemble.id);
+          }
+        }
+
         this.state.newInventory.push(item);
         processedItems.push(item);
 
@@ -2986,6 +3130,9 @@ export class GameEngine {
         }
       }
     });
+
+    // 인벤토리 정렬 (품질순)
+    this.sortNewInventory();
 
     // 자동 분해 조각 추가
     if (autoFragments > 0) {

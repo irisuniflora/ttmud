@@ -27,6 +27,21 @@ const Achievements = () => {
     }
   };
 
+  // 전체 보상 수령
+  const handleClaimAll = () => {
+    if (!claimAchievementReward) return;
+
+    // 수령 가능한 모든 업적 찾기
+    const unclaimedIds = Object.keys(completedAchievements).filter(
+      id => !claimedAchievements[id]
+    );
+
+    // 순차적으로 수령
+    unclaimedIds.forEach(id => {
+      claimAchievementReward(id);
+    });
+  };
+
   return (
     <div className="space-y-4">
       {/* 헤더 */}
@@ -37,9 +52,17 @@ const Achievements = () => {
             달성: <span className="font-bold">{completedCount}</span> / {totalAchievements}
           </span>
           {unclaimedCount > 0 && (
-            <span className="text-sm bg-green-600 px-3 py-1 rounded text-white animate-pulse">
-              보상 수령 가능: {unclaimedCount}
-            </span>
+            <>
+              <span className="text-sm bg-green-600 px-3 py-1 rounded text-white animate-pulse">
+                보상 수령 가능: {unclaimedCount}
+              </span>
+              <button
+                onClick={handleClaimAll}
+                className="px-3 py-1.5 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-white text-sm font-bold rounded shadow-lg"
+              >
+                전체 수령
+              </button>
+            </>
           )}
         </div>
       </div>

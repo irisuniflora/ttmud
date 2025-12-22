@@ -3,6 +3,59 @@ import { useGame } from '../../store/GameContext';
 import { FLOOR_RANGES, getCollectionBonus, getBossCollectionBonus } from '../../data/monsters';
 import { formatNumberWithCommas } from '../../utils/formatter';
 
+// 몬스터 이미지 컴포넌트
+const MonsterImage = ({ floorStart, monsterIndex, isBoss = false, isUnlocked = false, isRare = false, isLegendary = false, size = 'md' }) => {
+  const [imageLoaded, setImageLoaded] = useState(true);
+
+  const imagePath = isBoss
+    ? `/images/field/monsters/floor_${floorStart}/boss.png`
+    : `/images/field/monsters/floor_${floorStart}/${monsterIndex}.png`;
+
+  const sizeClasses = {
+    sm: 'w-8 h-8',
+    md: 'w-12 h-12',
+    lg: 'w-16 h-16'
+  };
+
+  // 글로우 효과
+  const getGlowStyle = () => {
+    if (!isUnlocked) return {};
+    if (isLegendary) {
+      return { filter: 'drop-shadow(0 0 6px #F97316) drop-shadow(0 0 12px #EA580C)' };
+    }
+    if (isRare) {
+      return { filter: 'drop-shadow(0 0 4px #A855F7) drop-shadow(0 0 8px #9333EA)' };
+    }
+    return {};
+  };
+
+  return (
+    <div className={`${sizeClasses[size]} flex items-center justify-center`}>
+      {imageLoaded ? (
+        <img
+          src={imagePath}
+          alt="Monster"
+          className="w-full h-full object-contain transition-all"
+          style={{
+            imageRendering: 'pixelated',
+            filter: isUnlocked ? getGlowStyle().filter || 'none' : 'grayscale(1) brightness(0.4) opacity(0.5)',
+          }}
+          onError={() => setImageLoaded(false)}
+        />
+      ) : (
+        <div
+          className={`${sizeClasses[size]} flex items-center justify-center text-2xl`}
+          style={{
+            filter: isUnlocked ? getGlowStyle().filter || 'none' : 'grayscale(1) brightness(0.4) opacity(0.5)',
+          }}
+        >
+          {isBoss ? '👹' : '👻'}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Collection = () => {
   const { gameState, releaseMonster, releaseAllMonsters, unlockMonsterWithTicket, engine } = useGame();
   const { collection, statistics, consumables = {} } = gameState;
@@ -242,8 +295,8 @@ const Collection = () => {
                   </div>
                 </div>
 
-                {/* 몬스터 그리드 (5x2) - 각 몬스터당 희귀/전설 2칸 구조 */}
-                <div className="grid grid-cols-5 gap-1">
+                {/* 몬스터 그리드 (5x2) - 이미지 기반 */}
+                <div className="grid grid-cols-5 gap-1.5">
                   {data.monsters.map((monsterName, idx) => {
                     const rareId = `rare_${floor}_${idx}`;
                     const legendaryId = `legendary_${floor}_${idx}`;
@@ -260,63 +313,84 @@ const Collection = () => {
                     const canReleaseRare = rareUnlocked && rareReleaseCount < 1;
                     const canReleaseLegendary = legendaryUnlocked && legendaryReleaseCount < 1;
 
+                    // 하나라도 수집했는지
+                    const anyUnlocked = rareUnlocked || legendaryUnlocked || rareReleaseCount > 0 || legendaryReleaseCount > 0;
+
                     return (
-                      <div key={idx} className="space-y-0.5">
-                        {/* 몬스터 이름 칸 + 수집 상태 아이콘 */}
-                        <div className="bg-gray-800 border border-gray-700 rounded p-1 text-center h-11 flex flex-col justify-center">
-                          <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                            <p className="text-[9px] font-bold text-gray-300 truncate">
-                              {(rareUnlocked || rareReleaseCount > 0 || legendaryUnlocked || legendaryReleaseCount > 0) ? monsterName : '???'}
-                            </p>
-                            {/* 수집 상태 아이콘 */}
-                            {rareUnlocked && (
-                              <span className="text-[8px]" title="레어 수집">💎</span>
-                            )}
-                            {legendaryUnlocked && (
-                              <span className="text-[8px]" title="전설 수집">👑</span>
-                            )}
+                      <div
+                        key={idx}
+                        className={`relative bg-gray-900 border rounded-lg p-1 transition-all ${
+                          legendaryUnlocked ? 'border-orange-500 bg-orange-950/30' :
+                          rareUnlocked ? 'border-purple-500 bg-purple-950/30' :
+                          'border-gray-700'
+                        }`}
+                      >
+                        {/* 몬스터 이미지 */}
+                        <div className="flex justify-center mb-1">
+                          <MonsterImage
+                            floorStart={floor}
+                            monsterIndex={idx}
+                            isUnlocked={anyUnlocked}
+                            isRare={rareUnlocked && !legendaryUnlocked}
+                            isLegendary={legendaryUnlocked}
+                            size="md"
+                          />
+                        </div>
+
+                        {/* 몬스터 이름 */}
+                        <p className={`text-[8px] font-bold text-center truncate mb-1 ${
+                          legendaryUnlocked ? 'text-orange-400' :
+                          rareUnlocked ? 'text-purple-400' :
+                          anyUnlocked ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                          {anyUnlocked ? monsterName : '???'}
+                        </p>
+
+                        {/* 수집 상태 뱃지 */}
+                        <div className="flex justify-center gap-0.5 mb-1">
+                          <div className={`w-4 h-4 rounded flex items-center justify-center text-[8px] ${
+                            rareUnlocked ? 'bg-purple-600' : 'bg-gray-800'
+                          }`}>
+                            {rareUnlocked ? '💎' : '-'}
                           </div>
-                          {/* 펭귄 아이콘 표시 */}
-                          <div className="flex items-center justify-center gap-0.5">
-                            {/* 레어 펭귄 */}
-                            {rareReleaseCount > 0 && (
-                              <div className="flex gap-0.5 border border-purple-500 rounded px-0.5">
-                                {[...Array(rareReleaseCount)].map((_, i) => (
-                                  <span key={`rare-${i}`} className="text-[10px]">🐧</span>
-                                ))}
-                              </div>
-                            )}
-                            {/* 전설 펭귄 */}
-                            {legendaryReleaseCount > 0 && (
-                              <div className="flex gap-0.5 border border-orange-500 rounded px-0.5">
-                                {[...Array(legendaryReleaseCount)].map((_, i) => (
-                                  <span key={`legendary-${i}`} className="text-[10px]">🐧</span>
-                                ))}
-                              </div>
-                            )}
+                          <div className={`w-4 h-4 rounded flex items-center justify-center text-[8px] ${
+                            legendaryUnlocked ? 'bg-orange-600' : 'bg-gray-800'
+                          }`}>
+                            {legendaryUnlocked ? '👑' : '-'}
                           </div>
                         </div>
 
-                        {/* 방생 버튼 통합 - 고정 높이 */}
-                        <div className="flex flex-col gap-0.5 h-12">
+                        {/* 방생 상태 / 버튼 */}
+                        <div className="space-y-0.5">
+                          {/* 방생된 펭귄 표시 */}
+                          {(rareReleaseCount > 0 || legendaryReleaseCount > 0) && (
+                            <div className="flex justify-center gap-0.5">
+                              {rareReleaseCount > 0 && (
+                                <span className="text-[10px] bg-purple-800 rounded px-1">🐧</span>
+                              )}
+                              {legendaryReleaseCount > 0 && (
+                                <span className="text-[10px] bg-orange-800 rounded px-1">🐧</span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* 방생 버튼 */}
                           {canReleaseLegendary && (
                             <button
                               onClick={() => handleReleaseClick(legendaryId, monsterName, 'legendary')}
-                              className="w-full bg-orange-600 hover:bg-orange-700 border border-orange-500 rounded flex items-center justify-center gap-1 text-[10px] font-bold py-1 transition-transform hover:scale-105"
-                              title={`전설 방생 (+20% 데미지, +20%p 드랍)`}
+                              className="w-full bg-orange-600 hover:bg-orange-500 rounded text-[8px] font-bold py-0.5"
+                              title="전설 방생"
                             >
-                              <span className="text-orange-300">⭐</span>
-                              <span>방생</span>
+                              ⭐ 방생
                             </button>
                           )}
                           {canReleaseRare && (
                             <button
                               onClick={() => handleReleaseClick(rareId, monsterName, 'rare')}
-                              className="w-full bg-purple-600 hover:bg-purple-700 border border-purple-500 rounded flex items-center justify-center gap-1 text-[10px] font-bold py-1 transition-transform hover:scale-105"
-                              title={`레어 방생 (+5% 데미지, +5%p 드랍)`}
+                              className="w-full bg-purple-600 hover:bg-purple-500 rounded text-[8px] font-bold py-0.5"
+                              title="레어 방생"
                             >
-                              <span className="text-purple-300">●</span>
-                              <span>방생</span>
+                              💎 방생
                             </button>
                           )}
                         </div>
@@ -368,8 +442,8 @@ const Collection = () => {
               </div>
             </div>
 
-            {/* 보스 목록 - 5열 */}
-            <div className="grid grid-cols-5 gap-2">
+            {/* 보스 목록 - 4열 (이미지 기반) */}
+            <div className="grid grid-cols-4 gap-2">
               {Object.entries(FLOOR_RANGES).map(([floorStart, data]) => {
                 const floor = parseInt(floorStart);
                 const rareBossId = `rare_boss_${floor}`;
@@ -377,27 +451,54 @@ const Collection = () => {
 
                 const rareUnlocked = collection.rareBosses?.[rareBossId]?.unlocked;
                 const legendaryUnlocked = collection.legendaryBosses?.[legendaryBossId]?.unlocked;
+                const anyUnlocked = rareUnlocked || legendaryUnlocked;
 
                 return (
-                  <div key={floor} className="bg-game-panel border border-game-border rounded p-1.5">
-                    <p className="text-[9px] text-cyan-400 font-bold truncate">{data.name}</p>
-                    <p className="text-[8px] text-gray-400 mb-1">{floor}~{floor + 4}층</p>
-                    <p className="text-[8px] text-gray-300 font-bold mb-1 truncate">{data.boss}</p>
+                  <div
+                    key={floor}
+                    className={`bg-gray-900 border rounded-lg p-2 transition-all ${
+                      legendaryUnlocked ? 'border-orange-500 bg-orange-950/30' :
+                      rareUnlocked ? 'border-pink-500 bg-pink-950/30' :
+                      'border-gray-700'
+                    }`}
+                  >
+                    {/* 보스 이미지 */}
+                    <div className="flex justify-center mb-1">
+                      <MonsterImage
+                        floorStart={floor}
+                        monsterIndex={0}
+                        isBoss={true}
+                        isUnlocked={anyUnlocked}
+                        isRare={rareUnlocked && !legendaryUnlocked}
+                        isLegendary={legendaryUnlocked}
+                        size="lg"
+                      />
+                    </div>
 
-                    <div className="flex gap-1">
-                      <div className={`flex-1 border rounded py-0.5 text-center ${
-                        rareUnlocked ? 'bg-pink-900/60 border-pink-500' : 'bg-gray-900 border-gray-700'
+                    {/* 던전 이름 */}
+                    <p className="text-[9px] text-cyan-400 font-bold text-center truncate">{data.name}</p>
+                    <p className="text-[7px] text-gray-500 text-center mb-1">{floor}~{floor + 4}층</p>
+
+                    {/* 보스 이름 */}
+                    <p className={`text-[8px] font-bold text-center truncate mb-1 ${
+                      legendaryUnlocked ? 'text-orange-400' :
+                      rareUnlocked ? 'text-pink-400' :
+                      anyUnlocked ? 'text-gray-300' : 'text-gray-600'
+                    }`}>
+                      {anyUnlocked ? data.boss : '???'}
+                    </p>
+
+                    {/* 수집 상태 */}
+                    <div className="flex justify-center gap-1">
+                      <div className={`px-2 py-0.5 rounded text-[8px] font-bold ${
+                        rareUnlocked ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-600'
                       }`}>
-                        <span className={`text-[9px] ${rareUnlocked ? 'text-pink-400' : 'text-gray-600'}`}>
-                          {rareUnlocked ? '🌸' : '-'}
-                        </span>
+                        {rareUnlocked ? '🌸 희귀' : '희귀'}
                       </div>
-                      <div className={`flex-1 border rounded py-0.5 text-center ${
-                        legendaryUnlocked ? 'bg-orange-900/60 border-orange-500' : 'bg-gray-900 border-gray-700'
+                      <div className={`px-2 py-0.5 rounded text-[8px] font-bold ${
+                        legendaryUnlocked ? 'bg-orange-600 text-white' : 'bg-gray-800 text-gray-600'
                       }`}>
-                        <span className={`text-[9px] ${legendaryUnlocked ? 'text-orange-400' : 'text-gray-600'}`}>
-                          {legendaryUnlocked ? '⭐' : '-'}
-                        </span>
+                        {legendaryUnlocked ? '⭐ 전설' : '전설'}
                       </div>
                     </div>
                   </div>

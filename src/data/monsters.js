@@ -162,7 +162,7 @@ export const getMonsterHP = (stage) => {
 export const getBossHP = (stage) => {
   const baseHP = 100;
   const floorMultiplier = Math.pow(1.05, stage - 1);
-  return Math.floor(baseHP * floorMultiplier * 20); // 20x multiplier for bosses
+  return Math.floor(baseHP * floorMultiplier * 15); // 15x multiplier for normal bosses (slightly weaker)
 };
 
 export const getMonsterGold = (stage) => {
@@ -175,16 +175,16 @@ export const getBossGold = (stage) => {
 };
 
 // 희귀 몬스터 출현 확률
-export const RARE_MONSTER_CHANCE = 0.5; // 0.5% 확률
+export const RARE_MONSTER_CHANCE = 5; // 5% 확률
 
 // 전설 몬스터 출현 확률 (희귀 수집 시)
-export const LEGENDARY_MONSTER_CHANCE = 0.5; // 0.5% 확률
+export const LEGENDARY_MONSTER_CHANCE = 2; // 2% 확률
 
 // 희귀 몬스터 수집 확률 (처치 시)
-export const RARE_MONSTER_COLLECTION_CHANCE = 30; // 30% 확률
+export const RARE_MONSTER_COLLECTION_CHANCE = 20; // 20% 확률
 
 // 전설 몬스터 수집 확률 (처치 시)
-export const LEGENDARY_MONSTER_COLLECTION_CHANCE = 30; // 30% 확률
+export const LEGENDARY_MONSTER_COLLECTION_CHANCE = 20; // 20% 확률
 
 // 도감용 희귀 몬스터 목록 가져오기
 export const getRareMonsterList = () => {
@@ -342,14 +342,14 @@ export const getMonsterForStage = (stage, isBoss = false, forceRare = false, for
   const monsterData = getMonsterNameForFloor(stage, isBoss, isRare || isLegendary, monsterIndex);
 
   if (isBoss) {
-    // 희귀 보스는 HP 5배, 전설 보스는 HP 20배
+    // 희귀 보스는 HP 10배, 전설 보스는 HP 50배 (매우 강력)
     // 골드는 체력에 비례
     let hpMultiplier = 1;
 
     if (isLegendary) {
-      hpMultiplier = 20; // 전설 보스: 일반 보스의 20배 (= 일반 몹의 200배)
+      hpMultiplier = 50; // 전설 보스: 일반 보스의 50배 (지리게 강함)
     } else if (isRare) {
-      hpMultiplier = 5; // 희귀 보스: 일반 보스의 5배
+      hpMultiplier = 10; // 희귀 보스: 일반 보스의 10배
     }
 
     // 5층 단위로 시작 층 계산

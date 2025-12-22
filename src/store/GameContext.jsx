@@ -292,8 +292,16 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
-  const disassembleAllNormal = () => {
-    const result = engineRef.current.disassembleAllNormal();
+  const disassembleAllNormal = (options = {}) => {
+    const result = engineRef.current.disassembleAllNormal(options);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const toggleItemLock = (itemId) => {
+    const result = engineRef.current.toggleItemLock(itemId);
     if (result.success) {
       setGameState({ ...engineRef.current.getState() });
     }
@@ -391,6 +399,7 @@ export const GameProvider = ({ children }) => {
       unequipNewItem,
       disassembleNewItem,
       disassembleAllNormal,
+      toggleItemLock,
       upgradeEquipmentLevel,
       awakenEquipment,
       useSetSelector,

@@ -262,19 +262,19 @@ export const OPTION_GRADE_MULTIPLIERS = {
   [OPTION_GRADES.HIGH]: 1.0
 };
 
-// 노말템 확률: 극옵 20%, 중옵 40%, 하옵 40%
-// 세트템 확률: 극옵 25%, 중옵 50%, 하옵 25%
+// 노말템 확률: 극옵 10%, 중옵 30%, 하옵 60%
+// 세트템 확률: 극옵 15%, 중옵 35%, 하옵 50%
 export const rollOptionGrade = (isSetItem = false) => {
   const roll = Math.random() * 100;
   if (isSetItem) {
-    // 세트템: 극옵 25%, 중옵 50%, 하옵 25%
-    if (roll < 25) return OPTION_GRADES.HIGH;
-    if (roll < 75) return OPTION_GRADES.MID;
+    // 세트템: 극옵 15%, 중옵 35%, 하옵 50%
+    if (roll < 15) return OPTION_GRADES.HIGH;
+    if (roll < 50) return OPTION_GRADES.MID;
     return OPTION_GRADES.LOW;
   } else {
-    // 노말템: 극옵 20%, 중옵 40%, 하옵 40%
-    if (roll < 20) return OPTION_GRADES.HIGH;
-    if (roll < 60) return OPTION_GRADES.MID;
+    // 노말템: 극옵 10%, 중옵 30%, 하옵 60%
+    if (roll < 10) return OPTION_GRADES.HIGH;
+    if (roll < 40) return OPTION_GRADES.MID;
     return OPTION_GRADES.LOW;
   }
 };

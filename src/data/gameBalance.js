@@ -53,18 +53,17 @@ export const DROP_CONFIG = {
 
   // 영웅 카드 드랍
   heroCard: {
-    baseDropRate: 20, // 기본 드랍율 %
+    baseDropRate: 1, // 기본 드랍율 1% (모든 몬스터 처치 시)
     stageBonus: 0, // 스테이지당 추가 % (0으로 고정)
     stageBonusInterval: 10, // 보너스 적용 간격
   },
 
-  // 등급업 코인 드랍
-  upgradeCoin: {
-    baseDropRate: 1, // 기본 드랍율 %
-    stageBonus: 0.3, // 20스테이지당 추가 %
-    stageBonusInterval: 20,
-    // 코인 수량 = Math.max(1, Math.floor(stage / amountPerStage))
-    amountPerStage: 10,
+  // 영웅의 서 드랍 (구 등급업 코인)
+  heroScroll: {
+    baseDropRate: 1, // 기본 드랍율 1%
+    floorMultiplier: 1.2, // 100층마다 1.2배 복리
+    floorInterval: 100, // 100층 단위로 복리 적용
+    dropAmount: 1, // 고정 1개 드랍
   },
 };
 
@@ -477,23 +476,22 @@ export const calculateHeroCardDropChance = (stage) => {
 };
 
 /**
- * 등급업 코인 드랍 확률 계산
- * @param {number} stage - 스테이지
+ * 영웅의 서 드랍 확률 계산 (100층마다 1.2배 복리)
+ * @param {number} floor - 층수
  * @returns {number} 드랍 확률 (%)
  */
-export const calculateUpgradeCoinDropChance = (stage) => {
-  const stageBonus = Math.floor(stage / DROP_CONFIG.upgradeCoin.stageBonusInterval) *
-                     DROP_CONFIG.upgradeCoin.stageBonus;
-  return DROP_CONFIG.upgradeCoin.baseDropRate + stageBonus;
+export const calculateHeroScrollDropChance = (floor) => {
+  const { baseDropRate, floorMultiplier, floorInterval } = DROP_CONFIG.heroScroll;
+  const hundredBlock = Math.floor((floor - 1) / floorInterval);
+  return baseDropRate * Math.pow(floorMultiplier, hundredBlock);
 };
 
 /**
- * 등급업 코인 드랍 수량 계산
- * @param {number} stage - 스테이지
- * @returns {number} 코인 수량
+ * 영웅의 서 드랍 수량 (고정 1개)
+ * @returns {number} 드랍 수량
  */
-export const calculateUpgradeCoinAmount = (stage) => {
-  return Math.max(1, Math.floor(stage / DROP_CONFIG.upgradeCoin.amountPerStage));
+export const calculateHeroScrollAmount = () => {
+  return DROP_CONFIG.heroScroll.dropAmount;
 };
 
 // ===== 디버그/치트 설정 =====
