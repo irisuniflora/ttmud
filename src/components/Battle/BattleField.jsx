@@ -193,9 +193,11 @@ const BattleField = () => {
         setPlayerFrame(nextFrame);
       }
 
-      // 공격 애니메이션
-      setIsAttacking(true);
-      setTimeout(() => setIsAttacking(false), 200);
+      // 공격 애니메이션 (크리티컬일 때만 캐릭터 이동)
+      if (isCrit) {
+        setIsAttacking(true);
+        setTimeout(() => setIsAttacking(false), 200);
+      }
 
       // 피격 애니메이션
       setTimeout(() => {
