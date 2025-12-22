@@ -10,6 +10,9 @@ import {
 import { formatNumber } from '../../utils/formatter';
 import NotificationModal from '../UI/NotificationModal';
 
+// GitHub Pages 배포용 BASE_URL
+const BASE_URL = import.meta.env.BASE_URL || '/';
+
 // 유물 이미지 컴포넌트 (png → jpg → jpeg 순서로 시도, 모두 실패 시 이모지 fallback)
 const RelicImage = ({ relicId, icon, size = 48 }) => {
   const [imgIndex, setImgIndex] = useState(0);
@@ -36,7 +39,7 @@ const RelicImage = ({ relicId, icon, size = 48 }) => {
       }}
     >
       <img
-        src={`/images/relics/${relicId}.${extensions[imgIndex]}`}
+        src={`${BASE_URL}images/relics/${relicId}.${extensions[imgIndex]}`}
         alt={relicId}
         className="object-contain rounded-md"
         style={{ width: size, height: size }}

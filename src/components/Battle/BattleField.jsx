@@ -3,6 +3,9 @@ import { useGame } from '../../store/GameContext';
 import { formatNumber } from '../../utils/formatter';
 import { FLOOR_RANGES } from '../../data/monsters';
 
+// GitHub Pages 배포용 BASE_URL
+const BASE_URL = import.meta.env.BASE_URL || '/';
+
 // FLOOR_RANGES 키값 정렬 (내림차순)
 const FLOOR_THRESHOLDS = Object.keys(FLOOR_RANGES).map(Number).sort((a, b) => b - a);
 
@@ -47,11 +50,11 @@ const FLOOR_GRADIENTS = {
 // 레어/전설은 별도 이미지 없이 일반 몬스터에 글로우 효과 적용
 const getMonsterImage = (monster, floorRangeStart) => {
   if (monster.isBoss) {
-    return `/images/field/monsters/floor_${floorRangeStart}/boss.png`;
+    return `${BASE_URL}images/field/monsters/floor_${floorRangeStart}/boss.png`;
   }
   // 일반/레어/전설 모두 같은 이미지 사용 (monsterIndex 기반)
   const index = monster.monsterIndex ?? 0;
-  return `/images/field/monsters/floor_${floorRangeStart}/${index}.png`;
+  return `${BASE_URL}images/field/monsters/floor_${floorRangeStart}/${index}.png`;
 };
 
 // 몬스터 등급별 글로우 스타일
@@ -95,7 +98,7 @@ const CLASS_FOLDERS = ['base', 'class1', 'class2', 'class3'];
 // frame: 0-2 일반 공격, 3 크리티컬 공격
 const getPlayerImagePath = (classLevel, frame) => {
   const folder = CLASS_FOLDERS[classLevel] || 'base';
-  return `/images/field/characters/${folder}/player_${frame}.png`;
+  return `${BASE_URL}images/field/characters/${folder}/player_${frame}.png`;
 };
 
 const BattleField = () => {
@@ -135,7 +138,7 @@ const BattleField = () => {
     setBgImageLoaded(false);
     setBgImageSrc('');
 
-    const basePath = `/images/field/backgrounds/floor_${floorRangeStart}`;
+    const basePath = `${BASE_URL}images/field/backgrounds/floor_${floorRangeStart}`;
 
     // PNG 먼저 시도
     const pngImg = new Image();
@@ -299,7 +302,7 @@ const BattleField = () => {
             onError={(e) => {
               // 폴백: player_0 이미지로 대체
               e.target.onerror = null;
-              e.target.src = '/images/field/characters/base/player_0.png';
+              e.target.src = `${BASE_URL}images/field/characters/base/player_0.png`;
             }}
           />
         </div>

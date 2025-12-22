@@ -5,6 +5,14 @@ import { formatNumber } from '../../utils/formatter';
 import { getTotalSkillEffects } from '../../data/skills';
 import NotificationModal from '../UI/NotificationModal';
 
+// GitHub Pages 배포용 BASE_URL
+const BASE_URL = import.meta.env.BASE_URL || '/';
+
+// 동료 이미지 경로 가져오기
+const getHeroImage = (heroId) => {
+  return `${BASE_URL}images/heroes/${heroId}.png`;
+};
+
 const HeroList = () => {
   const { gameState, inscribeHero, upgradeHeroGrade, upgradeHeroStar, bulkUpgradeHeroStars, bulkUpgradeHeroGrades } = useGame();
   const { player, heroes, collection, skillLevels = {} } = gameState;
@@ -144,7 +152,7 @@ const HeroList = () => {
                 {/* 동료 이미지 */}
                 <div className="relative w-full aspect-[3/4] rounded-lg overflow-hidden bg-gray-900 mb-1 border-2 border-gray-600">
                   <img
-                    src={hero.image}
+                    src={getHeroImage(hero.id)}
                     alt={hero.name}
                     className="w-full h-full object-cover grayscale"
                     onError={(e) => {
@@ -220,7 +228,7 @@ const HeroList = () => {
               {/* 동료 이미지 */}
               <div className={`relative w-full aspect-[3/4] rounded-lg overflow-hidden border-[3px] ${getGradeBorder(currentGrade)} ${getGradeGlow(currentGrade)} mb-1 bg-gray-950`}>
                 <img
-                  src={hero.image}
+                  src={getHeroImage(hero.id)}
                   alt={hero.name}
                   className="w-full h-full object-cover"
                   onError={(e) => {

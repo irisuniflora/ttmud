@@ -15,14 +15,17 @@ const SLOT_ICONS = {
   ring: '💍'
 };
 
+// GitHub Pages 배포용 BASE_URL
+const BASE_URL = import.meta.env.BASE_URL || '/';
+
 // 세트 아이템 이미지 경로 가져오기
 const getSetItemImage = (setId, slot) => {
-  return `/images/equipment/sets/${setId}/${slot}.png`;
+  return `${BASE_URL}images/equipment/sets/${setId}/${slot}.png`;
 };
 
 // 일반 아이템 이미지 경로 가져오기
 const getNormalItemImage = (normalGrade, slot) => {
-  return `/images/equipment/normal/${normalGrade}/${slot}.png`;
+  return `${BASE_URL}images/equipment/normal/${normalGrade}/${slot}.png`;
 };
 
 // 배경색에 따라 적절한 텍스트 색상 반환 (밝은 배경 -> 어두운 텍스트)

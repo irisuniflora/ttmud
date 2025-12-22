@@ -6,14 +6,17 @@ import { getTotalRelicEffects } from '../../data/prestigeRelics';
 import { formatNumber, formatPercent } from '../../utils/formatter';
 import NotificationModal from '../UI/NotificationModal';
 
+// GitHub Pages 배포용 BASE_URL
+const BASE_URL = import.meta.env.BASE_URL || '/';
+
 // 보스 이미지 경로 가져오기
 const getBossImage = (bossId) => {
-  return `/images/raid_bosses/${bossId}.png`;
+  return `${BASE_URL}images/raid_bosses/${bossId}.png`;
 };
 
 // 문양 이미지 경로 가져오기
 const getInscriptionImage = (inscriptionId) => {
-  return `/images/inscriptions/${inscriptionId}.png`;
+  return `${BASE_URL}images/inscriptions/${inscriptionId}.png`;
 };
 
 // 등급별 카드 스타일 (테두리, 배경, 그림자)

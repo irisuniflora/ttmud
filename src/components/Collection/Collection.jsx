@@ -3,13 +3,16 @@ import { useGame } from '../../store/GameContext';
 import { FLOOR_RANGES, getCollectionBonus, getBossCollectionBonus } from '../../data/monsters';
 import { formatNumberWithCommas } from '../../utils/formatter';
 
+// GitHub Pages 배포용 BASE_URL
+const BASE_URL = import.meta.env.BASE_URL || '/';
+
 // 몬스터 이미지 컴포넌트
 const MonsterImage = ({ floorStart, monsterIndex, isBoss = false, isUnlocked = false, isRare = false, isLegendary = false, size = 'md' }) => {
   const [imageLoaded, setImageLoaded] = useState(true);
 
   const imagePath = isBoss
-    ? `/images/field/monsters/floor_${floorStart}/boss.png`
-    : `/images/field/monsters/floor_${floorStart}/${monsterIndex}.png`;
+    ? `${BASE_URL}images/field/monsters/floor_${floorStart}/boss.png`
+    : `${BASE_URL}images/field/monsters/floor_${floorStart}/${monsterIndex}.png`;
 
   const sizeClasses = {
     sm: 'w-8 h-8',

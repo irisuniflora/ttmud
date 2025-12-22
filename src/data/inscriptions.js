@@ -146,7 +146,7 @@ export const INSCRIPTIONS = {
   rage: {
     id: 'rage',
     name: '분노의 문양',
-    image: '/images/inscriptions/rage.png',
+    // image path handled by getInscriptionImage function in components
     description: '분노가 폭발하는 문양',
     abilities: ['destruction_rage', 'miss_power'],
     baseStats: {
@@ -166,7 +166,7 @@ export const INSCRIPTIONS = {
   precision: {
     id: 'precision',
     name: '정밀의 문양',
-    image: '/images/inscriptions/precision.png',
+    // image path handled by getInscriptionImage function in components
     description: '정확한 일격을 가하는 문양',
     abilities: ['accuracy_up', 'true_hit'],
     baseStats: {
@@ -186,7 +186,7 @@ export const INSCRIPTIONS = {
   shadow: {
     id: 'shadow',
     name: '그림자의 문양',
-    image: '/images/inscriptions/shadow.png',
+    // image path handled by getInscriptionImage function in components
     description: '회피를 무력화하는 문양',
     abilities: ['true_hit', 'accuracy_up'],
     baseStats: {
@@ -206,7 +206,7 @@ export const INSCRIPTIONS = {
   destruction: {
     id: 'destruction',
     name: '파괴의 문양',
-    image: '/images/inscriptions/destruction.png',
+    // image path handled by getInscriptionImage function in components
     description: '장비 파괴를 극복하는 문양',
     abilities: ['equipment_immunity', 'destruction_rage'],
     baseStats: {
@@ -226,7 +226,7 @@ export const INSCRIPTIONS = {
   crush: {
     id: 'crush',
     name: '분쇄의 문양',
-    image: '/images/inscriptions/crush.png',
+    // image path handled by getInscriptionImage function in components
     description: '보호막을 파괴하는 문양',
     abilities: ['shield_break', 'shield_penetration'],
     baseStats: {
@@ -246,7 +246,7 @@ export const INSCRIPTIONS = {
   void: {
     id: 'void',
     name: '공허의 문양',
-    image: '/images/inscriptions/void.png',
+    // image path handled by getInscriptionImage function in components
     description: '모든 것을 관통하는 문양',
     abilities: ['shield_penetration', 'equipment_immunity'],
     baseStats: {
@@ -266,7 +266,7 @@ export const INSCRIPTIONS = {
   thirst: {
     id: 'thirst',
     name: '갈증의 문양',
-    image: '/images/inscriptions/thirst.png',
+    // image path handled by getInscriptionImage function in components
     description: '체력을 갉아먹는 문양',
     abilities: ['true_damage'],
     baseStats: {
@@ -287,7 +287,7 @@ export const INSCRIPTIONS = {
   decay: {
     id: 'decay',
     name: '부패의 문양',
-    image: '/images/inscriptions/decay.png',
+    // image path handled by getInscriptionImage function in components
     description: '재생을 무력화하는 문양',
     abilities: ['heal_reduction', 'true_damage'],
     baseStats: {
@@ -308,7 +308,7 @@ export const INSCRIPTIONS = {
   chaos: {
     id: 'chaos',
     name: '혼돈의 문양',
-    image: '/images/inscriptions/chaos.png',
+    // image path handled by getInscriptionImage function in components
     description: '치명적인 일격을 가하는 문양',
     abilities: ['debuff_cleanse', 'debuff_power'],
     baseStats: {
@@ -328,7 +328,7 @@ export const INSCRIPTIONS = {
   eternity: {
     id: 'eternity',
     name: '영원의 문양',
-    image: '/images/inscriptions/eternity.png',
+    // image path handled by getInscriptionImage function in components
     description: '불굴의 의지를 담은 문양',
     abilities: ['equipment_restore', 'debuff_cleanse'],
     baseStats: {
