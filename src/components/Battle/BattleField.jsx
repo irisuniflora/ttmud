@@ -105,7 +105,6 @@ const BattleField = () => {
   const { gameState } = useGame();
   const { player, currentMonster, combatLog = [] } = gameState;
 
-  const [isAttacking, setIsAttacking] = useState(false);
   const [isMonsterHit, setIsMonsterHit] = useState(false);
   const [isCriticalHit, setIsCriticalHit] = useState(false); // 크리티컬 히트 효과용
   const [screenShake, setScreenShake] = useState(false); // 화면 흔들림 효과
@@ -196,12 +195,6 @@ const BattleField = () => {
         setPlayerFrame(nextFrame);
       }
 
-      // 공격 애니메이션 (크리티컬일 때만 캐릭터 이동)
-      if (isCrit) {
-        setIsAttacking(true);
-        setTimeout(() => setIsAttacking(false), 200);
-      }
-
       // 피격 애니메이션
       setTimeout(() => {
         setIsMonsterHit(true);
@@ -274,22 +267,20 @@ const BattleField = () => {
         }}
       />
 
-      {/* 캐릭터 (좌측) - 화면 중앙쪽, 더 크게 */}
+      {/* 캐릭터 (좌측) */}
       <div
-        className={`absolute transition-transform duration-200 ${
-          isAttacking ? 'translate-x-8 scale-110' : ''
-        }`}
+        className="absolute"
         style={{
           bottom: '15%',
-          left: '18%',
+          left: '10%',
         }}
       >
-        {/* 캐릭터 이미지 - 세로로 긴 타원형 영역 (1.2배 크기) */}
+        {/* 캐릭터 이미지 - 높이 고정, 가로 넉넉하게 */}
         <div
           className="flex items-end justify-center"
           style={{
-            width: '144px',
-            height: '192px',
+            width: '250px',
+            height: '150px',
             filter: 'drop-shadow(3px 5px 8px rgba(0,0,0,0.6))',
           }}
         >
@@ -315,17 +306,17 @@ const BattleField = () => {
         } ${(currentMonster.isBoss && currentMonster.isLegendary) ? 'animate-pulse' : ''}`}
         style={{
           bottom: '15%',
-          right: '18%',
+          right: '10%',
           filter: getMonsterGlowStyle(currentMonster, isMonsterHit),
         }}
       >
-        {/* 몬스터 이미지 - 세로로 긴 타원형 영역 */}
+        {/* 몬스터 이미지 - 높이 고정, 가로 넉넉하게 */}
         <div
           className="flex items-end justify-center transition-transform"
           style={{
             width: currentMonster.isBoss
-              ? (currentMonster.isLegendary ? '160px' : currentMonster.isRare ? '150px' : '140px')
-              : '120px',
+              ? (currentMonster.isLegendary ? '220px' : currentMonster.isRare ? '210px' : '200px')
+              : '200px',
             height: currentMonster.isBoss
               ? (currentMonster.isLegendary ? '200px' : currentMonster.isRare ? '180px' : '170px')
               : '150px',
@@ -368,7 +359,7 @@ const BattleField = () => {
           key={dmg.id}
           className="absolute pointer-events-none"
           style={{
-            right: '18%',
+            right: '10%',
             top: `${28 + dmg.y}%`,
             transform: 'translateX(50%)',
             textShadow: dmg.isCrit
