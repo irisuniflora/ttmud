@@ -442,9 +442,7 @@ const NewEquipment = () => {
                                 alt={item.name}
                                 className="w-14 h-14 object-contain"
                                 style={{
-                                  filter: item.isAncient
-                                    ? `drop-shadow(0 0 6px ${ANCIENT_CONFIG.color})`
-                                    : `drop-shadow(0 0 4px ${setData?.color})`,
+                                  filter: `drop-shadow(0 0 4px ${setData?.color})`,
                                   imageRendering: 'pixelated'
                                 }}
                               />
@@ -471,27 +469,22 @@ const NewEquipment = () => {
                               padding: '6px 0 2px 0'
                             }}
                           >
-                            <span
-                              className="text-[10px] font-black drop-shadow-lg"
-                              style={{
-                                color: item.isAncient ? ANCIENT_CONFIG.color : '#fff'
-                              }}
-                            >
+                            <span className="text-[10px] font-black drop-shadow-lg text-white">
                               Lv.{item.itemLevel}
                             </span>
                           </div>
 
-                          {/* 고대 마크 - 우상단 */}
-                          {item.isAncient && (
-                            <div className="absolute top-0.5 right-0.5 text-[10px]">
-                              {ANCIENT_CONFIG.icon}
+                          {/* 각성 배지 - 우상단 */}
+                          {(item.awakeningCount || 0) > 0 && (
+                            <div className="absolute top-0.5 right-0.5 text-[9px] text-yellow-300 font-bold">
+                              ⭐{item.awakeningCount}
                             </div>
                           )}
 
-                          {/* 각성 배지 - 우상단 (고대 아닐때만) */}
-                          {(item.awakeningCount || 0) > 0 && !item.isAncient && (
-                            <div className="absolute top-0.5 right-0.5 text-[9px] text-yellow-300 font-bold">
-                              ⭐{item.awakeningCount}
+                          {/* 고대 마크 - 우하단 */}
+                          {item.isAncient && (
+                            <div className="absolute -bottom-0.5 -right-0.5 text-[12px] z-10" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }}>
+                              🔱
                             </div>
                           )}
                         </>
@@ -943,15 +936,11 @@ const NewEquipment = () => {
                           const isSelected = selectedItem?.id === item.id || (selectedItem?._isEquipped && selectedItem?._equippedSlot === item._equippedSlot && item._isEquipped);
                           const normalColors = getNormalGradeColor(item.normalGrade);
 
-                          // 세트템: 세트 고유 색상 테두리 + 글로우 (고대는 금색) / 일반템: 테두리 없음
+                          // 세트템: 세트 고유 색상 테두리 + 글로우 / 일반템: 테두리 없음
                           const borderStyle = isSet
                             ? {
-                                border: isAncient
-                                  ? `2px solid ${ANCIENT_CONFIG.color}`
-                                  : `2px solid ${setData?.color || '#888'}`,
-                                boxShadow: isAncient
-                                  ? `0 0 8px ${ANCIENT_CONFIG.color}, inset 0 0 4px ${ANCIENT_CONFIG.glowColor}40`
-                                  : `0 0 6px ${setData?.color}80`
+                                border: `2px solid ${setData?.color || '#888'}`,
+                                boxShadow: `0 0 6px ${setData?.color}80`
                               }
                             : {};
 
@@ -979,9 +968,7 @@ const NewEquipment = () => {
                                       alt={item.name}
                                       className="w-8 h-8 object-contain"
                                       style={{
-                                        filter: isAncient
-                                          ? `drop-shadow(0 0 6px ${ANCIENT_CONFIG.color}) drop-shadow(0 0 3px ${ANCIENT_CONFIG.glowColor})`
-                                          : `drop-shadow(0 0 4px ${setData?.color})`,
+                                        filter: `drop-shadow(0 0 4px ${setData?.color})`,
                                         imageRendering: 'pixelated'
                                       }}
                                     />
@@ -1001,21 +988,15 @@ const NewEquipment = () => {
                                 <div
                                   className="absolute top-0 left-0 text-[8px] font-black px-0.5 rounded-br"
                                   style={{
-                                    background: isSet
-                                      ? (isAncient ? ANCIENT_CONFIG.color : setData?.color || '#888')
-                                      : normalColors.bg,
+                                    background: isSet ? (setData?.color || '#888') : normalColors.bg,
                                     color: isSet ? '#000' : normalColors.text
                                   }}
                                 >
                                   {item.itemLevel}
                                 </div>
 
-                                {/* 고대/장착/잠금 마크 - 우상단 */}
-                                {isAncient ? (
-                                  <div className="absolute top-0 right-0 text-[7px]">
-                                    {ANCIENT_CONFIG.icon}
-                                  </div>
-                                ) : isEquippedItem ? (
+                                {/* 장착/잠금 마크 - 우상단 */}
+                                {isEquippedItem ? (
                                   <div className="absolute top-0 right-0 text-[7px] bg-green-600 text-white px-0.5 rounded-bl font-bold">
                                     E
                                   </div>
@@ -1024,6 +1005,13 @@ const NewEquipment = () => {
                                     🔒
                                   </div>
                                 ) : null}
+
+                                {/* 고대 마크 - 우하단 */}
+                                {isAncient && (
+                                  <div className="absolute -bottom-0.5 -right-0.5 text-[10px] z-10" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }}>
+                                    🔱
+                                  </div>
+                                )}
                               </div>
                             </ItemTooltip>
                           );

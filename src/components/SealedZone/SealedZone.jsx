@@ -3,6 +3,7 @@ import { useGame } from '../../store/GameContext';
 import { RAID_BOSSES, calculateRaidBossStats, INSCRIPTION_SLOT_CONFIG, checkBossUnlock, getDifficultyName, getDifficultyColor, getDifficultyMultiplier } from '../../data/raidBosses';
 import { INSCRIPTIONS, INSCRIPTION_GRADES, INSCRIPTION_ABILITIES, calculateInscriptionStats, migrateGrade } from '../../data/inscriptions';
 import { getTotalRelicEffects } from '../../data/prestigeRelics';
+import { generateSetItem, EQUIPMENT_SLOTS } from '../../data/equipmentSets';
 import { formatNumber, formatPercent } from '../../utils/formatter';
 import NotificationModal from '../UI/NotificationModal';
 
@@ -476,6 +477,16 @@ const SealedZone = () => {
       const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty);
       const rewards = bossStats.rewards;
 
+      // 세트 아이템 드랍 (20% 확률)
+      let droppedSetItem = null;
+      if (Math.random() < 0.20) {
+        // 랜덤 슬롯 선택
+        const slots = Object.keys(EQUIPMENT_SLOTS);
+        const randomSlot = slots[Math.floor(Math.random() * slots.length)];
+        // 난이도 레벨을 floor로 사용하여 템렙 결정
+        droppedSetItem = generateSetItem(randomSlot, selectedDifficulty);
+      }
+
       // GameEngine 상태도 직접 업데이트 (저장을 위해)
       if (engine) {
         engine.state.player.gold += rewards.gold;
@@ -483,27 +494,62 @@ const SealedZone = () => {
           engine.state.sealedZone = { tickets: 0, ownedInscriptions: [], unlockedBosses: ['vecta'], unlockedInscriptionSlots: 1, bossCoins: 0 };
         }
         engine.state.sealedZone.bossCoins = (engine.state.sealedZone.bossCoins || 0) + rewards.bossCoins;
+
+        // 드랍된 세트 아이템 인벤토리에 추가
+        if (droppedSetItem) {
+          if (!engine.state.inventory) {
+            engine.state.inventory = [];
+          }
+          engine.state.inventory.push(droppedSetItem);
+        }
       }
 
-      setGameState(prev => ({
-        ...prev,
-        player: {
-          ...prev.player,
-          gold: prev.player.gold + rewards.gold
-        },
-        sealedZone: {
-          ...prev.sealedZone,
-          bossCoins: (prev.sealedZone?.bossCoins || 0) + rewards.bossCoins
+      setGameState(prev => {
+        const newState = {
+          ...prev,
+          player: {
+            ...prev.player,
+            gold: prev.player.gold + rewards.gold
+          },
+          sealedZone: {
+            ...prev.sealedZone,
+            bossCoins: (prev.sealedZone?.bossCoins || 0) + rewards.bossCoins
+          }
+        };
+
+        // 인벤토리에 세트 아이템 추가
+        if (droppedSetItem) {
+          newState.inventory = [...(prev.inventory || []), droppedSetItem];
         }
-      }));
+
+        return newState;
+      });
+
+      // 알림 메시지 생성
+      let notificationMessage = `💰 골드 +${formatNumber(rewards.gold)}\n🪙 보스 코인 +${rewards.bossCoins}`;
+      if (droppedSetItem) {
+        notificationMessage += `\n\n🎁 세트 아이템 획득!\n${droppedSetItem.name} (Lv.${droppedSetItem.itemLevel})`;
+      }
 
       showNotification(
         '🎉 승리!',
-        `💰 골드 +${formatNumber(rewards.gold)}\n🪙 보스 코인 +${rewards.bossCoins}`,
+        notificationMessage,
         'success'
       );
     } else {
-      showNotification('💀 패배', '시간 초과! 다시 도전하세요.', 'error');
+      // 실패 시 도전권 환불
+      if (engine && engine.state.sealedZone) {
+        engine.state.sealedZone.tickets = (engine.state.sealedZone.tickets || 0) + 1;
+      }
+      setGameState(prev => ({
+        ...prev,
+        sealedZone: {
+          ...prev.sealedZone,
+          tickets: (prev.sealedZone?.tickets || 0) + 1
+        }
+      }));
+
+      showNotification('💀 패배', '시간 초과! 도전권이 환불되었습니다.', 'error');
     }
   };
 
@@ -720,7 +766,7 @@ const SealedZone = () => {
               {/* 캐릭터 DPS 표시 */}
               <div className="flex items-center gap-1 text-xs">
                 <span className="text-cyan-400">⚔️</span>
-                <span className="text-gray-300">캐릭터 DPS: <span className="text-cyan-300 font-bold">{formatNumber(engine?.calculateTotalDPS() || 0)}</span></span>
+                <span className="text-gray-300">캐릭터 DPS: <span className="text-cyan-300 font-bold">{formatNumber(engine?.calculateTotalDPS()?.damage || 0)}</span></span>
               </div>
               {/* 장비 파괴 디버프 */}
               {bossPatternState.equipmentDestroyed && (
