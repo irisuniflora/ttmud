@@ -114,7 +114,7 @@ const SealedZone = () => {
   // 데미지 계산 함수 (캐릭터 데미지 + 문양 능력 전부 적용)
   const calculateDamage = (inscriptionStats, bossStats, currentBossHP) => {
     const bossData = RAID_BOSSES[selectedBoss];
-    const inscription = INSCRIPTIONS[inscriptionStats.id];
+    if (!bossData) return { damage: 0, isMiss: false, isCrit: false, shieldDamage: 0 };
 
     // 유물 효과: 문양 스탯/데미지 증가
     const relicEffects = getTotalRelicEffects(gameState.prestigeRelics || {});
@@ -122,10 +122,12 @@ const SealedZone = () => {
     const inscriptionDamageBonus = 1 + (relicEffects.inscriptionDamage || 0) / 100;
 
     // 캐릭터 기본 DPS (전체 DPS가 각 문양 공격에 추가됨)
-    const playerDPS = engine ? engine.calculateTotalDPS() : 0;
+    // calculateTotalDPS()는 { damage, isCrit } 객체를 반환함
+    const dpsResult = engine ? engine.calculateTotalDPS() : null;
+    const playerDPS = dpsResult ? dpsResult.damage : 0;
 
     // 문양 공격력 (유물: 문양의 정수 적용)
-    let inscriptionDamage = inscriptionStats.attack * inscriptionStatsBonus;
+    let inscriptionDamage = (inscriptionStats.attack || 0) * inscriptionStatsBonus;
 
     // 공격력 % 증가 (유물 보너스 적용)
     if (inscriptionStats.attackPercent) {
@@ -135,8 +137,9 @@ const SealedZone = () => {
     // 기본 데미지 = 캐릭터 전체 DPS + 문양 데미지
     let baseDamage = playerDPS + inscriptionDamage;
 
-    // 어빌리티: true_hit (필중 - 회피 무시)
-    const hasTrueHit = inscription?.abilities?.some(a => a.type === 'true_hit');
+    // 어빌리티: true_hit (필중 - 회피 무시) - abilities는 문자열 배열임
+    const abilities = inscriptionStats.abilities || [];
+    const hasTrueHit = abilities.includes('true_hit');
 
     // 명중률 체크 (보스 회피율 vs 문양 명중률)
     const bossEvasion = bossData.pattern?.evasionRate || 0;
@@ -181,7 +184,7 @@ const SealedZone = () => {
     baseDamage *= (1 - defenseReduction);
 
     // 특수 능력 적용
-    const specialAbility = INSCRIPTIONS[inscriptionStats.id]?.specialAbility;
+    const specialAbility = inscriptionStats.specialAbility;
 
     if (specialAbility) {
       switch (specialAbility.type) {
@@ -197,48 +200,16 @@ const SealedZone = () => {
       }
     }
 
-    // 어빌리티 적용
-    const abilities = inscription?.abilities || [];
+    // 보호막 관련 어빌리티
     let shieldDamage = 0;
     let bypassShield = false;
 
-    abilities.forEach(ability => {
-      switch (ability.type) {
-        case 'shield_break': // 보호막에 추가 피해
-          if (bossPatternState.hasShield) {
-            shieldDamage = baseDamage * (ability.value / 100);
-          }
-          break;
-
-        case 'shield_penetration': // 보호막 무시
-          bypassShield = true;
-          break;
-
-        case 'crit_chance_boost': // 치명타 확률 증가
-          // 이미 critChance에 반영되어 있음
-          break;
-
-        case 'crit_damage_boost': // 치명타 데미지 증가
-          // 이미 critDamage에 반영되어 있음
-          break;
-
-        case 'attack_boost': // 공격력 증가
-          // 이미 attack에 반영되어 있음
-          break;
-
-        case 'accuracy_boost': // 명중률 증가
-          // 이미 accuracy에 반영되어 있음
-          break;
-
-        case 'penetration': // 방어 관통
-          // 이미 penetration에 반영되어 있음
-          break;
-
-        case 'penetration_boost': // 추가 방어 관통
-          // 이미 penetration에 반영되어 있음
-          break;
-      }
-    });
+    if (abilities.includes('shield_break') && bossPatternState.hasShield) {
+      shieldDamage = baseDamage * 0.5; // 50% 추가 피해
+    }
+    if (abilities.includes('shield_penetration')) {
+      bypassShield = true;
+    }
 
     // 유물: 폭풍의 문양 (문양 데미지 보너스 증가) 최종 적용
     baseDamage *= inscriptionDamageBonus;
@@ -539,8 +510,10 @@ const SealedZone = () => {
   // 문양 공격 (여러 문양 동시 공격)
   useEffect(() => {
     if (!inBattle || activeInscriptions.length === 0) return;
+    if (!selectedBoss) return;
 
     const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty);
+    if (!bossStats) return;
 
     const intervals = activeInscriptions.map(inscriptionId => {
       const inscription = ownedInscriptions.find(i => i.id === inscriptionId);
@@ -551,6 +524,8 @@ const SealedZone = () => {
 
       return setInterval(() => {
         setBossHP(prevHP => {
+          if (prevHP <= 0) return 0; // 이미 죽었으면 스킵
+
           // 데미지 계산 (모든 문양 능력 적용)
           const result = calculateDamage(inscriptionStats, bossStats, prevHP);
 
@@ -563,44 +538,19 @@ const SealedZone = () => {
             guaranteedCritNext: result.isMiss && inscriptionStats.id === 'destruction'
           }));
 
-          // 보호막 처리
-          let actualDamage = result.damage;
-
-          if (!result.isMiss) {
-            setBossPatternState(prev => {
-              let newState = { ...prev };
-
-              // 보호막이 있고 무시하지 않는 경우
-              if (prev.hasShield && !result.bypassShield) {
-                const totalShieldDamage = result.damage + result.shieldDamage;
-
-                if (prev.shieldHP > totalShieldDamage) {
-                  // 보호막이 데미지를 흡수
-                  newState.shieldHP = prev.shieldHP - totalShieldDamage;
-                  actualDamage = 0;
-                  setBattleLog(log => [...log.slice(-5), `🛡️ 보호막 흡수: ${totalShieldDamage.toLocaleString()}`]);
-                } else {
-                  // 보호막 파괴 후 남은 데미지는 본체에
-                  actualDamage = totalShieldDamage - prev.shieldHP;
-                  newState.hasShield = false;
-                  newState.shieldHP = 0;
-                  setBattleLog(log => [...log.slice(-5), `💥 보호막 파괴! 관통 ${actualDamage.toLocaleString()}`]);
-                }
-              } else if (result.bypassShield) {
-                // 보호막 무시
-                setBattleLog(log => [...log.slice(-5), `⚡ 보호막 관통: ${result.damage.toLocaleString()}`]);
-              }
-
-              return newState;
-            });
-          }
-
-          // 로그 추가
+          // 미스 처리
           if (result.isMiss) {
             setBattleLog(log => [...log.slice(-5), `📿 ${inscriptionStats.name} - Miss!`]);
-          } else if (result.isCrit && actualDamage > 0) {
+            return prevHP;
+          }
+
+          // 데미지 적용
+          const actualDamage = result.damage;
+
+          // 로그 추가
+          if (result.isCrit) {
             setBattleLog(log => [...log.slice(-5), `📿 ${inscriptionStats.name} - ${actualDamage.toLocaleString()} 💥 치명타!`]);
-          } else if (actualDamage > 0) {
+          } else {
             setBattleLog(log => [...log.slice(-5), `📿 ${inscriptionStats.name} - ${actualDamage.toLocaleString()} 데미지`]);
           }
 
@@ -618,7 +568,7 @@ const SealedZone = () => {
     return () => {
       intervals.forEach(interval => clearInterval(interval));
     };
-  }, [inBattle, activeInscriptions, battleState]);
+  }, [inBattle, activeInscriptions, selectedBoss, selectedDifficulty, ownedInscriptions]);
 
   if (inBattle) {
     // 전투 화면

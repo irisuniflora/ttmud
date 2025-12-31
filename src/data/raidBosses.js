@@ -1,9 +1,9 @@
 // 봉인구역 레이드 보스 시스템
 
 // 난이도 레벨 시스템 (무한 레벨)
-// 레벨 1 = 1배, 레벨마다 1.5배씩 증가
+// 레벨 1 = 1배, 레벨마다 2배씩 증가
 export const getDifficultyMultiplier = (level) => {
-  return Math.pow(1.5, level - 1);
+  return Math.pow(2, level - 1);
 };
 
 // 난이도 레벨에 따른 색상
@@ -37,7 +37,7 @@ export const RAID_BOSSES = {
       description: '5초마다 무작위 장비 슬롯 1개를 5초간 파괴 (능력치 0)'
     },
     baseStats: {
-      hp: 100000,
+      hp: 500000,
       defense: 100
     },
     rewards: {
@@ -58,7 +58,7 @@ export const RAID_BOSSES = {
       description: '체력의 30%만큼 강력한 보호막을 주기적으로 생성. 보호막 유지 중 무적'
     },
     baseStats: {
-      hp: 120000,
+      hp: 600000,
       defense: 150
     },
     rewards: {
@@ -79,7 +79,7 @@ export const RAID_BOSSES = {
       description: '매초 보스 체력 5% 회복'
     },
     baseStats: {
-      hp: 80000,
+      hp: 400000,
       defense: 80
     },
     rewards: {
@@ -106,7 +106,7 @@ export const RAID_BOSSES = {
       description: '3초마다 문양에게 5종 랜덤 디버프 중 하나 적용'
     },
     baseStats: {
-      hp: 90000,
+      hp: 450000,
       defense: 90
     },
     rewards: {
@@ -126,7 +126,7 @@ export const RAID_BOSSES = {
       description: '보스 기본 회피율 60%'
     },
     baseStats: {
-      hp: 70000,
+      hp: 350000,
       defense: 70
     },
     rewards: {
@@ -146,7 +146,7 @@ export const RAID_BOSSES = {
       description: '모든 치명타 공격이 일반 공격으로 변환됨'
     },
     baseStats: {
-      hp: 150000,
+      hp: 750000,
       defense: 200
     },
     rewards: {
