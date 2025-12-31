@@ -481,9 +481,9 @@ const NewEquipment = () => {
                             </div>
                           )}
 
-                          {/* 고대 마크 - 우하단 */}
+                          {/* 고대 마크 - 우하단 안쪽 */}
                           {item.isAncient && (
-                            <div className="absolute -bottom-0.5 -right-0.5 text-[12px] z-10" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }}>
+                            <div className="absolute bottom-1 right-1 text-[11px] z-10" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }}>
                               🔱
                             </div>
                           )}
@@ -568,20 +568,30 @@ const NewEquipment = () => {
 
           {/* 하단: 콘솔 (제련/각성/재굴림 등) */}
           <div className="bg-game-panel border border-game-border rounded-lg p-3 flex-1">
-            <div className="text-xs text-gray-400 font-bold mb-2 pb-1 border-b border-gray-700">🔧 장비 콘솔</div>
-
             {/* 재화 표시 */}
             <div className="flex flex-wrap gap-1.5 mb-3">
-              <span className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-yellow-400">
+              <span
+                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-yellow-400 cursor-help"
+                title="장비 파편 - 장비 제련에 사용"
+              >
                 ⚡ {formatNumber(equipmentFragments)}
               </span>
-              <span className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-purple-400">
+              <span
+                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-purple-400 cursor-help"
+                title="각성석 - 최대 제련 장비를 각성 (다음 단계로 진화)"
+              >
                 ✨ {awakenStones}
               </span>
-              <span className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-pink-400">
+              <span
+                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-pink-400 cursor-help"
+                title="완전의 정수 - 하옵/중옵을 극옵으로 변환"
+              >
                 ⚙️ {perfectEssences}
               </span>
-              <span className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-blue-400">
+              <span
+                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-blue-400 cursor-help"
+                title="재굴림 오브 - 장비 옵션 재굴림"
+              >
                 🔮 {orbs}
               </span>
             </div>
@@ -625,45 +635,48 @@ const NewEquipment = () => {
                 <div className="space-y-1.5">
                   {selectedItemData._isEquipped ? (
                     <>
-                      {/* 제련 버튼 */}
-                      {upgradesLeft > 0 ? (
-                        <button
-                          onClick={() => handleUpgrade(selectedItemData._equippedSlot)}
-                          disabled={!canUpgrade}
-                          className={`w-full px-3 py-2 rounded text-xs font-bold flex items-center justify-between ${
-                            canUpgrade
-                              ? 'bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white'
-                              : 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                          }`}
-                        >
-                          <span>🔥 제련</span>
-                          <span className="text-[10px]">⚡{formatNumber(upgradeCost)}</span>
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleAwaken(selectedItemData._equippedSlot)}
-                          disabled={!canAwaken}
-                          className={`w-full px-3 py-2 rounded text-xs font-bold flex items-center justify-between ${
-                            canAwaken
-                              ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-                              : 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                          }`}
-                        >
-                          <span>✨ 각성</span>
-                          <span className="text-[10px]">💎1</span>
-                        </button>
-                      )}
+                      {/* 제련/각성 + 재굴림 버튼 (한 줄) */}
+                      <div className="flex gap-1.5">
+                        {/* 제련/각성 버튼 */}
+                        {upgradesLeft > 0 ? (
+                          <button
+                            onClick={() => handleUpgrade(selectedItemData._equippedSlot)}
+                            disabled={!canUpgrade}
+                            className={`flex-1 px-2 py-2 rounded text-xs font-bold flex items-center justify-between ${
+                              canUpgrade
+                                ? 'bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white'
+                                : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                            }`}
+                          >
+                            <span>🔥 제련</span>
+                            <span className="text-[10px]">⚡{formatNumber(upgradeCost)}</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleAwaken(selectedItemData._equippedSlot)}
+                            disabled={!canAwaken}
+                            className={`flex-1 px-2 py-2 rounded text-xs font-bold flex items-center justify-between ${
+                              canAwaken
+                                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                                : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                            }`}
+                          >
+                            <span>✨ 각성</span>
+                            <span className="text-[10px]">💎1</span>
+                          </button>
+                        )}
 
-                      {/* 재굴림 버튼 */}
-                      {orbs > 0 && (
-                        <button
-                          onClick={() => handleUseOrb(selectedItemData._equippedSlot)}
-                          className="w-full px-3 py-2 rounded text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-between"
-                        >
-                          <span>🔮 재굴림</span>
-                          <span className="text-[10px]">🔮1</span>
-                        </button>
-                      )}
+                        {/* 재굴림 버튼 */}
+                        {orbs > 0 && (
+                          <button
+                            onClick={() => handleUseOrb(selectedItemData._equippedSlot)}
+                            className="flex-1 px-2 py-2 rounded text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-between"
+                          >
+                            <span>🔮 재굴림</span>
+                            <span className="text-[10px]">🔮1</span>
+                          </button>
+                        )}
+                      </div>
 
                       {/* 잠재옵션 & 극옵 변환 */}
                       {selectedItemData.stats && (() => {
@@ -1006,9 +1019,9 @@ const NewEquipment = () => {
                                   </div>
                                 ) : null}
 
-                                {/* 고대 마크 - 우하단 */}
+                                {/* 고대 마크 - 우하단 안쪽 */}
                                 {isAncient && (
-                                  <div className="absolute -bottom-0.5 -right-0.5 text-[10px] z-10" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }}>
+                                  <div className="absolute bottom-0.5 right-0.5 text-[9px] z-10" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))' }}>
                                     🔱
                                   </div>
                                 )}
