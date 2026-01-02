@@ -6,6 +6,7 @@ import { getHeroById, getHeroStats } from '../../data/heroes';
 import { EQUIPMENT_CONFIG } from '../../data/gameBalance';
 import { getTotalRelicEffects } from '../../data/prestigeRelics';
 import { EQUIPMENT_SETS, EQUIPMENT_SLOT_NAMES } from '../../data/equipmentSets';
+import { calculateSetBonuses, SET_EFFECT_TYPES } from '../../data/monsterSets';
 
 // 스탯 상세 분석 팝업 컴포넌트
 const StatDetailPopup = ({ stat, onClose, breakdown }) => {
@@ -197,10 +198,10 @@ const StatsList = () => {
   // 도감 보너스 계산
   const collectionBonus = engine ? engine.calculateCollectionBonus() : { attack: 0, goldBonus: 0, expBonus: 0, monsterReduction: 0 };
 
-  // 방생 보너스 계산 (101층 이상은 1-100층으로 매핑)
-  const baseFloor = player.floor > 100 ? ((player.floor - 1) % 100) + 1 : player.floor;
-  const rangeStart = Math.floor((baseFloor - 1) / 5) * 5 + 1;
-  const releaseBonus = engine ? engine.calculateReleaseBonus(rangeStart) : { damageBonus: 0, dropRateBonus: 0 };
+  // 세트 보너스 계산
+  const { collection } = gameState;
+  const completedSets = collection.completedSets || [];
+  const setBonuses = calculateSetBonuses(completedSets);
 
   // 보스 도감 보너스
   const bossCollectionBonus = engine ? engine.calculateBossCollectionBonus() : { damageBonus: 0 };
@@ -220,9 +221,9 @@ const StatsList = () => {
   // 5. 도감 보너스는 별도 합산
   const totalAttack = Math.floor(afterEquipPercent + heroAttackWithBonus + collectionBonus.attack);
 
-  // 총 크리티컬 확률과 데미지 (유물 효과 포함)
-  const totalCritChance = player.stats.critChance + equipmentStats.critChance + (skillEffects.critChance || 0) + heroBuffs.critChance + (relicEffects.critChance || 0);
-  const totalCritDmg = player.stats.critDmg + equipmentStats.critDmg + (skillEffects.critDmg || 0) + heroBuffs.critDmg + (relicEffects.critDmg || 0);
+  // 총 크리티컬 확률과 데미지 (유물 효과 + 세트 보너스 포함)
+  const totalCritChance = player.stats.critChance + equipmentStats.critChance + (skillEffects.critChance || 0) + heroBuffs.critChance + (relicEffects.critChance || 0) + setBonuses.critChance;
+  const totalCritDmg = player.stats.critDmg + equipmentStats.critDmg + (skillEffects.critDmg || 0) + heroBuffs.critDmg + (relicEffects.critDmg || 0) + setBonuses.critDmg;
 
   // 각 스탯별 상세 breakdown 생성
   const getStatBreakdown = (statId) => {
@@ -249,6 +250,7 @@ const StatsList = () => {
           { icon: '📜', source: '스킬', value: skillEffects.critChance || 0, isPercent: true },
           { icon: '🦸', source: '동료', value: heroBuffs.critChance, isPercent: true, detail: heroDetails.filter(h => h.stats.critChance).map(h => `${h.name}: ${formatPercent(h.stats.critChance)}`).join(', ') || '없음' },
           { icon: '🏺', source: '유물', value: relicEffects.critChance || 0, isPercent: true },
+          { icon: '📚', source: '세트 보너스', value: setBonuses.critChance, isPercent: true },
         ];
 
       case 'critDmg':
@@ -258,6 +260,7 @@ const StatsList = () => {
           { icon: '📜', source: '스킬', value: skillEffects.critDmg || 0, isPercent: true },
           { icon: '🦸', source: '동료', value: heroBuffs.critDmg, isPercent: true, detail: heroDetails.filter(h => h.stats.critDmg).map(h => `${h.name}: ${formatPercent(h.stats.critDmg)}`).join(', ') || '없음' },
           { icon: '🏺', source: '유물', value: relicEffects.critDmg || 0, isPercent: true },
+          { icon: '📚', source: '세트 보너스', value: setBonuses.critDmg, isPercent: true },
         ];
 
       case 'bossDamage':
@@ -265,6 +268,7 @@ const StatsList = () => {
           { icon: '⚔️', source: '장비 보스 데미지', value: equipmentStats.bossDamageIncrease, isPercent: true, detail: equipmentDetails.filter(e => e.statId === 'bossDamageIncrease').map(e => `${e.name}: ${formatPercent(e.finalValue)}`).join(', ') || '없음' },
           { icon: '🏺', source: '유물 보스 데미지', value: relicEffects.bossDamage || 0, isPercent: true },
           { icon: '📖', source: '보스 도감 보너스', value: bossCollectionBonus.damageBonus, isPercent: true },
+          { icon: '📚', source: '세트 보너스', value: setBonuses.bossDamage, isPercent: true },
         ];
 
       case 'goldBonus':
@@ -276,6 +280,7 @@ const StatsList = () => {
           { icon: '🦸', source: '동료', value: heroBuffs.goldBonus, isPercent: true, detail: heroDetails.filter(h => h.stats.goldBonus).map(h => `${h.name}: ${formatPercent(h.stats.goldBonus)}`).join(', ') || '없음' },
           { icon: '🏺', source: '유물', value: relicEffects.goldPercent || 0, isPercent: true },
           { icon: '📖', source: '도감', value: collectionBonus.goldBonus, isPercent: true },
+          { icon: '📚', source: '세트 보너스', value: setBonuses.goldBonus, isPercent: true },
         ];
 
       case 'dropRate':
@@ -284,7 +289,7 @@ const StatsList = () => {
           { icon: '⚔️', source: '장비', value: equipmentStats.dropRate, isPercent: true, detail: equipmentDetails.filter(e => e.statId === 'dropRate').map(e => `${e.name}: ${formatPercent(e.finalValue)}`).join(', ') || '없음' },
           { icon: '📜', source: '스킬', value: skillEffects.dropRate || 0, isPercent: true },
           { icon: '🦸', source: '동료', value: heroBuffs.dropRate, isPercent: true, detail: heroDetails.filter(h => h.stats.dropRate).map(h => `${h.name}: ${formatPercent(h.stats.dropRate)}`).join(', ') || '없음' },
-          { icon: '🕊️', source: '방생 보너스', value: releaseBonus.dropRateBonus, isPercent: true, detail: `${rangeStart}~${rangeStart+4}층 구간` },
+          { icon: '📚', source: '세트 보너스', value: setBonuses.dropRate, isPercent: true, detail: `${completedSets.length}개 세트 완성` },
         ];
 
       case 'expBonus':
@@ -293,6 +298,7 @@ const StatsList = () => {
           { icon: '⚔️', source: '장비', value: equipmentStats.expBonus, isPercent: true, detail: equipmentDetails.filter(e => e.statId === 'expBonus').map(e => `${e.name}: ${formatPercent(e.finalValue)}`).join(', ') || '없음' },
           { icon: '🦸', source: '동료', value: heroBuffs.expBonus, isPercent: true, detail: heroDetails.filter(h => h.stats.expBonus).map(h => `${h.name}: ${formatPercent(h.stats.expBonus)}`).join(', ') || '없음' },
           { icon: '📖', source: '도감', value: collectionBonus.expBonus, isPercent: true },
+          { icon: '📚', source: '세트 보너스', value: setBonuses.expBonus, isPercent: true },
         ];
 
       case 'relicDamage':
@@ -312,13 +318,6 @@ const StatsList = () => {
           { icon: '💍', source: '반지 보너스', value: slotRelicBonusMap.ring, isPercent: true },
         ];
 
-      case 'monsterReduction':
-        return [
-          { icon: '⚔️', source: '장비', value: Math.floor(equipmentStats.monstersPerStageReduction), detail: equipmentDetails.filter(e => e.statId === 'monstersPerStageReduction').map(e => `${e.name}: ${Math.floor(e.finalValue)}`).join(', ') || '없음' },
-          { icon: '📖', source: '도감', value: collectionBonus.monsterReduction },
-          { icon: '🏺', source: '유물', value: Math.floor(relicEffects.monstersPerStageReduction || 0) },
-        ];
-
       case 'hpPercentDmg':
         return [
           { icon: '🦸', source: '발동 확률', value: heroBuffs.hpPercentDmgChance, isPercent: true, detail: heroDetails.filter(h => h.stats.hpPercentDmgChance).map(h => `${h.name}: ${formatPercent(h.stats.hpPercentDmgChance)}`).join(', ') || '없음' },
@@ -336,14 +335,16 @@ const StatsList = () => {
           { icon: '🦸', source: '동료 스킵 확률', value: heroBuffs.stageSkipChance, isPercent: true, detail: heroDetails.filter(h => h.stats.stageSkipChance).map(h => `${h.name}: ${formatPercent(h.stats.stageSkipChance)}`).join(', ') || '없음' },
         ];
 
-      case 'releaseDamage':
+      case 'setBonus':
         return [
-          { icon: '🕊️', source: '방생 데미지 보너스', value: releaseBonus.damageBonus, isPercent: true, detail: `${rangeStart}~${rangeStart+4}층 구간에 적용` },
-        ];
-
-      case 'releaseDropRate':
-        return [
-          { icon: '🕊️', source: '방생 드랍 보너스', value: releaseBonus.dropRateBonus, isPercent: true, detail: `${rangeStart}~${rangeStart+4}층 구간에 적용` },
+          { icon: '⚔️', source: '공격력%', value: setBonuses.attackPercent, isPercent: true },
+          { icon: '💥', source: '치명타 확률', value: setBonuses.critChance, isPercent: true },
+          { icon: '🎯', source: '치명타 데미지', value: setBonuses.critDmg, isPercent: true },
+          { icon: '💰', source: '골드 획득량', value: setBonuses.goldBonus, isPercent: true },
+          { icon: '🍀', source: '드랍율', value: setBonuses.dropRate, isPercent: true },
+          { icon: '📚', source: '경험치', value: setBonuses.expBonus, isPercent: true },
+          { icon: '👑', source: '보스 데미지', value: setBonuses.bossDamage, isPercent: true },
+          { icon: '➖', source: '몬스터 감소', value: setBonuses.monsterReduction },
         ];
 
       default:
@@ -356,45 +357,27 @@ const StatsList = () => {
     { id: 'attack', icon: '⚔️', name: '공격력', value: formatNumber(totalAttack), color: 'text-rose-400' },
     { id: 'critChance', icon: '💥', name: '치명타 확률', value: formatPercent(totalCritChance), color: 'text-rose-400' },
     { id: 'critDmg', icon: '🎯', name: '치명타 데미지', value: formatPercent(totalCritDmg), color: 'text-rose-400' },
-    { id: 'bossDamage', icon: '👑', name: '보스 데미지', value: '+' + formatPercent(equipmentStats.bossDamageIncrease + (relicEffects.bossDamage || 0) + bossCollectionBonus.damageBonus), color: 'text-rose-400' },
+    { id: 'bossDamage', icon: '👑', name: '보스 데미지', value: '+' + formatPercent(equipmentStats.bossDamageIncrease + (relicEffects.bossDamage || 0) + bossCollectionBonus.damageBonus + setBonuses.bossDamage), color: 'text-rose-400' },
     { id: 'relicDamage', icon: '💎', name: '유물 데미지', value: '+' + formatPercent((relicEffects.damagePercent || 0) + (relicEffects.damagePerRelic || 0) * relicCount), color: 'text-pink-400', hide: ((relicEffects.damagePercent || 0) + (relicEffects.damagePerRelic || 0) * relicCount) === 0 },
     { id: 'relicEquip', icon: '🧭', name: '유물 장비', value: '+' + formatPercent(totalRelicEquipBonus / 6), color: 'text-cyan-400', hide: totalRelicEquipBonus === 0, tooltip: '유물로 인한 장비 스탯 평균 증가량' },
 
     // 보너스 관련 스탯 (금색)
-    { id: 'goldBonus', icon: '💰', name: '골드 획득량', value: '+' + formatPercent(player.stats.goldBonus + equipmentStats.goldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus + (relicEffects.goldPercent || 0) + collectionBonus.goldBonus), color: 'text-yellow-400' },
-    { id: 'dropRate', icon: '🍀', name: '드랍율', value: formatPercent(player.stats.dropRate + equipmentStats.dropRate + (skillEffects.dropRate || 0) + heroBuffs.dropRate + releaseBonus.dropRateBonus), color: 'text-yellow-400' },
-    { id: 'expBonus', icon: '📚', name: '경험치 증가량', value: '+' + formatPercent((skillEffects.expPercent || 0) + equipmentStats.expBonus + heroBuffs.expBonus + collectionBonus.expBonus), color: 'text-yellow-400', hide: ((skillEffects.expPercent || 0) + equipmentStats.expBonus + heroBuffs.expBonus + collectionBonus.expBonus) === 0 },
-    { id: 'hpPercentDmg', icon: '💀', name: '체력퍼뎀', value: `${formatPercent(heroBuffs.hpPercentDmgChance)} (${Math.floor(heroBuffs.hpPercentDmgValue)}%HP)`, color: 'text-yellow-400', hide: heroBuffs.hpPercentDmgChance === 0 },
-    { id: 'dotDmg', icon: '🔥', name: '도트 데미지', value: formatPercent(heroBuffs.dotDmgPercent), color: 'text-yellow-400', hide: heroBuffs.dotDmgPercent === 0 },
-    { id: 'skipChance', icon: '⏭️', name: '스킵 확률', value: formatPercent(heroBuffs.stageSkipChance + equipmentStats.skipChance), color: 'text-yellow-400', hide: (heroBuffs.stageSkipChance + equipmentStats.skipChance) === 0 },
+    { id: 'goldBonus', icon: '💰', name: '골드 획득량', value: '+' + formatPercent(player.stats.goldBonus + equipmentStats.goldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus + (relicEffects.goldPercent || 0) + collectionBonus.goldBonus + setBonuses.goldBonus), color: 'text-yellow-400' },
+    { id: 'dropRate', icon: '🍀', name: '드랍율', value: formatPercent(player.stats.dropRate + equipmentStats.dropRate + (skillEffects.dropRate || 0) + heroBuffs.dropRate + setBonuses.dropRate), color: 'text-yellow-400' },
+    { id: 'expBonus', icon: '📚', name: '경험치 증가량', value: '+' + formatPercent((skillEffects.expPercent || 0) + equipmentStats.expBonus + heroBuffs.expBonus + collectionBonus.expBonus + setBonuses.expBonus), color: 'text-yellow-400', hide: ((skillEffects.expPercent || 0) + equipmentStats.expBonus + heroBuffs.expBonus + collectionBonus.expBonus + setBonuses.expBonus) === 0 },
+    { id: 'hpPercentDmg', icon: '💀', name: '체력퍼뎀', value: `${formatPercent(heroBuffs.hpPercentDmgChance + setBonuses.hpPercentDmg)} (${Math.floor(heroBuffs.hpPercentDmgValue)}%HP)`, color: 'text-yellow-400', hide: (heroBuffs.hpPercentDmgChance + setBonuses.hpPercentDmg) === 0 },
+    { id: 'dotDmg', icon: '🔥', name: '도트 데미지', value: formatPercent(heroBuffs.dotDmgPercent + setBonuses.dotDamage), color: 'text-yellow-400', hide: (heroBuffs.dotDmgPercent + setBonuses.dotDamage) === 0 },
+    { id: 'skipChance', icon: '⏭️', name: '스킵 확률', value: formatPercent(heroBuffs.stageSkipChance + equipmentStats.skipChance + setBonuses.skipChance), color: 'text-yellow-400', hide: (heroBuffs.stageSkipChance + equipmentStats.skipChance + setBonuses.skipChance) === 0 },
 
-    // 방생 보너스 (연보라색) - 현재 구간에만 적용됨
+    // 세트 보너스 (청록색) - 완성 세트 개수와 주요 보너스 표시
     {
-      id: 'releaseDamage',
-      icon: '🕊️',
-      name: '방생 데미지',
-      value: '+' + formatPercent(releaseBonus.damageBonus),
-      color: 'text-purple-300',
-      hide: releaseBonus.damageBonus === 0,
-      tooltip: `${rangeStart}~${rangeStart+4}층 구간에 적용`
-    },
-    {
-      id: 'releaseDropRate',
-      icon: '🕊️',
-      name: '방생 드랍',
-      value: '+' + formatPercent(releaseBonus.dropRateBonus),
-      color: 'text-purple-300',
-      hide: releaseBonus.dropRateBonus === 0,
-      tooltip: `${rangeStart}~${rangeStart+4}층 구간에 적용`
-    },
-
-    // 몬스터 감소 (맨 아래, 초록색) - 장비 + 도감 + 유물 보너스
-    {
-      id: 'monsterReduction',
-      icon: '➖',
-      name: '몬스터 감소',
-      value: `${Math.floor(equipmentStats.monstersPerStageReduction) + collectionBonus.monsterReduction + Math.floor(relicEffects.monstersPerStageReduction || 0)}`,
-      color: 'text-green-400'
+      id: 'setBonus',
+      icon: '📚',
+      name: '세트 보너스',
+      value: `${completedSets.length}세트`,
+      color: 'text-cyan-400',
+      hide: completedSets.length === 0,
+      tooltip: `완성 세트: ${completedSets.length}개\n공격력+${setBonuses.attackPercent}%, 치확+${setBonuses.critChance}%`
     },
 
     // 환생 횟수 (핑크색)
@@ -417,7 +400,7 @@ const StatsList = () => {
   return (
     <div className="bg-game-panel border border-game-border rounded-lg p-3 shadow-md h-full flex flex-col">
       <h3 className="text-base font-bold text-gray-100 mb-2">스탯</h3>
-      <div className="grid grid-cols-2 gap-1.5 flex-1 content-start">
+      <div className="grid grid-cols-2 gap-1.5 flex-1 content-start overflow-y-auto">
         {stats.filter(stat => !stat.hide).map((stat, index) => (
           <div
             key={index}

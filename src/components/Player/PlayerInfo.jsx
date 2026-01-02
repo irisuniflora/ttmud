@@ -146,7 +146,10 @@ const PlayerInfo = () => {
                 <span className="text-red-300 text-xs font-bold">⏰ {player.bossTimer}초</span>
               </div>
             ) : (
-              <div className="flex items-center gap-1 text-xs">
+              <div
+                className="flex items-center gap-1 text-xs cursor-help"
+                title={`기본 ${baseMonstersPerFloor}마리${(Math.floor(equipmentMonsterReduction) + collectionBonus.monsterReduction + relicMonsterReduction) > 0 ? `\n감소: -${Math.floor(equipmentMonsterReduction) + collectionBonus.monsterReduction + relicMonsterReduction}마리` : ''}${Math.floor(equipmentMonsterReduction) > 0 ? `\n  └ 장비: -${Math.floor(equipmentMonsterReduction)}` : ''}${collectionBonus.monsterReduction > 0 ? `\n  └ 도감: -${collectionBonus.monsterReduction}` : ''}${relicMonsterReduction > 0 ? `\n  └ 유물: -${relicMonsterReduction}` : ''}`}
+              >
                 <span className="text-gray-400">{monstersKilled}/{Math.floor(actualMonstersPerFloor)}</span>
               </div>
             )}

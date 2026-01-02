@@ -150,18 +150,18 @@ export class GameEngine {
             totalObtained: 500
           }
         },
-        // 방생 시스템
+        // 방생 시스템 (레거시 - 유지)
         release: {
-          // 층별 방생 데이터 (rare_1_0, rare_1_1 등)
           releasedMonsters: {},
-          // 누적 방생 통계
           totalRareReleased: 0,
           totalLegendaryReleased: 0,
-          // 보상 아이템
-          legendaryScrolls: 0, // 전설 몬스터 소환권
-          legendaryChoiceTokens: 0, // 전설 몬스터 도감 선택권
-          mysteryTokens: 0 // 수수께끼 토큰
-        }
+          legendaryScrolls: 0,
+          legendaryChoiceTokens: 0,
+          mysteryTokens: 0
+        },
+        // 몬스터 세트 각인 시스템
+        inscribedMonsters: {}, // { "grade_zone_index": { name, inscribedAt } }
+        completedSets: [] // 완성된 세트 ID 목록
       },
       statistics: {
         totalDamageDealt: 0,
@@ -2559,6 +2559,108 @@ export class GameEngine {
     else if (totalLegendaryReleased >= 5) legendarySpawnBonus += 50;
 
     return { rareSpawnBonus, legendarySpawnBonus };
+  }
+
+  // ===== 몬스터 세트 각인 시스템 =====
+
+  // 몬스터 각인
+  inscribeMonster(monsterId, grade, monsterName, setId) {
+    const { collection } = this.state;
+
+    // inscribedMonsters 초기화
+    if (!collection.inscribedMonsters) {
+      collection.inscribedMonsters = {};
+    }
+    if (!collection.completedSets) {
+      collection.completedSets = [];
+    }
+
+    // 이미 각인되어 있는지 확인
+    if (collection.inscribedMonsters[monsterId]) {
+      return { success: false, message: '이미 각인된 몬스터입니다.' };
+    }
+
+    // 수집 여부 확인 및 도감에서 제거
+    const parts = monsterId.split('_');
+    const monsterGrade = parts[0];
+    const zone = parseInt(parts[1]);
+    const index = parseInt(parts[2]);
+
+    if (monsterGrade === 'rare') {
+      const rareId = `rare_${zone}_${index}`;
+      if (!collection.rareMonsters?.[rareId]?.unlocked) {
+        return { success: false, message: '아직 수집하지 않은 몬스터입니다.' };
+      }
+      // 도감에서 제거
+      collection.rareMonsters[rareId].unlocked = false;
+    } else if (monsterGrade === 'legendary') {
+      const legendaryId = `legendary_${zone}_${index}`;
+      if (!collection.legendaryMonsters?.[legendaryId]?.unlocked) {
+        return { success: false, message: '아직 수집하지 않은 몬스터입니다.' };
+      }
+      // 도감에서 제거
+      collection.legendaryMonsters[legendaryId].unlocked = false;
+    }
+    // normal 등급은 층수 도달 시 자동으로 수집된 것으로 간주
+
+    // 각인 추가
+    collection.inscribedMonsters[monsterId] = {
+      name: monsterName,
+      inscribedAt: Date.now(),
+      setId: setId
+    };
+
+    this.addCombatLog(`📚 ${monsterName}을(를) 각인했습니다!`, 'inscribe');
+
+    // 세트 완성 체크
+    const { MONSTER_SETS, checkSetCompletion } = require('../data/monsterSets');
+    const setStatus = checkSetCompletion(setId, collection.inscribedMonsters);
+
+    if (setStatus.completed && !collection.completedSets.includes(setId)) {
+      collection.completedSets.push(setId);
+      const set = MONSTER_SETS[setId];
+      this.addCombatLog(`🎉 ${set.name} 세트 완성!`, 'set_complete');
+
+      return {
+        success: true,
+        message: `${monsterName}을(를) 각인했습니다!`,
+        setCompleted: true,
+        setName: set.name,
+        effectType: set.effect.type,
+        effectValue: set.effect.value
+      };
+    }
+
+    return {
+      success: true,
+      message: `${monsterName}을(를) 각인했습니다!`,
+      setCompleted: false
+    };
+  }
+
+  // 세트 보너스 계산
+  calculateSetBonuses() {
+    const { collection } = this.state;
+
+    if (!collection.inscribedMonsters || !collection.completedSets) {
+      return {
+        attack: 0,
+        attackPercent: 0,
+        critChance: 0,
+        critDmg: 0,
+        goldBonus: 0,
+        dropRate: 0,
+        expBonus: 0,
+        bossDamage: 0,
+        monsterReduction: 0,
+        hpPercentDmg: 0,
+        dotDamage: 0,
+        skipChance: 0
+      };
+    }
+
+    const { MONSTER_SETS, calculateSetBonuses } = require('../data/monsterSets');
+    return calculateSetBonuses(collection.completedSets);
   }
 
   // 전투 로그 추가

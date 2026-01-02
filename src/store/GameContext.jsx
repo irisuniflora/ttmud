@@ -245,6 +245,15 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
+  // 몬스터 각인 (세트 시스템)
+  const inscribeMonster = (monsterId, grade, monsterName, setId) => {
+    const result = engineRef.current.inscribeMonster(monsterId, grade, monsterName, setId);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
   /* ===== 월드보스 시스템 (비활성화) =====
   const startWorldBossBattle = () => { ... };
   const toggleWorldBoss = (forceState = null) => { ... };
@@ -383,6 +392,7 @@ export const GameProvider = ({ children }) => {
       releaseMonster,
       releaseAllMonsters,
       unlockMonsterWithTicket,
+      inscribeMonster,
       prestige,
       upgradeSkill,
       enterBossBattle,
