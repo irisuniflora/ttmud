@@ -6,7 +6,7 @@ export const ACHIEVEMENT_CATEGORIES = {
   sealed: { name: '봉인구역', icon: '🔒', color: '#8b5cf6' },
   monster: { name: '몬스터', icon: '👾', color: '#ef4444' },
   equipment: { name: '장비', icon: '⚔️', color: '#f59e0b' },
-  prestige: { name: '환생', icon: '🌟', color: '#ec4899' },
+  prestige: { name: '귀환', icon: '🌟', color: '#ec4899' },
   collection: { name: '수집', icon: '📖', color: '#10b981' }
 };
 
@@ -214,12 +214,12 @@ export const ACHIEVEMENTS = {
     icon: '💎'
   },
 
-  // ===== 환생 업적 =====
+  // ===== 귀환 업적 =====
   prestige_1: {
     id: 'prestige_1',
     category: 'prestige',
     name: '새로운 시작',
-    description: '첫 환생 달성',
+    description: '첫 귀환 달성',
     condition: (state) => (state.prestigeCount || 0) >= 1,
     reward: { type: 'relicFragments', amount: 3 },
     icon: '🌟'
@@ -227,8 +227,8 @@ export const ACHIEVEMENTS = {
   prestige_5: {
     id: 'prestige_5',
     category: 'prestige',
-    name: '환생의 달인',
-    description: '5회 환생 달성',
+    name: '귀환의 달인',
+    description: '5회 귀환 달성',
     condition: (state) => (state.prestigeCount || 0) >= 5,
     reward: { type: 'relicFragments', amount: 10 },
     icon: '✨'
@@ -237,7 +237,7 @@ export const ACHIEVEMENTS = {
     id: 'prestige_10',
     category: 'prestige',
     name: '윤회의 지배자',
-    description: '10회 환생 달성',
+    description: '10회 귀환 달성',
     condition: (state) => (state.prestigeCount || 0) >= 10,
     reward: { type: 'relicFragments', amount: 25 },
     icon: '🔮'

@@ -200,7 +200,7 @@ export const EQUIPMENT_SETS = {
       6: {
         name: '시공의 지배자',
         effects: { ppBonus: 80, prestigeStartFloor: 5 },
-        description: 'PP 획득 +80%, 환생 시 5층 시작'
+        description: 'PP 획득 +80%, 귀환 시 5층 시작'
       }
     }
   }
@@ -327,6 +327,117 @@ export const AWAKENING_CONFIG = {
   upgradesRestored: 10
 };
 
+// ===== 장비 강화 시스템 (골드 소모) =====
+export const ENHANCE_CONFIG = {
+  // 최대 강화 수치
+  maxEnhance: 20,
+  // 강화 비용 공식: baseGold * (1 + enhanceLevel * costMultiplier) * 아이템레벨
+  baseGold: 100,
+  costMultiplier: 0.5,
+  // 강화당 스탯 증가율 (%)
+  statBonusPerEnhance: 5,
+  // 강화 성공 확률 (단계별)
+  successRates: {
+    0: 100,  // +0 → +1: 100%
+    1: 95,   // +1 → +2: 95%
+    2: 90,   // +2 → +3: 90%
+    3: 85,   // +3 → +4: 85%
+    4: 80,   // +4 → +5: 80%
+    5: 70,   // +5 → +6: 70%
+    6: 60,   // +6 → +7: 60%
+    7: 50,   // +7 → +8: 50%
+    8: 40,   // +8 → +9: 40%
+    9: 30,   // +9 → +10: 30%
+    10: 20,  // +10 → +11: 20%
+    11: 15,  // +11 → +12: 15%
+    12: 12,  // +12 → +13: 12%
+    13: 10,  // +13 → +14: 10%
+    14: 8,   // +14 → +15: 8%
+    15: 6,   // +15 → +16: 6%
+    16: 5,   // +16 → +17: 5%
+    17: 4,   // +17 → +18: 4%
+    18: 3,   // +18 → +19: 3%
+    19: 2,   // +19 → +20: 2%
+  },
+  // 실패 시 하락 수치 (강화 단계별)
+  // +0~+9: 하락 없음, +10 이상: 실패 시 무조건 1단계 하락
+  downgradeAmounts: {
+    10: 1,  // +10 → +11 실패: -1
+    11: 1,  // +11 → +12 실패: -1
+    12: 1,  // +12 → +13 실패: -1
+    13: 1,  // +13 → +14 실패: -1
+    14: 1,  // +14 → +15 실패: -1
+    15: 1,  // +15 → +16 실패: -1
+    16: 1,  // +16 → +17 실패: -1
+    17: 1,  // +17 → +18 실패: -1
+    18: 1,  // +18 → +19 실패: -1
+    19: 1,  // +19 → +20 실패: -1
+  }
+};
+
+// 강화 비용 계산
+export const getEnhanceCost = (item) => {
+  const enhanceLevel = item.enhanceLevel || 0;
+  const itemLevel = item.itemLevel || 1;
+  return Math.floor(ENHANCE_CONFIG.baseGold * (1 + enhanceLevel * ENHANCE_CONFIG.costMultiplier) * itemLevel);
+};
+
+// 강화 성공 확률 계산
+export const getEnhanceSuccessRate = (item) => {
+  const enhanceLevel = item.enhanceLevel || 0;
+  return ENHANCE_CONFIG.successRates[enhanceLevel] ?? 2;
+};
+
+// 실패 시 하락 수치 계산 (+10 이상부터)
+export const getDowngradeAmount = (item) => {
+  const enhanceLevel = item.enhanceLevel || 0;
+  if (enhanceLevel < 10) return 0;
+  return ENHANCE_CONFIG.downgradeAmounts[enhanceLevel] ?? 3;
+};
+
+// 강화 보너스 계산 (총 스탯 증가율 %)
+// +1~+10: 5%, 6%, 7%, 8%, 9%, 10%, 11%, 12%, 13%, 14% (누적: 95%)
+// +11~+15: 전 강화 수치의 1.5배씩 증가
+// +16~+19: 전 강화 수치의 2배씩 증가
+// +20: 전 강화 수치의 3배 증가
+export const getEnhanceBonus = (enhanceLevel) => {
+  if (!enhanceLevel || enhanceLevel <= 0) return 0;
+
+  // 각 강화 단계별 증가량 (해당 강화에서 추가되는 %)
+  const getStepBonus = (level) => {
+    if (level <= 10) {
+      // +1: 5%, +2: 6%, ... +10: 14%
+      return 4 + level;
+    } else if (level <= 15) {
+      // +11~+15: 전 강화 증가량의 1.5배
+      const prevBonus = getStepBonus(level - 1);
+      return Math.floor(prevBonus * 1.5);
+    } else if (level <= 19) {
+      // +16~+19: 전 강화 증가량의 2배
+      const prevBonus = getStepBonus(level - 1);
+      return Math.floor(prevBonus * 2);
+    } else {
+      // +20: 전 강화 증가량의 3배
+      const prevBonus = getStepBonus(level - 1);
+      return Math.floor(prevBonus * 3);
+    }
+  };
+
+  // 누적 보너스 계산
+  let totalBonus = 0;
+  for (let i = 1; i <= enhanceLevel; i++) {
+    totalBonus += getStepBonus(i);
+  }
+  return totalBonus;
+};
+
+// 하락 방지권 필요 개수 계산 (+10 이상에서 강화 시)
+export const getProtectionRequired = (enhanceLevel) => {
+  if (enhanceLevel < 10) return 0;
+  // +10→+11: 1개, +11→+12: 2개, ... +19→+20: 10개
+  return enhanceLevel - 9;
+};
+
 // 드랍 레벨 계산 (층수 기반)
 export const getDropLevel = (floor) => {
   return Math.ceil(floor / 10);
@@ -406,16 +517,16 @@ export const rollNormalGrade = () => {
 
 // ===== 드랍률 =====
 export const DROP_RATES = {
-  // 일반템 드랍률 (세 등급 합계)
+  // 일반템 드랍률 (세 등급 합계) - 보스는 노말템 드랍 안함
   normal: {
     monster: 0.20,  // 20%
-    boss: 0.90      // 90%
+    boss: 0         // 0% (보스는 세트템만 드랍)
   },
 
-  // 세트템 드랍률 (매우 희귀) - 봉인구역에서 주로 획득
+  // 세트템 드랍률 - 보스는 20% 확률
   set: {
     monster: 0.0002, // 0.02%
-    boss: 0.002      // 0.2%
+    boss: 0.20       // 20%
   }
 };
 
@@ -558,14 +669,15 @@ export const generateSetItem = (slot, floor, setId = null, forceAncient = false)
     max: mainStatConfig.max ? mainStatConfig.max * mainStatMultiplier : null
   };
 
-  // 세트템 잠재옵션 3개 (고대 등급이면 모두 극옵)
+  // 세트템 잠재옵션 (일반 3개, 고대 4개)
+  const potentialCount = isAncient ? 4 : 3;
   const potentials = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < potentialCount; i++) {
     const statId = potentialIds[Math.floor(Math.random() * potentialIds.length)];
     const statConfig = POTENTIAL_STATS[statId];
     const baseValue = calculatePotentialValue(statId, itemLevel);
-    // 고대 등급이면 무조건 극옵, 아니면 랜덤
-    const optionGrade = isAncient ? OPTION_GRADES.HIGH : rollOptionGrade(true);
+    // 고대도 일반과 동일하게 랜덤 등급
+    const optionGrade = rollOptionGrade(true);
     const gradeMultiplier = getGradeMultiplier(optionGrade);
 
     // 반올림(소수점 첫째자리)
@@ -578,7 +690,8 @@ export const generateSetItem = (slot, floor, setId = null, forceAncient = false)
       value: Math.max(0, finalValue),
       suffix: statConfig.suffix,
       optionGrade,
-      isMain: false
+      isMain: false,
+      locked: false // 봉인석으로 잠금 가능
     });
   }
 
@@ -773,15 +886,20 @@ export const calculateTotalSetEffects = (equippedItems) => {
 
 // ===== 장비 스탯 합산 =====
 
-// 장착 장비의 총 스탯 계산
+// 장착 장비의 총 스탯 계산 (강화 보너스 포함)
 export const calculateEquipmentStats = (equippedItems) => {
   const totalStats = {};
 
   Object.values(equippedItems).forEach(item => {
     if (!item || !item.stats) return;
 
+    // 강화 보너스 계산 (강화 레벨 × 5%)
+    const enhanceBonus = 1 + getEnhanceBonus(item.enhanceLevel) / 100;
+
     item.stats.forEach(stat => {
-      totalStats[stat.id] = (totalStats[stat.id] || 0) + stat.value;
+      // 강화 보너스는 기본옵션(isMain)에만 적용
+      const finalValue = stat.isMain ? stat.value * enhanceBonus : stat.value;
+      totalStats[stat.id] = (totalStats[stat.id] || 0) + finalValue;
 
       // 치명타 확률 오버플로우 → 치명타 데미지로 전환
       if (stat.overflowCritDmg) {
@@ -821,10 +939,10 @@ export const upgradeItemLevel = (item, fragments) => {
     return { success: false, message: '업그레이드 횟수가 남아있지 않습니다' };
   }
 
-  const cost = getUpgradeCost(item);
+  const fragmentCost = getUpgradeCost(item);
 
-  if (fragments < cost) {
-    return { success: false, message: `장비조각이 부족합니다 (필요: ${cost}개)` };
+  if (fragments < fragmentCost) {
+    return { success: false, message: `장비조각이 부족합니다 (필요: ${fragmentCost}개)` };
   }
 
   // 스탯 재계산
@@ -872,7 +990,8 @@ export const upgradeItemLevel = (item, fragments) => {
 
   return {
     success: true,
-    cost,
+    fragmentCost,
+    cost: fragmentCost,
     oldLevel,
     newLevel,
     upgradesLeft: item.upgradesLeft,
@@ -892,8 +1011,8 @@ export const awakenItem = (item) => {
 };
 
 // 카르마 오브로 잠재옵션 재굴림
-// 아이템의 현재 템렙 기준으로 잠재옵션을 새로 굴림
-// 옵션 등급: 극옵 100% (20% 확률, 빨간색), 중옵 90% (40% 확률, 연두색), 하옵 80% (40% 확률, 회색)
+// 잠긴(locked) 옵션은 유지, 나머지만 재굴림
+// 고대 장비는 잠재옵션 4개
 export const rerollItemPotentials = (item) => {
   if (!item || !item.stats) {
     return false;
@@ -903,11 +1022,18 @@ export const rerollItemPotentials = (item) => {
   const potentialIds = statType === 'damage' ? DAMAGE_POTENTIAL_IDS : UTILITY_POTENTIAL_IDS;
   const itemLevel = item.itemLevel || 1;
   const isSetItem = item.type === 'set';
+  const isAncient = item.isAncient || false;
   const normalPenalty = isSetItem ? 1 : 0.6;
+  const potentialCount = isAncient ? 4 : 3;
 
-  // 잠재옵션만 재굴림 (기본옵션은 유지)
+  // 기존 잠재옵션에서 잠긴 것과 안 잠긴 것 분리
+  const oldPotentials = item.potentials || item.stats.filter(s => !s.isMain);
+  const lockedPotentials = oldPotentials.filter(p => p.locked);
+  const unlockedCount = potentialCount - lockedPotentials.length;
+
+  // 새로운 잠재옵션 생성 (잠기지 않은 슬롯만)
   const newPotentials = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < unlockedCount; i++) {
     const statId = potentialIds[Math.floor(Math.random() * potentialIds.length)];
     const statConfig = POTENTIAL_STATS[statId];
     const baseValue = calculatePotentialValue(statId, itemLevel);
@@ -922,20 +1048,55 @@ export const rerollItemPotentials = (item) => {
       name: statConfig.name,
       value: Math.max(0, finalValue),
       suffix: statConfig.suffix,
-      optionGrade
+      optionGrade,
+      isMain: false,
+      locked: false
     });
   }
 
+  // 잠긴 옵션 + 새 옵션 합침
+  const allPotentials = [...lockedPotentials, ...newPotentials];
+
   // stats 배열에서 기본옵션(isMain)만 유지하고 잠재옵션 교체
-  // 기존 데이터 호환: isMain이 없으면 첫 번째 스탯(기본옵션)을 유지
   const mainStat = item.stats.find(s => s.isMain) || item.stats[0];
   if (mainStat && !mainStat.isMain) {
-    mainStat.isMain = true; // 기존 데이터에 isMain 플래그 추가
+    mainStat.isMain = true;
   }
-  item.stats = mainStat ? [mainStat, ...newPotentials] : newPotentials;
-  item.potentials = newPotentials;
+  item.stats = mainStat ? [mainStat, ...allPotentials] : allPotentials;
+  item.potentials = allPotentials;
 
   return true;
+};
+
+// 봉인석으로 잠재옵션 잠금/해제 토글
+export const togglePotentialLock = (item, statIndex) => {
+  if (!item || !item.stats || !item.stats[statIndex]) {
+    return { success: false, message: '유효하지 않은 아이템입니다' };
+  }
+
+  const stat = item.stats[statIndex];
+
+  // 기본옵션(isMain)은 잠금 불가
+  if (stat.isMain) {
+    return { success: false, message: '기본옵션은 잠금할 수 없습니다' };
+  }
+
+  // 잠금 토글
+  stat.locked = !stat.locked;
+
+  // potentials 배열도 동기화
+  if (item.potentials) {
+    const potentialIndex = statIndex - 1; // stats[0]은 mainStat이므로
+    if (item.potentials[potentialIndex]) {
+      item.potentials[potentialIndex].locked = stat.locked;
+    }
+  }
+
+  return {
+    success: true,
+    locked: stat.locked,
+    message: stat.locked ? '옵션이 잠겼습니다' : '옵션 잠금이 해제되었습니다'
+  };
 };
 
 // 완벽의 정수로 잠재옵션 1개를 극옵(100%)으로 변경

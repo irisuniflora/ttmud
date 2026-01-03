@@ -64,7 +64,7 @@ const Collection = () => {
   const { gameState, inscribeMonster, engine } = useGame();
   const { collection, statistics, consumables = {} } = gameState;
   const [activeTab, setActiveTab] = useState('sets');
-  const [activeCategory, setActiveCategory] = useState('element');
+  const [activeCategory, setActiveCategory] = useState('special');
   const [inscribeModal, setInscribeModal] = useState(null); // { setId, monster, monsterId }
   const [resultModal, setResultModal] = useState(null);
   const [selectionModal, setSelectionModal] = useState(false);
@@ -96,19 +96,19 @@ const Collection = () => {
     const { monsterId, monster, setId } = inscribeModal;
     // 각인 전에 모달 먼저 닫기
     setInscribeModal(null);
-    const result = inscribeMonster(monsterId, monster.grade, monster.name, setId);
-    if (result) {
-      setResultModal(result);
+    try {
+      const result = inscribeMonster(monsterId, monster.grade, monster.name, setId);
+      if (result) {
+        setResultModal(result);
+      }
+    } catch (err) {
+      console.error('confirmInscribe error:', err);
     }
   };
 
-  // 몬스터가 도감에 있는지 확인
+  // 몬스터가 도감에 있는지 확인 (희귀/전설만)
   const isMonsterCollected = (monster) => {
-    if (monster.grade === 'normal') {
-      // 일반 몬스터는 항상 수집 가능 (층수 도달 시)
-      const highestFloor = statistics.highestFloor || 1;
-      return highestFloor >= monster.zone;
-    } else if (monster.grade === 'rare') {
+    if (monster.grade === 'rare') {
       const rareId = `rare_${monster.zone}_${monster.index}`;
       return collection.rareMonsters?.[rareId]?.unlocked;
     } else if (monster.grade === 'legendary') {
@@ -136,7 +136,17 @@ const Collection = () => {
         } else if (resultModal) {
           setResultModal(null);
         } else if (inscribeModal) {
-          confirmInscribe();
+          // 직접 각인 처리
+          const { monsterId, monster, setId } = inscribeModal;
+          setInscribeModal(null);
+          try {
+            const result = inscribeMonster(monsterId, monster.grade, monster.name, setId);
+            if (result) {
+              setResultModal(result);
+            }
+          } catch (err) {
+            console.error('inscribe error:', err);
+          }
         }
       } else if (e.key === 'Escape') {
         if (selectionModal) {
@@ -151,7 +161,7 @@ const Collection = () => {
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
     }
-  }, [inscribeModal, resultModal, selectionModal, selectionResult]);
+  }, [inscribeModal, resultModal, selectionModal, selectionResult, inscribeMonster]);
 
   // 등급별 색상
   const getGradeColor = (grade) => {
@@ -269,7 +279,7 @@ const Collection = () => {
 
           {/* 세트 목록 - 2열 레이아웃 */}
           <div className="grid grid-cols-2 gap-3">
-            {SET_CATEGORIES[activeCategory].sets.map(setId => {
+            {(SET_CATEGORIES[activeCategory]?.sets || []).map(setId => {
               const set = MONSTER_SETS[setId];
               if (!set) return null;
 
@@ -416,10 +426,10 @@ const Collection = () => {
                   {/* 세트효과 */}
                   <div className="text-right">
                     <p className="text-green-400 font-bold text-sm">
-                      총 -{rareBonus.monsterReduction + legendaryBonus.monsterReduction}
+                      몬스터 수 -{rareBonus.monsterReduction + legendaryBonus.monsterReduction}
                     </p>
                     <p className="text-[9px] text-gray-400">
-                      (레어 -{rareBonus.monsterReduction} / 전설 -{legendaryBonus.monsterReduction})
+                      해당 구간 출현 몬스터 감소
                     </p>
                   </div>
                 </div>
@@ -530,7 +540,7 @@ const Collection = () => {
             </div>
 
             {/* 보스 목록 */}
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-5 gap-3">
               {Object.entries(FLOOR_RANGES).map(([floorStart, data]) => {
                 const floor = parseInt(floorStart);
                 const rareBossId = `rare_boss_${floor}`;
@@ -543,14 +553,14 @@ const Collection = () => {
                 return (
                   <div
                     key={floor}
-                    className={`bg-gray-900 border rounded-lg p-2 transition-all ${
+                    className={`bg-gray-900 border rounded-lg p-3 transition-all ${
                       legendaryUnlocked ? 'border-orange-500 bg-orange-950/30' :
                       rareUnlocked ? 'border-pink-500 bg-pink-950/30' :
                       'border-gray-700'
                     }`}
                   >
                     {/* 보스 이미지 */}
-                    <div className="flex justify-center mb-1">
+                    <div className="flex justify-center mb-2">
                       <MonsterImage
                         floorStart={floor}
                         monsterIndex={0}
@@ -563,11 +573,11 @@ const Collection = () => {
                     </div>
 
                     {/* 던전 이름 */}
-                    <p className="text-[9px] text-cyan-400 font-bold text-center truncate">{data.name}</p>
-                    <p className="text-[7px] text-gray-500 text-center mb-1">{floor}~{floor + 4}층</p>
+                    <p className="text-xs text-cyan-400 font-bold text-center truncate">{data.name}</p>
+                    <p className="text-[10px] text-gray-500 text-center mb-1">{floor}~{floor + 4}층</p>
 
                     {/* 보스 이름 */}
-                    <p className={`text-[8px] font-bold text-center truncate mb-1 ${
+                    <p className={`text-[10px] font-bold text-center truncate mb-2 ${
                       legendaryUnlocked ? 'text-orange-400' :
                       rareUnlocked ? 'text-pink-400' :
                       anyUnlocked ? 'text-gray-300' : 'text-gray-600'
@@ -577,12 +587,12 @@ const Collection = () => {
 
                     {/* 수집 상태 */}
                     <div className="flex justify-center gap-1">
-                      <div className={`px-2 py-0.5 rounded text-[8px] font-bold ${
+                      <div className={`px-2 py-0.5 rounded text-[9px] font-bold ${
                         rareUnlocked ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-600'
                       }`}>
                         {rareUnlocked ? '🌸 희귀' : '희귀'}
                       </div>
-                      <div className={`px-2 py-0.5 rounded text-[8px] font-bold ${
+                      <div className={`px-2 py-0.5 rounded text-[9px] font-bold ${
                         legendaryUnlocked ? 'bg-orange-600 text-white' : 'bg-gray-800 text-gray-600'
                       }`}>
                         {legendaryUnlocked ? '⭐ 전설' : '전설'}

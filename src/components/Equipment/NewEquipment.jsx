@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
-import { EQUIPMENT_SLOTS, EQUIPMENT_SLOT_NAMES, EQUIPMENT_SETS, getUpgradeCost, OPTION_GRADES, ANCIENT_CONFIG, NORMAL_GRADES } from '../../data/equipmentSets';
+import { EQUIPMENT_SLOTS, EQUIPMENT_SLOT_NAMES, EQUIPMENT_SETS, getUpgradeCost, OPTION_GRADES, ANCIENT_CONFIG, NORMAL_GRADES, getEnhanceCost, getEnhanceSuccessRate, getDowngradeAmount, getEnhanceBonus, getProtectionRequired, ENHANCE_CONFIG } from '../../data/equipmentSets';
 import { formatNumber, formatStatValue } from '../../utils/formatter';
 import NotificationModal from '../UI/NotificationModal';
 import ItemTooltip from '../UI/ItemTooltip';
@@ -43,7 +43,7 @@ const getContrastTextColor = (hexColor) => {
 };
 
 const NewEquipment = () => {
-  const { gameState, equipNewItem, unequipNewItem, disassembleNewItem, disassembleAllNormal, toggleItemLock, upgradeEquipmentLevel, awakenEquipment, useSetSelector, updateSettings, usePerfectEssence, useOrb } = useGame();
+  const { gameState, equipNewItem, unequipNewItem, disassembleNewItem, disassembleAllNormal, toggleItemLock, upgradeEquipmentLevel, awakenEquipment, enhanceEquipment, useSetSelector, updateSettings, useOrb, useSealStone } = useGame();
   const { equipment, newInventory = [], equipmentFragments = 0, settings = {}, setSelectors = {}, orbs = 0 } = gameState;
 
   const [showSets, setShowSets] = useState(false);
@@ -208,23 +208,23 @@ const NewEquipment = () => {
   const setCounts = getSetCounts();
   const consumables = gameState.consumables || {};
   const awakenStones = consumables.awakening_stone || 0;
-  const perfectEssences = consumables.stat_max_item || 0;
-
-  // 완벽의 정수 사용
-  const handleUsePerfectEssence = (slot, statIndex) => {
-    const result = usePerfectEssence(slot, statIndex);
-    if (result.success) {
-      showNotification('극옵화 성공!', result.message, 'success');
-    } else {
-      showNotification('실패', result.message, 'warning');
-    }
-  };
+  const sealStones = consumables.seal_stone || 0;
 
   // 카르마 오브 사용
   const handleUseOrb = (slot) => {
     const result = useOrb(slot);
     if (result.success) {
       showNotification('재굴림 성공!', result.message, 'success');
+    } else {
+      showNotification('실패', result.message, 'warning');
+    }
+  };
+
+  // 봉인석으로 옵션 잠금/해제
+  const handleUseSealStone = (slot, statIndex) => {
+    const result = useSealStone(slot, statIndex);
+    if (result.success) {
+      showNotification(result.locked ? '잠금 성공!' : '잠금 해제!', result.message, result.locked ? 'success' : 'info');
     } else {
       showNotification('실패', result.message, 'warning');
     }
@@ -474,10 +474,17 @@ const NewEquipment = () => {
                             </span>
                           </div>
 
+                          {/* 강화 수치 - 좌상단 */}
+                          {(item.enhanceLevel || 0) > 0 && (
+                            <div className="absolute top-0.5 left-0.5 text-[10px] text-yellow-400 font-bold drop-shadow-lg">
+                              +{item.enhanceLevel}
+                            </div>
+                          )}
+
                           {/* 각성 배지 - 우상단 */}
                           {(item.awakeningCount || 0) > 0 && (
-                            <div className="absolute top-0.5 right-0.5 text-[9px] text-yellow-300 font-bold">
-                              ⭐{item.awakeningCount}
+                            <div className="absolute top-0.5 right-0.5 text-[9px] text-purple-300 font-bold">
+                              💎{item.awakeningCount}
                             </div>
                           )}
 
@@ -568,166 +575,285 @@ const NewEquipment = () => {
 
           {/* 하단: 콘솔 (제련/각성/재굴림 등) */}
           <div className="bg-game-panel border border-game-border rounded-lg p-3 flex-1">
-            {/* 재화 표시 */}
+            {/* 재화 표시 - 통일된 회색 톤 */}
             <div className="flex flex-wrap gap-1.5 mb-3">
               <span
-                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-yellow-400 cursor-help"
+                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-300 cursor-help"
                 title="장비 파편 - 장비 제련에 사용"
               >
                 ⚡ {formatNumber(equipmentFragments)}
               </span>
               <span
-                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-purple-400 cursor-help"
+                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-300 cursor-help"
                 title="각성석 - 최대 제련 장비를 각성 (다음 단계로 진화)"
               >
-                ✨ {awakenStones}
+                💎 {awakenStones}
               </span>
               <span
-                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-pink-400 cursor-help"
-                title="완전의 정수 - 하옵/중옵을 극옵으로 변환"
-              >
-                ⚙️ {perfectEssences}
-              </span>
-              <span
-                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-blue-400 cursor-help"
-                title="재굴림 오브 - 장비 옵션 재굴림"
+                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-300 cursor-help"
+                title="재굴림 오브 - 장비 옵션 재굴림 (잠긴 옵션 제외)"
               >
                 🔮 {orbs}
+              </span>
+              <span
+                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-300 cursor-help"
+                title="봉인석 - 재굴림 시 옵션 잠금 (잠금 해제는 무료)"
+              >
+                🔒 {sealStones}
+              </span>
+              <span
+                className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-300 cursor-help"
+                title="하락 방지권 - +10 이상 강화 실패 시 하락 방지 (50층 이상 보스에서 5% 확률로 드랍)"
+              >
+                🛡️ {gameState.downgradeProtection || 0}
               </span>
             </div>
 
             {selectedItemData ? (
               <div className="space-y-2">
-                {/* 선택된 아이템 요약 */}
-                <div className="flex items-center gap-2 p-2 bg-gray-800/50 rounded">
-                  {selectedItemData.type === 'set' ? (
-                    <img
-                      src={getSetItemImage(selectedItemData.setId, selectedItemData.slot)}
-                      alt={selectedItemData.name}
-                      className="w-10 h-10 object-contain"
-                      style={{ imageRendering: 'pixelated' }}
-                    />
-                  ) : (
-                    <img
-                      src={getNormalItemImage(selectedItemData.normalGrade || 'white', selectedItemData.slot)}
-                      alt={selectedItemData.name}
-                      className="w-10 h-10 object-contain"
-                      style={{ imageRendering: 'pixelated' }}
-                    />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-white truncate">
-                      {selectedItemData.name || EQUIPMENT_SLOT_NAMES[selectedItemData.slot]}
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] text-yellow-400">Lv.{selectedItemData.itemLevel}</span>
-                      <span className={`text-[10px] ${upgradesLeft > 0 ? 'text-emerald-400' : 'text-gray-500'}`}>
-                        제련 {10 - upgradesLeft}/10
-                      </span>
-                      {(selectedItemData.awakeningCount || 0) > 0 && (
-                        <span className="text-[10px] text-purple-400">⭐{selectedItemData.awakeningCount}</span>
+                {/* 선택된 아이템 요약 + 기본옵션 */}
+                {(() => {
+                  const mainStat = selectedItemData.stats?.find(stat => stat.isMain);
+                  const currentEnhance = selectedItemData.enhanceLevel || 0;
+                  const enhanceBonusPercent = getEnhanceBonus(currentEnhance);
+
+                  return (
+                    <div className="flex items-center gap-2 p-2 bg-gray-800/50 rounded">
+                      {selectedItemData.type === 'set' ? (
+                        <img
+                          src={getSetItemImage(selectedItemData.setId, selectedItemData.slot)}
+                          alt={selectedItemData.name}
+                          className="w-10 h-10 object-contain"
+                          style={{ imageRendering: 'pixelated' }}
+                        />
+                      ) : (
+                        <img
+                          src={getNormalItemImage(selectedItemData.normalGrade || 'white', selectedItemData.slot)}
+                          alt={selectedItemData.name}
+                          className="w-10 h-10 object-contain"
+                          style={{ imageRendering: 'pixelated' }}
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-white truncate">
+                          {currentEnhance > 0 && <span className="text-yellow-400">+{currentEnhance} </span>}
+                          {selectedItemData.isAncient && <span className="text-amber-300">[고대] </span>}
+                          {selectedItemData.name || EQUIPMENT_SLOT_NAMES[selectedItemData.slot]}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[10px] text-yellow-400">Lv.{selectedItemData.itemLevel}</span>
+                          <span className={`text-[10px] ${upgradesLeft > 0 ? 'text-emerald-400' : 'text-gray-500'}`}>
+                            제련 {10 - upgradesLeft}/10
+                          </span>
+                          {(selectedItemData.awakeningCount || 0) > 0 && (
+                            <span className="text-[10px] text-purple-400">💎{selectedItemData.awakeningCount}</span>
+                          )}
+                        </div>
+                      </div>
+                      {/* 기본옵션 - 이름 옆에 표시 */}
+                      {mainStat && selectedItemData._isEquipped && (
+                        <div className="text-right border-l border-gray-700 pl-3 min-w-[90px]">
+                          <div className="text-[10px] text-gray-400">{mainStat.name}</div>
+                          <div className="text-sm text-white font-bold">
+                            {formatStatValue(mainStat.value, mainStat.suffix)}{mainStat.suffix || ''}
+                            {enhanceBonusPercent > 0 && (
+                              <span className="text-amber-400 ml-1">
+                                +{formatStatValue(mainStat.value * enhanceBonusPercent / 100, mainStat.suffix)}{mainStat.suffix || ''}
+                              </span>
+                            )}
+                          </div>
+                          {enhanceBonusPercent > 0 && (
+                            <div className="text-[8px] text-amber-400">강화 +{currentEnhance} → +{enhanceBonusPercent}%</div>
+                          )}
+                        </div>
                       )}
                     </div>
-                  </div>
-                </div>
+                  );
+                })()}
 
                 {/* 액션 버튼들 */}
                 <div className="space-y-1.5">
                   {selectedItemData._isEquipped ? (
                     <>
-                      {/* 제련/각성 + 재굴림 버튼 (한 줄) */}
-                      <div className="flex gap-1.5">
-                        {/* 제련/각성 버튼 */}
+                      {/* 제련/각성 버튼 */}
+                      <div className="flex gap-1">
                         {upgradesLeft > 0 ? (
                           <button
                             onClick={() => handleUpgrade(selectedItemData._equippedSlot)}
                             disabled={!canUpgrade}
-                            className={`flex-1 px-2 py-2 rounded text-xs font-bold flex items-center justify-between ${
+                            className={`flex-1 px-2 py-2 rounded text-xs font-bold flex items-center justify-center gap-2 ${
                               canUpgrade
-                                ? 'bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white'
+                                ? 'bg-gray-600 hover:bg-gray-500 text-white'
                                 : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                             }`}
                           >
                             <span>🔥 제련</span>
-                            <span className="text-[10px]">⚡{formatNumber(upgradeCost)}</span>
+                            <span className="text-[10px] opacity-80">⚡ {formatNumber(upgradeCost)}</span>
                           </button>
                         ) : (
                           <button
                             onClick={() => handleAwaken(selectedItemData._equippedSlot)}
                             disabled={!canAwaken}
-                            className={`flex-1 px-2 py-2 rounded text-xs font-bold flex items-center justify-between ${
+                            className={`flex-1 px-2 py-2 rounded text-xs font-bold flex items-center justify-center gap-2 ${
                               canAwaken
-                                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                                ? 'bg-gray-600 hover:bg-gray-500 text-white'
                                 : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                             }`}
                           >
-                            <span>✨ 각성</span>
-                            <span className="text-[10px]">💎1</span>
-                          </button>
-                        )}
-
-                        {/* 재굴림 버튼 */}
-                        {orbs > 0 && (
-                          <button
-                            onClick={() => handleUseOrb(selectedItemData._equippedSlot)}
-                            className="flex-1 px-2 py-2 rounded text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-between"
-                          >
-                            <span>🔮 재굴림</span>
-                            <span className="text-[10px]">🔮1</span>
+                            <span>💎 각성</span>
+                            <span className="text-[10px] opacity-80">💎 1</span>
                           </button>
                         )}
                       </div>
 
-                      {/* 잠재옵션 & 극옵 변환 */}
+                      {/* 강화 섹션 */}
+                      {(() => {
+                        const enhanceCost = getEnhanceCost(selectedItemData);
+                        const successRate = getEnhanceSuccessRate(selectedItemData);
+                        const downgradeAmount = getDowngradeAmount(selectedItemData);
+                        const currentEnhance = selectedItemData.enhanceLevel || 0;
+                        const playerGold = gameState.player?.gold || 0;
+                        const downgradeProtection = gameState.downgradeProtection || 0;
+                        const protectionRequired = getProtectionRequired(currentEnhance);
+                        const canEnhance = playerGold >= enhanceCost && currentEnhance < ENHANCE_CONFIG.maxEnhance;
+                        const canUseProtection = downgradeProtection >= protectionRequired && protectionRequired > 0;
+
+                        const handleEnhanceClick = (useProtection = false) => {
+                          if (!selectedItemData._equippedSlot) return;
+                          enhanceEquipment(selectedItemData._equippedSlot, useProtection);
+                        };
+
+                        return (
+                          <div className="space-y-1">
+                            {/* 강화 정보 바 */}
+                            <div className="flex items-center justify-between bg-gray-800/70 rounded px-2 py-1.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[9px] text-gray-400">성공</span>
+                                <div className="w-12 h-2 bg-gray-700 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full transition-all ${
+                                      successRate >= 80 ? 'bg-green-500' :
+                                      successRate >= 50 ? 'bg-yellow-500' :
+                                      successRate >= 30 ? 'bg-orange-500' : 'bg-red-500'
+                                    }`}
+                                    style={{ width: `${successRate}%` }}
+                                  />
+                                </div>
+                                <span className={`text-[10px] font-bold ${
+                                  successRate >= 80 ? 'text-green-400' :
+                                  successRate >= 50 ? 'text-yellow-400' :
+                                  successRate >= 30 ? 'text-orange-400' : 'text-red-400'
+                                }`}>{successRate}%</span>
+                                {downgradeAmount > 0 && (
+                                  <span className="text-[9px] text-red-400">📉-{downgradeAmount}</span>
+                                )}
+                              </div>
+                              <span className="text-[9px] text-yellow-400">💰{formatNumber(enhanceCost)}</span>
+                            </div>
+
+                            {/* 강화 버튼들 (한 줄) */}
+                            <div className="flex gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleEnhanceClick(false)}
+                                disabled={!canEnhance}
+                                className={`flex-1 px-2 py-2 rounded text-xs font-bold flex items-center justify-center gap-1 ${
+                                  canEnhance
+                                    ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                                    : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                                }`}
+                              >
+                                <span>🔨 강화</span>
+                                <span className="text-[10px]">+{currentEnhance}</span>
+                              </button>
+                              {/* 하락 방지 강화 (+10 이상에서만) */}
+                              {downgradeAmount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleEnhanceClick(true)}
+                                  disabled={!canEnhance || !canUseProtection}
+                                  className={`flex-1 px-2 py-2 rounded text-xs font-bold flex items-center justify-center gap-1 ${
+                                    canEnhance && canUseProtection
+                                      ? 'bg-orange-600 hover:bg-orange-500 text-white'
+                                      : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                                  }`}
+                                  title={`하락 방지권 ${protectionRequired}개 필요`}
+                                >
+                                  <span>🛡️ 하락방지</span>
+                                  <span className="text-[10px]">{protectionRequired}개</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* 잠재옵션 + 재굴림 */}
                       {selectedItemData.stats && (() => {
                         const subStats = selectedItemData.stats
                           .map((stat, idx) => ({ ...stat, index: idx }))
                           .filter(stat => !stat.isMain);
-
-                        if (subStats.length === 0) return null;
-
-                        const hasNonMaxStats = subStats.some(stat => stat.optionGrade !== OPTION_GRADES.HIGH);
+                        const lockedCount = subStats.filter(s => s.locked).length;
+                        const canReroll = orbs >= 1 && (lockedCount === 0 || sealStones >= lockedCount);
 
                         return (
-                          <div className="bg-gray-800/50 rounded p-2 space-y-1.5">
-                            <div className="text-[10px] text-cyan-400 font-bold flex items-center justify-between">
-                              <span>⚙️ 잠재옵션</span>
-                              {hasNonMaxStats && <span className="text-gray-400">정수: {perfectEssences}</span>}
+                          <div className="bg-gray-800/50 rounded p-2">
+                            {/* 잠재옵션 헤더 + 재굴림 버튼 */}
+                            <div className="flex items-center justify-between mb-1.5">
+                              <div className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                                <span>⚙️ 잠재옵션</span>
+                                {selectedItemData.isAncient && <span className="text-amber-400">(고대 4옵)</span>}
+                                <span className="text-gray-500">🔒{lockedCount}</span>
+                              </div>
+                              {/* 재굴림 버튼 */}
+                              <button
+                                onClick={() => handleUseOrb(selectedItemData._equippedSlot)}
+                                disabled={!canReroll}
+                                className={`px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 ${
+                                  canReroll
+                                    ? 'bg-purple-600 hover:bg-purple-500 text-white'
+                                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                                }`}
+                                title={lockedCount > 0 ? `재굴림 시 봉인석 ${lockedCount}개 소모` : '재굴림'}
+                              >
+                                <span>🔮 재굴림</span>
+                                {lockedCount > 0 && <span className="text-cyan-300">🔒{lockedCount}</span>}
+                              </button>
                             </div>
-                            {subStats.map(stat => {
-                              const isMaxGrade = stat.optionGrade === OPTION_GRADES.HIGH;
-                              const gradeLabel = stat.optionGrade === OPTION_GRADES.LOW ? '하옵' :
-                                                stat.optionGrade === OPTION_GRADES.MID ? '중옵' : '극옵';
-                              const gradeColor = stat.optionGrade === OPTION_GRADES.LOW ? '#9CA3AF' :
-                                                stat.optionGrade === OPTION_GRADES.MID ? '#4ADE80' : '#EF4444'; // 하옵-회색, 중옵-연두, 극옵-빨강
-                              const statValue = `+${formatStatValue(stat.value, stat.suffix)}${stat.suffix || ''}`;
-                              return (
-                                <div key={stat.index} className="flex items-center gap-1">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between text-[10px]">
-                                      <span style={{ color: gradeColor }}>{stat.name}</span>
-                                      <span style={{ color: gradeColor }} className="font-bold">{statValue}</span>
-                                    </div>
-                                    <div className="text-[9px]" style={{ color: gradeColor, opacity: 0.7 }}>
-                                      ({gradeLabel})
-                                    </div>
-                                  </div>
-                                  {!isMaxGrade && (
-                                    <button
-                                      onClick={() => handleUsePerfectEssence(selectedItemData._equippedSlot, stat.index)}
-                                      disabled={perfectEssences < 1}
-                                      className={`px-1.5 py-1 rounded text-[9px] font-bold whitespace-nowrap ${
-                                        perfectEssences >= 1
-                                          ? 'bg-pink-600 hover:bg-pink-500 text-white'
-                                          : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                                      }`}
+                            {/* 2열 배치 - 자물쇠 토글 포함 */}
+                            {subStats.length > 0 && (
+                              <div className="grid grid-cols-2 gap-1">
+                                {subStats.map(stat => {
+                                  const gradeLabel = stat.optionGrade === OPTION_GRADES.LOW ? '하' :
+                                                    stat.optionGrade === OPTION_GRADES.MID ? '중' : '극';
+                                  const isHigh = stat.optionGrade === OPTION_GRADES.HIGH;
+                                  const isMid = stat.optionGrade === OPTION_GRADES.MID;
+                                  const gradeColor = isHigh ? '#F59E0B' : '#FFFFFF';
+                                  const statValue = `+${formatStatValue(stat.value, stat.suffix)}${stat.suffix || ''}`;
+                                  const isLocked = stat.locked;
+                                  return (
+                                    <div
+                                      key={stat.index}
+                                      className={`flex items-center justify-between text-[9px] px-1.5 py-1 rounded ${isLocked ? 'bg-gray-600/50' : 'bg-gray-700/50'}`}
                                     >
-                                      극옵화 ⚙️1
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })}
+                                      {/* 자물쇠 토글 버튼 (무료) */}
+                                      <button
+                                        onClick={() => handleUseSealStone(selectedItemData._equippedSlot, stat.index)}
+                                        className="mr-1 text-sm transition-transform hover:scale-110 cursor-pointer"
+                                        title={isLocked ? '잠금 해제' : '잠금 (재굴림 시 봉인석 소모)'}
+                                      >
+                                        {isLocked ? '🔒' : '🔓'}
+                                      </button>
+                                      <div className="flex items-center gap-0.5 min-w-0 flex-1">
+                                        <span style={{ color: gradeColor }} className={`truncate ${isMid || isHigh ? 'font-bold' : ''}`}>{stat.name}</span>
+                                        <span className="text-gray-600">({gradeLabel})</span>
+                                      </div>
+                                      <span style={{ color: gradeColor }} className={`ml-1 ${isMid || isHigh ? 'font-bold' : ''}`}>{statValue}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })()}
@@ -751,7 +877,7 @@ const NewEquipment = () => {
                           handleEquip(selectedItemData.id);
                           setSelectedItem(null);
                         }}
-                        className="w-full px-3 py-2 rounded text-xs font-bold bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white"
+                        className="w-full px-3 py-2 rounded text-xs font-bold bg-gray-600 hover:bg-gray-500 text-white"
                       >
                         ⚔️ 장착
                       </button>
@@ -761,8 +887,8 @@ const NewEquipment = () => {
                           onClick={() => handleToggleLock(selectedItemData.id)}
                           className={`flex-1 px-2 py-1.5 text-xs rounded font-bold ${
                             selectedItemData.locked
-                              ? 'bg-yellow-600 hover:bg-yellow-500 text-white'
-                              : 'bg-gray-600 hover:bg-gray-500 text-gray-200'
+                              ? 'bg-amber-700 hover:bg-amber-600 text-white'
+                              : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
                           }`}
                         >
                           {selectedItemData.locked ? '🔓 잠금해제' : '🔒 잠금'}
@@ -777,8 +903,8 @@ const NewEquipment = () => {
                           disabled={selectedItemData.locked}
                           className={`flex-1 px-2 py-1.5 text-xs rounded ${
                             selectedItemData.locked
-                              ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                              : 'bg-orange-600 hover:bg-orange-500 text-white'
+                              ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                              : 'bg-gray-600 hover:bg-gray-500 text-white'
                           }`}
                         >
                           🔨 분해
@@ -857,7 +983,7 @@ const NewEquipment = () => {
               <div className="relative">
                 <button
                   onClick={() => setShowDisassembleOptions(!showDisassembleOptions)}
-                  className="px-2 py-1 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded text-[10px] flex items-center gap-1"
+                  className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white font-bold rounded text-[10px] flex items-center gap-1"
                 >
                   🔨 일괄분해 ▾
                 </button>
@@ -887,7 +1013,7 @@ const NewEquipment = () => {
                         disabled={selectedGrades.length === 0}
                         className={`flex-1 px-2 py-1 rounded text-[10px] font-bold ${
                           selectedGrades.length > 0
-                            ? 'bg-orange-600 hover:bg-orange-500 text-white'
+                            ? 'bg-gray-600 hover:bg-gray-500 text-white'
                             : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                         }`}
                       >
@@ -895,7 +1021,7 @@ const NewEquipment = () => {
                       </button>
                       <button
                         onClick={() => handleDisassembleAll(null)}
-                        className="flex-1 px-2 py-1 bg-red-600 hover:bg-red-500 text-white rounded text-[10px] font-bold"
+                        className="flex-1 px-2 py-1 bg-gray-500 hover:bg-gray-400 text-white rounded text-[10px] font-bold"
                       >
                         전체 분해
                       </button>
@@ -1007,6 +1133,13 @@ const NewEquipment = () => {
                                 >
                                   {item.itemLevel}
                                 </div>
+
+                                {/* 강화 수치 - 좌하단 */}
+                                {(item.enhanceLevel || 0) > 0 && (
+                                  <div className="absolute bottom-0 left-0 text-[8px] font-black text-yellow-400 px-0.5 drop-shadow-lg">
+                                    +{item.enhanceLevel}
+                                  </div>
+                                )}
 
                                 {/* 장착/잠금 마크 - 우상단 */}
                                 {isEquippedItem ? (

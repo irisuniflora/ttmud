@@ -140,6 +140,8 @@ const ItemTooltip = ({ item, children, equipment = {}, disabled = false }) => {
             className="font-bold text-sm"
             style={{ color: getNameColor(), textShadow: '0 0 10px rgba(0,0,0,0.8)' }}
           >
+            {(item.enhanceLevel || 0) > 0 && <span className="text-yellow-400">+{item.enhanceLevel} </span>}
+            {isAncient && <span className="text-amber-300">[고대] </span>}
             {item.name || `${EQUIPMENT_SLOT_NAMES[item.slot]}`}
           </div>
 
@@ -170,7 +172,13 @@ const ItemTooltip = ({ item, children, equipment = {}, disabled = false }) => {
           {(item.awakeningCount || 0) > 0 && (
             <div className="flex justify-between items-center text-xs mt-1">
               <span className="text-gray-400">각성</span>
-              <span className="text-purple-400 font-bold">⭐ {item.awakeningCount}</span>
+              <span className="text-purple-400 font-bold">💎 {item.awakeningCount}</span>
+            </div>
+          )}
+          {(item.enhanceLevel || 0) > 0 && (
+            <div className="flex justify-between items-center text-xs mt-1">
+              <span className="text-gray-400">강화</span>
+              <span className="text-yellow-400 font-bold">+{item.enhanceLevel}</span>
             </div>
           )}
         </div>

@@ -24,13 +24,13 @@ const SHOP_ITEMS = [
     rarity: 'legendary'
   },
   {
-    id: 'stat_max_item',
-    name: '완벽의 정수',
-    description: '장비 옵션을 극옵으로 변경',
-    icon: '⚙️',
-    cost: 2000,
-    weeklyLimit: 5,
-    rarity: 'mythic'
+    id: 'seal_stone',
+    name: '봉인석',
+    description: '재굴림 시 옵션 잠금 (잠긴 옵션은 유지)',
+    icon: '🔒',
+    cost: 1500,
+    weeklyLimit: 10,
+    rarity: 'epic'
   },
   {
     id: 'gear_orb',
@@ -148,8 +148,8 @@ const BossCoinShop = () => {
         case 'monster_selection_ticket':
           engine.state.consumables.monster_selection_ticket = (engine.state.consumables.monster_selection_ticket || 0) + amount;
           break;
-        case 'stat_max_item':
-          engine.state.consumables.stat_max_item = (engine.state.consumables.stat_max_item || 0) + amount;
+        case 'seal_stone':
+          engine.state.consumables.seal_stone = (engine.state.consumables.seal_stone || 0) + amount;
           break;
         case 'gear_orb':
           engine.state.orbs = (engine.state.orbs || 0) + amount;
@@ -201,10 +201,10 @@ const BossCoinShop = () => {
             monster_selection_ticket: (prev.consumables?.monster_selection_ticket || 0) + amount
           };
           break;
-        case 'stat_max_item':
+        case 'seal_stone':
           newState.consumables = {
             ...prev.consumables,
-            stat_max_item: (prev.consumables?.stat_max_item || 0) + amount
+            seal_stone: (prev.consumables?.seal_stone || 0) + amount
           };
           break;
         case 'gear_orb':

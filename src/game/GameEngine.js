@@ -14,7 +14,10 @@ import {
   calculateHeroCardDropChance,
   calculateHeroScrollDropChance,
   calculateHeroScrollAmount,
-  getMonstersPerFloor
+  getMonstersPerFloor,
+  CLASS_CONFIG,
+  canAdvanceClass,
+  getClassBonuses
 } from '../data/gameBalance.js';
 // import { isWorldBossActive, WORLD_BOSS_CONFIG, AUCTION_CONFIG, AUCTION_ITEMS } from '../data/worldBoss.js'; // 월드보스 시스템 비활성화
 // 새 장비 시스템
@@ -34,10 +37,16 @@ import {
   canUpgradeItem,
   awakenItem,
   rerollItemPotentials,
-  perfectPotentialStat,
-  OPTION_GRADES
+  togglePotentialLock,
+  OPTION_GRADES,
+  ENHANCE_CONFIG,
+  getEnhanceCost,
+  getEnhanceSuccessRate,
+  getDowngradeAmount,
+  getProtectionRequired
 } from '../data/equipmentSets.js';
 import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js';
+import { MONSTER_SETS, checkSetCompletion, calculateSetBonuses as calcMonsterSetBonuses } from '../data/monsterSets.js';
 
 export class GameEngine {
   constructor(initialState) {
@@ -91,9 +100,11 @@ export class GameEngine {
         highestFloor: 1, // 최고 층
         monstersKilledInFloor: 0, // 현재 층에서 잡은 몬스터 수
         floorState: 'farming', // 'farming', 'boss_ready', 'boss_battle'
-        bossTimer: 0, // 보스 타이머 (초)
+        bossTimer: 0, // 보스 타이머 (초) - 표시용
+        bossEndTime: 0, // 보스 전투 종료 시간 (timestamp)
         hasFailedBoss: false, // 이번 층에서 보스 실패한 적 있는지
         floorLocked: false, // 층 고정 여부
+        classLevel: 0, // 전직 단계 (0=초심자, 1=숙련자, 2=전문가, 3=마스터)
         stats: {
           baseAtk: PLAYER_BASE_STATS.baseAtk,
           critChance: PLAYER_BASE_STATS.critChance,
@@ -177,7 +188,9 @@ export class GameEngine {
       // 고대 유물 시스템
       relicFragments: 500, // 테스트용 고대 유물 500개
       relicGachaCount: 0,
-      prestigeRelics: {}
+      prestigeRelics: {},
+      // 다이아몬드 (프리미엄 재화)
+      diamonds: 100 // 테스트용 100개
     };
   }
 
@@ -295,13 +308,8 @@ export class GameEngine {
       }
     });
 
-    // 고정 공격력 먼저 추가
+    // 고정 공격력 먼저 추가 (공%는 나중에 최종 합계에 적용)
     playerDmg += equipmentAttackFlat;
-
-    // 스킬 보너스 + 장비 공격력% 보너스
-    playerDmg *= (1 + (skillEffects.atkPercent || 0) / 100);
-    playerDmg *= (1 + (skillEffects.permanentDmgPercent || 0) / 100);
-    playerDmg *= (1 + equipmentAttackPercent / 100);
 
     // 영웅 버프 계산
     let heroBuffs = {
@@ -345,8 +353,29 @@ export class GameEngine {
       heroAttack *= (1 + skillEffects.heroDmgPercent / 100);
     }
 
-    // 영웅 공격력 추가
+    // 기본 + 장비고정 + 동료 합산
     let totalDmg = playerDmg + heroAttack;
+
+    // 도감 세트 보너스 가져오기
+    const setBonus = this.calculateSetBonuses();
+
+    // 공격력% 보너스들을 합연산 (스킬 + 장비 + 도감세트)
+    let totalAttackPercent = 0;
+    totalAttackPercent += (skillEffects.atkPercent || 0);
+    totalAttackPercent += (skillEffects.permanentDmgPercent || 0);
+    totalAttackPercent += equipmentAttackPercent;
+    totalAttackPercent += (setBonus.attackPercent || 0);
+
+    // 합연산된 공%를 한번에 적용
+    if (totalAttackPercent > 0) {
+      totalDmg *= (1 + totalAttackPercent / 100);
+    }
+
+    // 전직 보너스만 따로 곱연산 적용
+    const classBonuses = this.getClassBonuses();
+    if (classBonuses.attackPercent > 0) {
+      totalDmg *= (1 + classBonuses.attackPercent / 100);
+    }
 
     // 방생 보너스 곱연산 적용 (101층 이상은 1-100층으로 매핑)
     const baseFloor = player.floor > 100 ? ((player.floor - 1) % 100) + 1 : player.floor;
@@ -412,9 +441,9 @@ export class GameEngine {
     // 유물: 보복자의 인장 (크리티컬 데미지 증가)
     const relicCritDmg = (relicEffects.critDmg || 0) * damageRelicMultiplier;
 
-    // 치명타 확률 합산 (장비 + 영웅 + 스킬 + 유물)
-    let critChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroBuffs.critChance + relicCritChance;
-    let critDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroBuffs.critDmg + relicCritDmg;
+    // 치명타 확률 합산 (장비 + 영웅 + 스킬 + 유물 + 전직 + 도감세트)
+    let critChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroBuffs.critChance + relicCritChance + (classBonuses.critChance || 0) + (setBonus.critChance || 0);
+    let critDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroBuffs.critDmg + relicCritDmg + (classBonuses.critDamage || 0) + (setBonus.critDmg || 0);
 
     // 치명타 확률 100% 캡 - 초과분은 치명타 데미지로 전환
     // 100~200%: 초과 1%당 치뎀 3%
@@ -438,27 +467,30 @@ export class GameEngine {
 
     let finalDmg = totalDmg;
 
-    // 보스 데미지 증가 (유물 + 장비)
+    // 보스 데미지 증가 (유물 + 장비 + 도감세트)
     if (this.state.currentMonster?.isBoss) {
-      // 유물: 거인 학살자 (보스 데미지 증가)
-      if (relicEffects.bossDamage > 0) {
-        finalDmg *= (1 + (relicEffects.bossDamage * damageRelicMultiplier) / 100);
-      }
-      // 장비: bossDamageIncrease 스탯
-      if (equipmentBossDamageIncrease > 0) {
-        finalDmg *= (1 + equipmentBossDamageIncrease / 100);
+      // 보스 데미지% 합연산 (유물 + 장비 + 도감세트)
+      let totalBossDamagePercent = 0;
+      totalBossDamagePercent += (relicEffects.bossDamage || 0) * damageRelicMultiplier;
+      totalBossDamagePercent += equipmentBossDamageIncrease;
+      totalBossDamagePercent += (setBonus.bossDamage || 0);
+
+      if (totalBossDamagePercent > 0) {
+        finalDmg *= (1 + totalBossDamagePercent / 100);
       }
     }
 
-    // 체력 퍼센트 데미지 (다크 리퍼)
-    if (heroBuffs.hpPercentDmgChance > 0 && Math.random() * 100 < heroBuffs.hpPercentDmgChance) {
-      const hpPercentDmg = Math.floor(this.state.currentMonster.maxHp * (heroBuffs.hpPercentDmgValue / 100));
+    // 체력 퍼센트 데미지 (영웅 + 도감세트)
+    const totalHpPercentDmg = heroBuffs.hpPercentDmgValue + (setBonus.hpPercentDmg || 0);
+    if (heroBuffs.hpPercentDmgChance > 0 && totalHpPercentDmg > 0 && Math.random() * 100 < heroBuffs.hpPercentDmgChance) {
+      const hpPercentDmg = Math.floor(this.state.currentMonster.maxHp * (totalHpPercentDmg / 100));
       finalDmg += hpPercentDmg;
     }
 
-    // 도트 데미지 (아크메이지)
-    if (heroBuffs.dotDmgPercent > 0) {
-      const dotDmg = Math.floor(totalDmg * (heroBuffs.dotDmgPercent / 100));
+    // 도트 데미지 (영웅 + 도감세트)
+    const totalDotPercent = heroBuffs.dotDmgPercent + (setBonus.dotDamage || 0);
+    if (totalDotPercent > 0) {
+      const dotDmg = Math.floor(totalDmg * (totalDotPercent / 100));
       finalDmg += dotDmg;
     }
 
@@ -562,8 +594,9 @@ export class GameEngine {
       this.addCombatLog('🏆 기적의 성배 발동! 골드 10배!', 'gold_10x');
     }
 
-    // 기본 골드 보너스
-    let totalGoldBonus = player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus;
+    // 기본 골드 보너스 (전직 보너스 포함)
+    const classBonusesForGold = this.getClassBonuses();
+    let totalGoldBonus = player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus + (classBonusesForGold.goldPercent || 0);
 
     // 유물: 황금의 예언서 (모든 골드 획득량 증가)
     // goldRelicBonus(부의 보물상자)로 골드 유물 효과 증폭
@@ -798,10 +831,18 @@ export class GameEngine {
           this.checkFloorAchievements();
         }
       }
+
+      // 파괴 방지권 드랍 (보스 처치 시 5% 확률, 50층 이상부터)
+      if (player.floor >= 50 && Math.random() < 0.05) {
+        this.state.destructionProtection = (this.state.destructionProtection || 0) + 1;
+        this.addCombatLog(`🛡️ 파괴 방지권 획득! (보유: ${this.state.destructionProtection}개)`, 'drop');
+      }
+
       // 층 고정이든 아니든 상태 초기화
       player.monstersKilledInFloor = 0;
       player.floorState = 'farming';
       player.bossTimer = 0;
+      player.bossEndTime = 0;
       player.hasFailedBoss = false; // 새 층 시작 시 초기화
 
       // 현재 층의 일반 몬스터 생성
@@ -818,7 +859,9 @@ export class GameEngine {
           player.floorState = 'boss_battle';
           // 유물: 시간의 모래시계 (보스 제한시간 증가)
           const bossRelicEffects = this.getRelicEffects();
-          player.bossTimer = FLOOR_CONFIG.bossTimeLimit + (bossRelicEffects.bossTimeLimit || 0);
+          const totalBossTime = FLOOR_CONFIG.bossTimeLimit + (bossRelicEffects.bossTimeLimit || 0);
+          player.bossTimer = totalBossTime;
+          player.bossEndTime = Date.now() + (totalBossTime * 1000); // 종료 시간 설정
           // 보스 몬스터 생성
           this.state.currentMonster = this.spawnMonster(player.floor, true, false, false, collection);
           this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
@@ -1197,7 +1240,7 @@ export class GameEngine {
     if (Math.random() < dropRate) {
       if (!this.state.sealedZone) {
         this.state.sealedZone = {
-          tickets: 0,
+          tickets: 30, // 테스트용 초기 도전권
           ownedInscriptions: [],
           unlockedBosses: ['vecta'],
           unlockedInscriptionSlots: 1
@@ -1309,7 +1352,7 @@ export class GameEngine {
     if (lastDay !== currentDay || lastMonth !== currentMonth || lastYear !== currentYear) {
       if (!this.state.sealedZone) {
         this.state.sealedZone = {
-          tickets: 0,
+          tickets: 30, // 테스트용 초기 도전권
           ownedInscriptions: [],
           unlockedBosses: ['vecta'],
           unlockedInscriptionSlots: 1
@@ -1489,7 +1532,7 @@ export class GameEngine {
     return true;
   }
 
-  // 환생
+  // 귀환 (레벨 유지, 1층으로 돌아감)
   prestige() {
     const { player } = this.state;
 
@@ -1525,7 +1568,7 @@ export class GameEngine {
       }
     }
 
-    // 유물: 심연의 서 (환생당 고대 유물 획득량 증가%)
+    // 유물: 심연의 서 (귀환당 고대 유물 획득량 증가%)
     let totalBonus = 1;
     if (relicEffects.relicFragmentPercent > 0) {
       totalBonus += relicEffects.relicFragmentPercent / 100;
@@ -1537,29 +1580,66 @@ export class GameEngine {
 
     fragmentsGained = Math.floor(fragmentsGained * totalBonus);
 
-    // 리셋 (일부 제외)
-    const newState = this.getDefaultState();
-    newState.player.prestigePoints = player.prestigePoints;
-    newState.player.totalPrestiges = player.totalPrestiges;
-    newState.relicFragments = (this.state.relicFragments || 0) + fragmentsGained;
-    newState.relicGachaCount = this.state.relicGachaCount || 0;
-    newState.prestigeRelics = this.state.prestigeRelics || {};
-    newState.skillLevels = { ...this.state.skillLevels };
-    // 컬렉션 복사하되 영웅 카드와 영웅 데이터는 초기화
-    newState.collection = {
-      ...this.state.collection,
-      heroCards: {}, // 영웅 카드 초기화
-    };
-    newState.heroes = {}; // 영웅 각인 데이터 초기화
-    newState.statistics.totalPrestiges = player.totalPrestiges;
+    // 귀환: 레벨/스탯은 유지하고 1층으로만 돌아감
+    // 유지되는 것: 레벨, 경험치, 스탯, 장비, 인벤토리, 스킬, 컬렉션, 영웅, 봉인구역 등
+    // 초기화되는 것: 층수만 1층으로
 
-    // 환생 스킬 효과 적용
-    const skillEffects = getTotalSkillEffects(this.state.skillLevels);
-    newState.player.gold += skillEffects.startingGold || 0;
-    newState.player.level += skillEffects.startingLevel || 0;
+    // 유물 조각 추가
+    this.state.relicFragments = (this.state.relicFragments || 0) + fragmentsGained;
 
-    this.state = newState;
+    // 1층으로 귀환
+    player.floor = 1;
+    player.highestFloor = Math.max(player.highestFloor || 1, 1);
+    player.monstersKilledInFloor = 0;
+    player.floorState = 'farming';
+    player.bossTimer = 0;
+    player.bossEndTime = 0;
+    player.hasFailedBoss = false;
+
+    // 새 몬스터 스폰
+    this.state.currentMonster = this.spawnMonster(1, false, false, false, this.state.collection);
+
+    // 통계 업데이트
+    if (!this.state.statistics) {
+      this.state.statistics = {};
+    }
+    this.state.statistics.totalPrestiges = player.totalPrestiges;
+
     return true;
+  }
+
+  // 전직
+  advanceClass() {
+    const { player } = this.state;
+    const currentClassLevel = player.classLevel || 0;
+
+    // 전직 가능 여부 확인
+    if (!canAdvanceClass(currentClassLevel, player.level)) {
+      return { success: false, message: '전직 조건을 충족하지 못했습니다.' };
+    }
+
+    // 다음 전직 단계
+    const nextClassLevel = currentClassLevel + 1;
+    const nextClassData = CLASS_CONFIG.levels[nextClassLevel];
+
+    if (!nextClassData) {
+      return { success: false, message: '더 이상 전직할 수 없습니다.' };
+    }
+
+    // 전직 실행
+    player.classLevel = nextClassLevel;
+
+    return {
+      success: true,
+      message: `${nextClassData.name}(으)로 전직했습니다!`,
+      newClass: nextClassData
+    };
+  }
+
+  // 전직 보너스 가져오기
+  getClassBonuses() {
+    const classLevel = this.state.player.classLevel || 0;
+    return getClassBonuses(classLevel);
   }
 
   // 스킬 레벨업
@@ -1655,7 +1735,9 @@ export class GameEngine {
 
     // 유물: 시간의 모래시계 (보스 제한시간 증가)
     const bossTimeBonus = relicEffects.bossTimeLimit || 0;
-    player.bossTimer = FLOOR_CONFIG.bossTimeLimit + bossTimeBonus;
+    const totalBossTime = FLOOR_CONFIG.bossTimeLimit + bossTimeBonus;
+    player.bossTimer = totalBossTime;
+    player.bossEndTime = Date.now() + (totalBossTime * 1000); // 종료 시간 설정
 
     // 보스 몬스터 생성
     this.state.currentMonster = this.spawnMonster(player.floor, true, false, false, collection);
@@ -1729,11 +1811,17 @@ export class GameEngine {
       this.addCombatLog('🏆 기적의 성배 발동! 골드 10배!', 'gold_10x');
     }
 
-    // 기본 골드 보너스
-    let totalGoldBonus = player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus;
+    // 기본 골드 보너스 (전직 보너스 포함)
+    const classBonusesForBossGold = this.getClassBonuses();
+    let totalGoldBonus = player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus + (classBonusesForBossGold.goldPercent || 0);
+
+    // 유물: 황금의 예언서 (모든 골드 획득량 증가)
+    // goldRelicBonus(부의 보물상자)로 골드 유물 효과 증폭
+    const goldRelicMultiplier = 1 + (relicEffects.goldRelicBonus || 0) / 100;
+    totalGoldBonus += (relicEffects.goldPercent || 0) * goldRelicMultiplier;
 
     // 유물: 보스 골드 보너스 (군주의 금고)
-    totalGoldBonus += (relicEffects.bossGold || 0);
+    totalGoldBonus += (relicEffects.bossGold || 0) * goldRelicMultiplier;
 
     // 보스 도감 보너스 (희귀 보스 수집 시 골드 증가)
     const bossCollectionBonus = this.calculateBossCollectionBonus();
@@ -1770,6 +1858,7 @@ export class GameEngine {
     player.monstersKilledInFloor = 0;
     player.floorState = 'farming';
     player.bossTimer = 0;
+    player.bossEndTime = 0;
     player.hasFailedBoss = false;
 
     // 새 층의 일반 몬스터 생성
@@ -1780,16 +1869,19 @@ export class GameEngine {
     this.addCombatLog(`🌀 차원의 문 발동! ${player.floor - 1}층 보스를 스킵했습니다!`, 'boss_skip');
   }
 
-  // 보스 타이머 업데이트 (매 초마다 호출)
+  // 보스 타이머 업데이트 (시간 기반)
   updateBossTimer() {
     const { player } = this.state;
 
     if (player.floorState !== 'boss_battle') return;
 
-    player.bossTimer -= 1;
+    // 시간 기반으로 남은 시간 계산
+    const now = Date.now();
+    const remainingMs = player.bossEndTime - now;
+    player.bossTimer = Math.max(0, Math.ceil(remainingMs / 1000));
 
     // 시간 초과 시 보스 전투 실패
-    if (player.bossTimer <= 0) {
+    if (remainingMs <= 0) {
       this.failBossBattle();
     }
   }
@@ -1801,6 +1893,7 @@ export class GameEngine {
     // farming 상태로 전환 (무한 사냥 가능)
     player.floorState = 'farming';
     player.bossTimer = 0;
+    player.bossEndTime = 0;
     player.hasFailedBoss = true; // 실패 플래그 설정 (다음부턴 수동 입장)
 
     // 일반 몬스터로 교체
@@ -1831,6 +1924,43 @@ export class GameEngine {
 
     // 층 감소 및 상태 초기화
     player.floor--;
+    player.monstersKilledInFloor = 0;
+    player.floorState = 'farming';
+    player.hasFailedBoss = false;
+
+    // 새 층의 일반 몬스터 생성
+    this.state.currentMonster = this.spawnMonster(player.floor, false, false, false, collection);
+    this.checkRareMonsterSpawn();
+
+    return { success: true, floor: player.floor };
+  }
+
+  // 특정 층으로 바로가기
+  goToFloor(targetFloor) {
+    const { player, collection } = this.state;
+
+    // 유효성 검사
+    if (targetFloor < 1) {
+      return { success: false, message: '1층 미만으로는 이동할 수 없습니다' };
+    }
+
+    // 최고 도달 층수까지만 이동 가능
+    if (targetFloor > player.highestFloor) {
+      return { success: false, message: `최고 ${player.highestFloor}층까지만 이동 가능합니다` };
+    }
+
+    // 보스 전투 중이면 불가
+    if (player.floorState === 'boss_battle') {
+      return { success: false, message: '보스 전투 중에는 층을 이동할 수 없습니다' };
+    }
+
+    // 같은 층이면 무시
+    if (targetFloor === player.floor) {
+      return { success: false, message: '이미 해당 층에 있습니다' };
+    }
+
+    // 층 이동 및 상태 초기화
+    player.floor = targetFloor;
     player.monstersKilledInFloor = 0;
     player.floorState = 'farming';
     player.hasFailedBoss = false;
@@ -2049,9 +2179,9 @@ export class GameEngine {
     };
   }
 
-  // 오브로 아이템 옵션 재조정
+  // 오브로 아이템 옵션 재조정 (잠긴 옵션은 유지, 봉인석 소모)
   useOrb(slot) {
-    const { equipment, player } = this.state;
+    const { equipment, consumables = {} } = this.state;
 
     // 오브 소지 확인
     if (this.state.orbs < 1) {
@@ -2064,7 +2194,20 @@ export class GameEngine {
       return { success: false, message: '해당 슬롯에 장비가 없습니다' };
     }
 
-    // 아이템 재조정 (새 장비 시스템 - potentials 재굴림)
+    // 잠긴 옵션 개수 확인
+    const lockedCount = (item.potentials || item.stats.filter(s => !s.isMain)).filter(p => p.locked).length;
+    const totalPotentials = item.isAncient ? 4 : 3;
+    if (lockedCount >= totalPotentials) {
+      return { success: false, message: '모든 옵션이 잠겨있어 재굴림할 수 없습니다' };
+    }
+
+    // 봉인석 소지 확인 (잠긴 옵션 개수만큼 필요)
+    const sealStones = consumables.seal_stone || 0;
+    if (lockedCount > 0 && sealStones < lockedCount) {
+      return { success: false, message: `봉인석이 부족합니다 (필요: ${lockedCount}개, 보유: ${sealStones}개)` };
+    }
+
+    // 아이템 재조정 (새 장비 시스템 - potentials 재굴림, 잠긴 것 제외)
     const success = rerollItemPotentials(item);
     if (!success) {
       return { success: false, message: '재조정에 실패했습니다' };
@@ -2073,10 +2216,44 @@ export class GameEngine {
     // 오브 소모
     this.state.orbs -= 1;
 
+    // 봉인석 소모 (잠긴 옵션 개수만큼)
+    if (lockedCount > 0) {
+      if (!this.state.consumables) this.state.consumables = {};
+      this.state.consumables.seal_stone = (this.state.consumables.seal_stone || 0) - lockedCount;
+    }
+
     return {
       success: true,
-      message: `${item.name}의 옵션을 재조정했습니다!`,
-      item: item
+      message: lockedCount > 0
+        ? `${item.name}의 잠기지 않은 옵션을 재조정했습니다! (봉인석 -${lockedCount})`
+        : `${item.name}의 옵션을 재조정했습니다!`,
+      item: item,
+      sealStonesUsed: lockedCount
+    };
+  }
+
+  // 잠재옵션 잠금/해제 (무료, 재굴림 시 봉인석 소모)
+  useSealStone(slot, statIndex) {
+    const { equipment } = this.state;
+
+    // 장비 착용 확인
+    const item = equipment[slot];
+    if (!item) {
+      return { success: false, message: '해당 슬롯에 장비가 없습니다' };
+    }
+
+    // 잠금 토글 (무료)
+    const result = togglePotentialLock(item, statIndex);
+    if (!result.success) {
+      return result;
+    }
+
+    return {
+      success: true,
+      locked: result.locked,
+      message: result.locked
+        ? `옵션을 잠갔습니다! (재굴림 시 봉인석 소모)`
+        : `옵션 잠금을 해제했습니다`
     };
   }
 
@@ -2613,7 +2790,6 @@ export class GameEngine {
     this.addCombatLog(`📚 ${monsterName}을(를) 각인했습니다!`, 'inscribe');
 
     // 세트 완성 체크
-    const { MONSTER_SETS, checkSetCompletion } = require('../data/monsterSets');
     const setStatus = checkSetCompletion(setId, collection.inscribedMonsters);
 
     if (setStatus.completed && !collection.completedSets.includes(setId)) {
@@ -2659,8 +2835,7 @@ export class GameEngine {
       };
     }
 
-    const { MONSTER_SETS, calculateSetBonuses } = require('../data/monsterSets');
-    return calculateSetBonuses(collection.completedSets);
+    return calcMonsterSetBonuses(collection.completedSets);
   }
 
   // 전투 로그 추가
@@ -3007,7 +3182,7 @@ export class GameEngine {
     };
   }
 
-  // 장비 템렙 강화
+  // 장비 템렙 강화 (조각 소모)
   upgradeEquipmentLevel(slot) {
     const { equipment, equipmentFragments = 0 } = this.state;
     const item = equipment[slot];
@@ -3019,7 +3194,7 @@ export class GameEngine {
     const result = upgradeItemLevel(item, equipmentFragments);
 
     if (result.success) {
-      this.state.equipmentFragments = equipmentFragments - result.cost;
+      this.state.equipmentFragments = equipmentFragments - result.fragmentCost;
       this.addCombatLog(`⬆️ ${item.name} ${result.message}`, 'upgrade');
     }
 
@@ -3051,6 +3226,89 @@ export class GameEngine {
     }
 
     return result;
+  }
+
+  // 장비 강화 (골드 소모, 스탯 증가)
+  // useProtection: 파괴 방지템 사용 여부
+  enhanceEquipment(slot, useProtection = false) {
+    const { equipment, player } = this.state;
+    const gold = player.gold || 0;
+    const item = equipment[slot];
+
+    if (!item) {
+      return { success: false, message: '장착된 아이템이 없습니다' };
+    }
+
+    const currentEnhance = item.enhanceLevel || 0;
+
+    if (currentEnhance >= ENHANCE_CONFIG.maxEnhance) {
+      return { success: false, message: `최대 강화 수치(+${ENHANCE_CONFIG.maxEnhance})에 도달했습니다` };
+    }
+
+    const cost = getEnhanceCost(item);
+    if (gold < cost) {
+      return { success: false, message: `골드가 부족합니다 (필요: ${cost.toLocaleString()}G)` };
+    }
+
+    // 하락 방지권 사용 시 확인
+    const downgradeProtectionCount = this.state.downgradeProtection || 0;
+    const downgradeAmount = getDowngradeAmount(item);
+    const protectionRequired = getProtectionRequired(currentEnhance);
+
+    if (useProtection && downgradeAmount > 0) {
+      if (downgradeProtectionCount < protectionRequired) {
+        return { success: false, message: `하락 방지권이 부족합니다 (필요: ${protectionRequired}개, 보유: ${downgradeProtectionCount}개)` };
+      }
+      // 하락 방지권 소모 (필요 개수만큼)
+      this.state.downgradeProtection = downgradeProtectionCount - protectionRequired;
+    }
+
+    // 골드 차감
+    player.gold = gold - cost;
+
+    // 성공 확률 체크
+    const successRate = getEnhanceSuccessRate(item);
+    const roll = Math.random() * 100;
+
+    if (roll < successRate) {
+      // 성공
+      item.enhanceLevel = currentEnhance + 1;
+      this.addCombatLog(`🔨 ${item.name} +${item.enhanceLevel} 강화 성공!`, 'upgrade');
+      return {
+        success: true,
+        enhanced: true,
+        newLevel: item.enhanceLevel,
+        cost,
+        message: `+${item.enhanceLevel} 강화 성공!`
+      };
+    } else {
+      // 실패 - +10 이상에서는 무조건 하락 (하락 방지권 미사용 시)
+      if (downgradeAmount > 0 && !useProtection) {
+        const newLevel = Math.max(0, currentEnhance - downgradeAmount);
+        item.enhanceLevel = newLevel;
+        this.addCombatLog(`📉 ${item.name} +${currentEnhance} → +${newLevel} 강화 하락!`, 'upgrade');
+        return {
+          success: true,
+          enhanced: false,
+          downgraded: true,
+          downgradeAmount,
+          newLevel,
+          cost,
+          message: `강화 실패! +${currentEnhance} → +${newLevel} (${downgradeAmount}단계 하락)`
+        };
+      }
+
+      // +10 미만이거나 하락 방지권 사용 시 강화 수치 유지
+      this.addCombatLog(`🔨 ${item.name} +${currentEnhance + 1} 강화 실패...`, 'upgrade');
+      return {
+        success: true,
+        enhanced: false,
+        downgraded: false,
+        currentLevel: currentEnhance,
+        cost,
+        message: `강화 실패! (현재 +${currentEnhance})`
+      };
+    }
   }
 
   // 세트 선택권 사용 (원하는 세트 + 슬롯 선택)

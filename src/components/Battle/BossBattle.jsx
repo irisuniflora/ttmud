@@ -1,0 +1,250 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useGame } from '../../store/GameContext';
+import { formatNumber, getHPPercent } from '../../utils/formatter';
+import { getTotalRelicEffects } from '../../data/prestigeRelics';
+import BattleField from './BattleField';
+
+const MAX_HEARTS = 5;
+const BOSS_ATTACK_INTERVAL = 6000; // 6초마다 보스 공격
+
+const BossBattle = () => {
+  const { gameState, forfeitBossBattle } = useGame();
+  const { player, currentMonster, sealedZone = {}, relics = {} } = gameState;
+
+  const [playerHearts, setPlayerHearts] = useState(MAX_HEARTS);
+  const [bossAttacking, setBossAttacking] = useState(false);
+  const [screenShake, setScreenShake] = useState(false);
+  const [heartLostIndex, setHeartLostIndex] = useState(-1); // 잃어버린 하트 인덱스 (애니메이션용)
+  const attackTimerRef = useRef(null);
+  const lastAttackRef = useRef(Date.now());
+
+  const hpPercent = getHPPercent(currentMonster.hp, currentMonster.maxHp);
+  const relicEffects = getTotalRelicEffects(relics);
+  const tickets = sealedZone.tickets || 0;
+
+  // 보스 공격 타이머 (6초마다)
+  useEffect(() => {
+    if (player.floorState !== 'boss_battle') return;
+
+    const attackInterval = setInterval(() => {
+      // 보스 공격 이펙트
+      setBossAttacking(true);
+      setScreenShake(true);
+
+      // 하트 감소
+      setPlayerHearts(prev => {
+        const newHearts = prev - 1;
+        setHeartLostIndex(newHearts); // 잃어버린 하트 위치
+
+        // 하트 0이 되면 패배
+        if (newHearts <= 0) {
+          setTimeout(() => {
+            forfeitBossBattle();
+          }, 500);
+        }
+
+        return Math.max(0, newHearts);
+      });
+
+      // 이펙트 해제
+      setTimeout(() => {
+        setBossAttacking(false);
+        setScreenShake(false);
+        setHeartLostIndex(-1);
+      }, 500);
+
+    }, BOSS_ATTACK_INTERVAL);
+
+    attackTimerRef.current = attackInterval;
+
+    return () => {
+      if (attackTimerRef.current) {
+        clearInterval(attackTimerRef.current);
+      }
+    };
+  }, [player.floorState, forfeitBossBattle]);
+
+  // 하트 렌더링
+  const renderHearts = () => {
+    const hearts = [];
+    for (let i = 0; i < MAX_HEARTS; i++) {
+      const isFilled = i < playerHearts;
+      const isLost = i === heartLostIndex;
+
+      hearts.push(
+        <span
+          key={i}
+          className={`text-2xl transition-all duration-300 ${
+            isLost ? 'animate-heartLost scale-150 opacity-0' :
+            isFilled ? 'text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]' :
+            'text-gray-700 opacity-50'
+          }`}
+        >
+          {isFilled ? '❤️' : '🖤'}
+        </span>
+      );
+    }
+    return hearts;
+  };
+
+  // 다음 공격까지 남은 시간 계산
+  const [timeToNextAttack, setTimeToNextAttack] = useState(BOSS_ATTACK_INTERVAL / 1000);
+
+  useEffect(() => {
+    if (player.floorState !== 'boss_battle') return;
+
+    const timerInterval = setInterval(() => {
+      const elapsed = Date.now() - lastAttackRef.current;
+      const remaining = Math.max(0, Math.ceil((BOSS_ATTACK_INTERVAL - (elapsed % BOSS_ATTACK_INTERVAL)) / 1000));
+      setTimeToNextAttack(remaining);
+    }, 100);
+
+    return () => clearInterval(timerInterval);
+  }, [player.floorState]);
+
+  // 공격 타이밍 동기화
+  useEffect(() => {
+    if (bossAttacking) {
+      lastAttackRef.current = Date.now();
+    }
+  }, [bossAttacking]);
+
+  return (
+    <div className={`bg-game-panel border border-game-border rounded-lg overflow-hidden ${screenShake ? 'animate-shake' : ''}`}>
+      {/* 상단 헤더 - 보스전 표시 & 도전권 */}
+      <div className="px-3 py-2 bg-gradient-to-r from-red-900 to-red-800 border-b border-red-700">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-red-300 font-bold text-lg">👑 보스전</span>
+            <span className="text-white font-bold">{player.floor}층</span>
+          </div>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-yellow-400 font-bold" title="보스 도전권">
+              🎫 {tickets}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 메인 영역 - 좌우 배치 */}
+      <div className="flex">
+        {/* 좌측: 전투 영역 */}
+        <div className="flex-1 relative">
+          <BattleField />
+
+          {/* 보스 공격 오버레이 */}
+          {bossAttacking && (
+            <div className="absolute inset-0 bg-red-600/30 animate-pulse pointer-events-none z-10">
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-6xl animate-bounce">💥</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 우측: HP바 & 하트 & 컨트롤 */}
+        <div className="w-52 bg-gray-900 border-l border-gray-700 p-3 flex flex-col justify-between">
+          {/* 보스 정보 */}
+          <div>
+            <div className="text-center mb-3">
+              <span className={`font-bold text-base ${
+                currentMonster.isLegendary ? 'text-yellow-300' :
+                currentMonster.isRare ? 'text-fuchsia-400' : 'text-red-400'
+              }`}>
+                {currentMonster.isLegendary ? '💀 ' : currentMonster.isRare ? '👿 ' : '👑 '}
+                {currentMonster.name}
+              </span>
+            </div>
+
+            {/* 보스 HP 바 */}
+            <div className="mb-4">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-red-400 font-bold">보스 HP</span>
+                <span className="text-gray-300">{Math.round(hpPercent)}%</span>
+              </div>
+              <div className="w-full bg-gray-800 rounded-full h-4 overflow-hidden border border-red-600">
+                <div
+                  className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-300"
+                  style={{ width: `${hpPercent}%` }}
+                />
+              </div>
+              <div className="text-center text-[10px] text-gray-400 mt-0.5">
+                {formatNumber(Math.max(0, currentMonster.hp))} / {formatNumber(currentMonster.maxHp)}
+              </div>
+            </div>
+
+            {/* 플레이어 하트 */}
+            <div className="mb-4">
+              <div className="flex justify-between text-xs mb-2">
+                <span className="text-pink-400 font-bold">내 체력</span>
+                <span className="text-gray-300">{playerHearts}/{MAX_HEARTS}</span>
+              </div>
+              <div className="flex justify-center gap-1">
+                {renderHearts()}
+              </div>
+            </div>
+
+            {/* 다음 공격까지 타이머 */}
+            <div className="mb-4">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-orange-400 font-bold">보스 공격까지</span>
+                <span className={`font-bold ${timeToNextAttack <= 2 ? 'text-red-400 animate-pulse' : 'text-yellow-300'}`}>
+                  {timeToNextAttack}초
+                </span>
+              </div>
+              <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden border border-orange-600">
+                <div
+                  className={`h-full transition-all duration-100 ${
+                    timeToNextAttack > 3
+                      ? 'bg-gradient-to-r from-green-600 to-green-400'
+                      : timeToNextAttack > 1
+                        ? 'bg-gradient-to-r from-yellow-600 to-yellow-400'
+                        : 'bg-gradient-to-r from-red-600 to-red-400 animate-pulse'
+                  }`}
+                  style={{ width: `${(timeToNextAttack / 6) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 포기 버튼 */}
+          <button
+            onClick={forfeitBossBattle}
+            className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded font-bold text-sm transition-all border border-gray-600"
+          >
+            ⛔ 포기
+          </button>
+        </div>
+      </div>
+
+      {/* CSS 애니메이션 */}
+      <style>{`
+        .animate-shake {
+          animation: bossShake 0.5s ease-in-out;
+        }
+        @keyframes bossShake {
+          0%, 100% { transform: translateX(0); }
+          10% { transform: translateX(-8px) rotate(-1deg); }
+          20% { transform: translateX(8px) rotate(1deg); }
+          30% { transform: translateX(-6px) rotate(-0.5deg); }
+          40% { transform: translateX(6px) rotate(0.5deg); }
+          50% { transform: translateX(-4px); }
+          60% { transform: translateX(4px); }
+          70% { transform: translateX(-2px); }
+          80% { transform: translateX(2px); }
+          90% { transform: translateX(-1px); }
+        }
+        .animate-heartLost {
+          animation: heartLost 0.5s ease-out forwards;
+        }
+        @keyframes heartLost {
+          0% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.5) translateY(-10px); opacity: 0.5; }
+          100% { transform: scale(0) translateY(-20px); opacity: 0; }
+        }
+      `}</style>
+    </div>
+  );
+};
+
+export default BossBattle;

@@ -93,7 +93,7 @@ const PrestigeRelics = () => {
   // 카테고리별 유물 필터링
   const categories = {
     all: '전체',
-    prestige: '환생',
+    prestige: '귀환',
     gold: '골드',
     damage: '데미지',
     equipment: '장비',
@@ -266,7 +266,7 @@ const PrestigeRelics = () => {
               ) : (
                 Object.entries(totalRelicEffects).map(([effectType, value]) => {
                   const effectLabels = {
-                    relicFragmentPercent: '환생당 유물 조각 획득량',
+                    relicFragmentPercent: '귀환당 유물 조각 획득량',
                     relicUpgradeCostReduction: '유물 강화 비용 감소',
                     damagePerRelic: '유물당 데미지 증가',
                     goldPercent: '모든 골드 획득량',

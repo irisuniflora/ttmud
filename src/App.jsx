@@ -8,14 +8,79 @@ import Achievements from './components/Achievements/Achievements';
 import SkillTree from './components/SkillTree/SkillTree';
 import Collection from './components/Collection/Collection';
 import SealedZone from './components/SealedZone/SealedZone';
-import BossCoinShop from './components/SealedZone/BossCoinShop';
+import Shop from './components/Shop/Shop';
 // import WorldBoss from './components/WorldBoss/WorldBoss'; // 월드보스 시스템 비활성화
 import PrestigeRelics from './components/Prestige/PrestigeRelics';
+import DevPanel from './components/DevTools/DevPanel';
+import PrestigeConfirmModal from './components/UI/PrestigeConfirmModal';
 import { getTotalRelicEffects } from './data/prestigeRelics';
+import { MONSTER_SETS, checkSetCompletion } from './data/monsterSets';
 
 const GameContent = () => {
   const { gameState, isRunning, togglePause, saveGame, resetGame, prestige } = useGame();
-  const [activeTab, setActiveTab] = useState('heroes');
+
+  // 각인만 하면 완성 가능한 세트가 있는지 확인
+  const hasCompletableSet = () => {
+    try {
+      const { collection } = gameState;
+      if (!collection) return false;
+
+      const inscribedMonsters = collection.inscribedMonsters || {};
+      const completedSets = collection.completedSets || [];
+
+      // 모든 세트를 순회하며 완성 가능한 세트 찾기
+      for (const setId of Object.keys(MONSTER_SETS)) {
+        // 이미 완성된 세트는 스킵
+        if (completedSets.includes(setId)) continue;
+
+        const set = MONSTER_SETS[setId];
+        if (!set || !set.monsters) continue;
+
+        let allCollected = true;
+        let allInscribed = true;
+
+        for (const monster of set.monsters) {
+          const monsterId = `${monster.grade}_${monster.zone}_${monster.index}`;
+
+          // 이미 각인됨
+          if (inscribedMonsters[monsterId]) {
+            continue;
+          }
+
+          allInscribed = false;
+
+          // 수집 여부 확인
+          if (monster.grade === 'rare') {
+            const rareId = `rare_${monster.zone}_${monster.index}`;
+            if (!collection.rareMonsters?.[rareId]?.unlocked) {
+              allCollected = false;
+              break;
+            }
+          } else if (monster.grade === 'legendary') {
+            const legendaryId = `legendary_${monster.zone}_${monster.index}`;
+            if (!collection.legendaryMonsters?.[legendaryId]?.unlocked) {
+              allCollected = false;
+              break;
+            }
+          }
+          // normal 등급은 도감 체크 없이 통과 (층수 도달로 자동 수집)
+        }
+
+        // 모든 몬스터가 수집되어 있고, 아직 전부 각인되지 않은 세트가 있음
+        if (allCollected && !allInscribed) {
+          return true;
+        }
+      }
+
+      return false;
+    } catch (e) {
+      console.error('hasCompletableSet error:', e);
+      return false;
+    }
+  };
+  const [activeTab, setActiveTab] = useState('equipment');
+  const [showPrestigeModal, setShowPrestigeModal] = useState(false);
+  const [prestigeFragments, setPrestigeFragments] = useState(0);
   const { combatLog = [] } = gameState;
 
   // 최근 로그 2개 가져오기
@@ -34,17 +99,15 @@ const GameContent = () => {
     return 'text-gray-400';
   };
 
-  const handlePrestige = () => {
-    if (gameState.player.floor < 50) {
-      alert('환생하려면 50층 이상 도달해야 합니다!');
-      return;
-    }
-
-    // 고대 유물 획득 공식 계산
+  // 고대 유물 획득량 계산 함수
+  // 밸런스: 36개 유물 모으려면 가챠만 약 62만개 필요
+  // 50층: ~100개, 100층: ~400개, 200층: ~1500개, 500층: ~8000개
+  const calculateFragments = () => {
     const floor = gameState.player.floor;
-    const baseFragments = 5;
-    const floorBonus = Math.floor(floor / 20);
-    const highFloorBonus = floor > 100 ? Math.floor((floor - 100) / 10) : 0;
+    // 기본 30 + 층수^1.5 / 5 + 고층 보너스
+    const baseFragments = 30;
+    const floorBonus = Math.floor(Math.pow(floor, 1.5) / 5);
+    const highFloorBonus = floor > 100 ? Math.floor(Math.pow(floor - 100, 1.4) / 3) : 0;
     let fragmentsGained = baseFragments + floorBonus + highFloorBonus;
 
     // 유물 효과 가져오기
@@ -71,11 +134,23 @@ const GameContent = () => {
       totalBonus += ringPpBonus / 100;
     }
 
-    fragmentsGained = Math.floor(fragmentsGained * totalBonus);
+    return Math.floor(fragmentsGained * totalBonus);
+  };
 
-    if (window.confirm(`환생하시겠습니까?\n\n획득할 고대 유물: 🏺 ${fragmentsGained}개\n\n게임이 처음부터 시작되지만 더 강해집니다!`)) {
-      prestige();
+  const handlePrestige = () => {
+    if (gameState.player.floor < 50) {
+      alert('귀환하려면 50층 이상 도달해야 합니다!');
+      return;
     }
+
+    const fragments = calculateFragments();
+    setPrestigeFragments(fragments);
+    setShowPrestigeModal(true);
+  };
+
+  const confirmPrestige = () => {
+    setShowPrestigeModal(false);
+    prestige();
   };
 
   return (
@@ -120,7 +195,7 @@ const GameContent = () => {
               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded font-bold"
               disabled={gameState.player.stage < 50}
             >
-              🌟 환생
+              🌟 귀환
             </button>
             <button
               onClick={resetGame}
@@ -145,18 +220,8 @@ const GameContent = () => {
         {/* 오른쪽 패널 - 탭 컨텐츠 */}
         <div className="lg:col-span-2 flex flex-col overflow-hidden">
           <div className="bg-game-panel border border-game-border rounded-lg p-4 flex flex-col overflow-hidden h-full">
-            {/* 탭 메뉴 */}
+            {/* 탭 메뉴 - 순서: 장비, 도감, 동료, 스킬, 유물, 봉인구역, 상점, 업적 */}
             <div className="flex gap-2 mb-4 flex-wrap flex-shrink-0">
-              <button
-                onClick={() => setActiveTab('heroes')}
-                className={`px-4 py-2 rounded font-bold transition-all ${
-                  activeTab === 'heroes'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
-                }`}
-              >
-                👥 동료
-              </button>
               <button
                 onClick={() => setActiveTab('equipment')}
                 className={`px-4 py-2 rounded font-bold transition-all ${
@@ -168,14 +233,27 @@ const GameContent = () => {
                 ⚔️ 장비
               </button>
               <button
-                onClick={() => setActiveTab('achievements')}
-                className={`px-4 py-2 rounded font-bold transition-all ${
-                  activeTab === 'achievements'
-                    ? 'bg-gradient-to-r from-yellow-600 to-orange-600 text-white shadow-md'
+                onClick={() => setActiveTab('collection')}
+                className={`px-4 py-2 rounded font-bold transition-all relative ${
+                  activeTab === 'collection'
+                    ? 'bg-blue-600 text-white shadow-md'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
                 }`}
               >
-                🏆 업적
+                📖 도감
+                {hasCompletableSet() && (
+                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('heroes')}
+                className={`px-4 py-2 rounded font-bold transition-all ${
+                  activeTab === 'heroes'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
+                }`}
+              >
+                👥 동료
               </button>
               <button
                 onClick={() => setActiveTab('skills')}
@@ -188,14 +266,14 @@ const GameContent = () => {
                 🌳 스킬
               </button>
               <button
-                onClick={() => setActiveTab('collection')}
+                onClick={() => setActiveTab('prestige')}
                 className={`px-4 py-2 rounded font-bold transition-all ${
-                  activeTab === 'collection'
-                    ? 'bg-blue-600 text-white shadow-md'
+                  activeTab === 'prestige'
+                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
                 }`}
               >
-                📖 도감
+                🌟 유물
               </button>
               <button
                 onClick={() => setActiveTab('sealedZone')}
@@ -208,36 +286,34 @@ const GameContent = () => {
                 🔒 봉인구역
               </button>
               <button
-                onClick={() => setActiveTab('bossShop')}
+                onClick={() => setActiveTab('shop')}
                 className={`px-4 py-2 rounded font-bold transition-all ${
-                  activeTab === 'bossShop'
-                    ? 'bg-blue-600 text-white shadow-md'
+                  activeTab === 'shop'
+                    ? 'bg-gradient-to-r from-yellow-600 to-amber-600 text-white shadow-md'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
                 }`}
               >
-                🪙 상점
+                🛒 상점
               </button>
-              {/* 월드보스 탭 비활성화
               <button
-                onClick={() => setActiveTab('worldBoss')}
-                className={`px-4 py-2 rounded font-bold transition-all border-2 ${
-                  activeTab === 'worldBoss'
-                    ? 'bg-gradient-to-r from-purple-600 to-red-600 text-white shadow-lg border-red-400'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border-gray-600'
-                }`}
-              >
-                👹 월드보스
-              </button>
-              */}
-              <button
-                onClick={() => setActiveTab('prestige')}
+                onClick={() => setActiveTab('achievements')}
                 className={`px-4 py-2 rounded font-bold transition-all ${
-                  activeTab === 'prestige'
-                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md'
+                  activeTab === 'achievements'
+                    ? 'bg-gradient-to-r from-yellow-600 to-orange-600 text-white shadow-md'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
                 }`}
               >
-                🌟 환생유물
+                🏆 업적
+              </button>
+              <button
+                onClick={() => setActiveTab('devtools')}
+                className={`px-4 py-2 rounded font-bold transition-all ${
+                  activeTab === 'devtools'
+                    ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white shadow-md'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-red-800'
+                }`}
+              >
+                🛠️ DEV
               </button>
             </div>
 
@@ -249,9 +325,10 @@ const GameContent = () => {
               {activeTab === 'skills' && <SkillTree />}
               {activeTab === 'collection' && <Collection />}
               {activeTab === 'sealedZone' && <SealedZone />}
-              {activeTab === 'bossShop' && <BossCoinShop />}
+              {activeTab === 'shop' && <Shop />}
               {/* {activeTab === 'worldBoss' && <WorldBoss />} */}
               {activeTab === 'prestige' && <PrestigeRelics />}
+              {activeTab === 'devtools' && <DevPanel />}
             </div>
           </div>
         </div>
@@ -261,6 +338,15 @@ const GameContent = () => {
       <footer className="mt-4 text-center text-gray-500 text-sm font-medium flex-shrink-0">
         <p>게임은 자동으로 5초마다 저장됩니다 • Made with ❤️</p>
       </footer>
+
+      {/* 귀환 확인 모달 */}
+      <PrestigeConfirmModal
+        isOpen={showPrestigeModal}
+        onConfirm={confirmPrestige}
+        onCancel={() => setShowPrestigeModal(false)}
+        fragmentsGained={prestigeFragments}
+        currentFloor={gameState.player.floor}
+      />
     </div>
   );
 };

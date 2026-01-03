@@ -95,8 +95,8 @@ const Achievements = () => {
         ))}
       </div>
 
-      {/* 업적 목록 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-2">
+      {/* 업적 목록 - 4열 그리드 */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 max-h-[500px] overflow-y-auto pr-2">
         {filteredAchievements.map(achievement => {
           const isCompleted = completedAchievements[achievement.id];
           const isClaimed = claimedAchievements[achievement.id];
@@ -107,7 +107,7 @@ const Achievements = () => {
           return (
             <div
               key={achievement.id}
-              className={`relative border rounded-lg p-4 transition-all ${
+              className={`relative border rounded p-2 transition-all ${
                 isCompleted
                   ? isClaimed
                     ? 'bg-gray-800/50 border-gray-600'
@@ -115,66 +115,54 @@ const Achievements = () => {
                   : 'bg-gray-800/30 border-gray-700'
               }`}
             >
-              {/* 카테고리 표시 */}
-              <div
-                className="absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded font-bold"
-                style={{ backgroundColor: category.color + '40', color: category.color }}
-              >
-                {category.icon} {category.name}
-              </div>
-
-              {/* 업적 정보 */}
-              <div className="flex items-start gap-3">
-                <div
-                  className={`text-3xl ${isCompleted ? '' : 'grayscale opacity-50'}`}
-                >
+              {/* 업적 정보 - 한 줄 */}
+              <div className="flex items-center gap-1.5">
+                <span className={`text-lg flex-shrink-0 ${isCompleted ? '' : 'grayscale opacity-50'}`}>
                   {achievement.icon}
-                </div>
+                </span>
                 <div className="flex-1 min-w-0">
-                  <h4 className={`font-bold ${isCompleted ? 'text-white' : 'text-gray-400'}`}>
+                  <h4 className={`font-bold text-xs leading-tight truncate ${isCompleted ? 'text-white' : 'text-gray-400'}`}>
                     {achievement.name}
                   </h4>
-                  <p className="text-sm text-gray-400 mb-2">{achievement.description}</p>
+                </div>
+                {/* 카테고리 아이콘 */}
+                <span className="text-[10px] opacity-60" style={{ color: category.color }}>
+                  {category.icon}
+                </span>
+              </div>
 
-                  {/* 진행도 바 */}
-                  {!isCompleted && (
-                    <div className="mb-2">
-                      <div className="flex justify-between text-xs text-gray-500 mb-1">
-                        <span>진행도</span>
-                        <span>{formatNumber(progress.current)} / {formatNumber(progress.target)}</span>
-                      </div>
-                      <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-300"
-                          style={{ width: `${progressPercent}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 보상 */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1 text-sm">
-                      <span className="text-gray-500">보상:</span>
-                      <span className="text-yellow-400 font-bold">
-                        {REWARD_ICONS[achievement.reward.type]} {formatNumber(achievement.reward.amount)} {REWARD_NAMES[achievement.reward.type]}
-                      </span>
-                    </div>
-
-                    {/* 수령 버튼 */}
-                    {isCompleted && !isClaimed && (
-                      <button
-                        onClick={() => handleClaim(achievement.id)}
-                        className="px-3 py-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 text-white text-sm font-bold rounded animate-pulse"
-                      >
-                        수령
-                      </button>
-                    )}
-                    {isClaimed && (
-                      <span className="text-xs text-gray-500">✓ 수령 완료</span>
-                    )}
+              {/* 진행도 바 - 미완료 시 */}
+              {!isCompleted && (
+                <div className="mt-1">
+                  <div className="flex justify-between text-[9px] text-gray-500 mb-0.5">
+                    <span>{formatNumber(progress.current)} / {formatNumber(progress.target)}</span>
+                  </div>
+                  <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-300"
+                      style={{ width: `${progressPercent}%` }}
+                    />
                   </div>
                 </div>
+              )}
+
+              {/* 보상 & 버튼 */}
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-yellow-400 font-bold text-[10px]">
+                  {REWARD_ICONS[achievement.reward.type]} {formatNumber(achievement.reward.amount)}
+                </span>
+
+                {isCompleted && !isClaimed && (
+                  <button
+                    onClick={() => handleClaim(achievement.id)}
+                    className="px-1.5 py-0.5 bg-green-600 hover:bg-green-500 text-white text-[10px] font-bold rounded animate-pulse"
+                  >
+                    수령
+                  </button>
+                )}
+                {isClaimed && (
+                  <span className="text-[9px] text-gray-500">✓</span>
+                )}
               </div>
             </div>
           );

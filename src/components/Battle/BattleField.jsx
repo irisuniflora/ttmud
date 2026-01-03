@@ -229,7 +229,7 @@ const BattleField = () => {
     <div className="bg-black p-4 rounded-lg">
       <div
         className={`relative w-full overflow-hidden rounded ${screenShake ? 'animate-shake' : ''}`}
-        style={{ aspectRatio: '3 / 2' }}
+        style={{ aspectRatio: '5 / 2' }}
       >
         {/* 크리티컬 플래시 효과 */}
         {isCriticalHit && (
@@ -271,7 +271,7 @@ const BattleField = () => {
       <div
         className="absolute"
         style={{
-          bottom: '15%',
+          bottom: '22%',
           left: '10%',
         }}
       >
@@ -279,8 +279,8 @@ const BattleField = () => {
         <div
           className="flex items-end justify-center"
           style={{
-            width: '250px',
-            height: '150px',
+            width: '180px',
+            height: '110px',
             filter: 'drop-shadow(3px 5px 8px rgba(0,0,0,0.6))',
           }}
         >
@@ -305,7 +305,7 @@ const BattleField = () => {
           isMonsterHit ? (isCriticalHit ? 'translate-x-4' : 'translate-x-2') : ''
         } ${(currentMonster.isBoss && currentMonster.isLegendary) ? 'animate-pulse' : ''}`}
         style={{
-          bottom: '15%',
+          bottom: '22%',
           right: '10%',
           filter: getMonsterGlowStyle(currentMonster, isMonsterHit),
         }}
@@ -315,11 +315,11 @@ const BattleField = () => {
           className="flex items-end justify-center transition-transform"
           style={{
             width: currentMonster.isBoss
-              ? (currentMonster.isLegendary ? '220px' : currentMonster.isRare ? '210px' : '200px')
-              : '200px',
+              ? (currentMonster.isLegendary ? '160px' : currentMonster.isRare ? '150px' : '140px')
+              : '140px',
             height: currentMonster.isBoss
-              ? (currentMonster.isLegendary ? '200px' : currentMonster.isRare ? '180px' : '170px')
-              : '150px',
+              ? (currentMonster.isLegendary ? '140px' : currentMonster.isRare ? '130px' : '120px')
+              : '110px',
             transform: currentMonster.isBoss
               ? (currentMonster.isLegendary ? 'scale(1.15)' : currentMonster.isRare ? 'scale(1.1)' : 'scale(1.05)')
               : (currentMonster.isLegendary ? 'scale(1.08)' : currentMonster.isRare ? 'scale(1.04)' : 'scale(1)'),

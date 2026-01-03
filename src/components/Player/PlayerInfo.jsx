@@ -1,14 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
 import { formatNumber, formatNumberWithCommas, getHPPercent } from '../../utils/formatter';
 import { getTotalSkillEffects } from '../../data/skills';
 import { getHeroById, getHeroStats } from '../../data/heroes';
-import { EQUIPMENT_CONFIG, getMonstersPerFloor } from '../../data/gameBalance';
+import { EQUIPMENT_CONFIG, getMonstersPerFloor, FLOOR_CONFIG } from '../../data/gameBalance';
 import { getTotalRelicEffects } from '../../data/prestigeRelics';
 import BattleField from '../Battle/BattleField';
+import BossBattle from '../Battle/BossBattle';
 
 const PlayerInfo = () => {
-  const { gameState, enterBossBattle, toggleFloorLock, goDownFloor, engine } = useGame();
+  const { gameState, enterBossBattle, toggleFloorLock, goDownFloor, goToFloor, engine } = useGame();
+  const [showFloorInput, setShowFloorInput] = useState(false);
+  const [targetFloor, setTargetFloor] = useState('');
   const { player, currentMonster, orbs = 0, equipment = {}, skillLevels = {}, slotEnhancements = {}, heroes = {}, relics = {} } = gameState;
 
   const hpPercent = getHPPercent(currentMonster.hp, currentMonster.maxHp);
@@ -87,6 +90,14 @@ const PlayerInfo = () => {
 
   const canEnterBoss = player.monstersKilledInFloor >= actualMonstersPerFloor && player.floorState !== 'boss_battle';
 
+  // 보스 타이머 최대값 계산 (기본값 + 유물 보너스)
+  const maxBossTimer = FLOOR_CONFIG.bossTimeLimit + (relicEffectsForMonster.bossTimeLimit || 0);
+
+  // 보스전일 때는 BossBattle 컴포넌트 렌더링
+  if (player.floorState === 'boss_battle') {
+    return <BossBattle />;
+  }
+
   return (
     <div className="bg-game-panel border border-game-border rounded-lg overflow-hidden">
       {/* 상단 헤더 - 컴팩트 */}
@@ -125,34 +136,62 @@ const PlayerInfo = () => {
           <div className="flex items-center justify-between">
             {/* 층 & 몬스터 정보 */}
             <div className="flex items-center gap-2">
-              <span className="text-white font-bold text-lg">{player.floor}층</span>
+              {showFloorInput ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    value={targetFloor}
+                    onChange={(e) => setTargetFloor(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const floor = parseInt(targetFloor);
+                        if (floor > 0) {
+                          goToFloor(floor);
+                        }
+                        setShowFloorInput(false);
+                        setTargetFloor('');
+                      } else if (e.key === 'Escape') {
+                        setShowFloorInput(false);
+                        setTargetFloor('');
+                      }
+                    }}
+                    onBlur={() => {
+                      setShowFloorInput(false);
+                      setTargetFloor('');
+                    }}
+                    autoFocus
+                    placeholder={`1~${player.highestFloor}`}
+                    min="1"
+                    max={player.highestFloor}
+                    className="w-20 px-1.5 py-0.5 bg-gray-800 border border-gray-600 rounded text-white text-sm text-center"
+                  />
+                </div>
+              ) : (
+                <span
+                  className="text-white font-bold text-lg cursor-pointer hover:text-cyan-400 transition-colors"
+                  onClick={() => setShowFloorInput(true)}
+                  title={`클릭하여 층 이동 (최고 ${player.highestFloor}층)`}
+                >
+                  {player.floor}층
+                </span>
+              )}
               {player.floorLocked && <span className="text-yellow-400 text-xs">🔒</span>}
               <span className="text-gray-400">|</span>
               <span className={`font-semibold ${
-                currentMonster.isBoss
-                  ? (currentMonster.isLegendary ? 'text-yellow-300' : currentMonster.isRare ? 'text-fuchsia-400' : 'text-red-400')
-                  : (currentMonster.isLegendary ? 'text-orange-400' : currentMonster.isRare ? 'text-purple-400' : 'text-gray-300')
+                currentMonster.isLegendary ? 'text-orange-400' : currentMonster.isRare ? 'text-purple-400' : 'text-gray-300'
               }`}>
-                {currentMonster.isBoss
-                  ? (currentMonster.isLegendary ? '💀 ' : currentMonster.isRare ? '👿 ' : '👑 ')
-                  : (currentMonster.isLegendary ? '🌟 ' : currentMonster.isRare ? '✨ ' : '')}
+                {currentMonster.isLegendary ? '🌟 ' : currentMonster.isRare ? '✨ ' : ''}
                 {currentMonster.name}
               </span>
             </div>
 
-            {/* 보스 타이머 또는 진행도 */}
-            {player.floorState === 'boss_battle' ? (
-              <div className="flex items-center gap-2 bg-red-900/80 px-2 py-1 rounded">
-                <span className="text-red-300 text-xs font-bold">⏰ {player.bossTimer}초</span>
-              </div>
-            ) : (
-              <div
-                className="flex items-center gap-1 text-xs cursor-help"
-                title={`기본 ${baseMonstersPerFloor}마리${(Math.floor(equipmentMonsterReduction) + collectionBonus.monsterReduction + relicMonsterReduction) > 0 ? `\n감소: -${Math.floor(equipmentMonsterReduction) + collectionBonus.monsterReduction + relicMonsterReduction}마리` : ''}${Math.floor(equipmentMonsterReduction) > 0 ? `\n  └ 장비: -${Math.floor(equipmentMonsterReduction)}` : ''}${collectionBonus.monsterReduction > 0 ? `\n  └ 도감: -${collectionBonus.monsterReduction}` : ''}${relicMonsterReduction > 0 ? `\n  └ 유물: -${relicMonsterReduction}` : ''}`}
-              >
-                <span className="text-gray-400">{monstersKilled}/{Math.floor(actualMonstersPerFloor)}</span>
-              </div>
-            )}
+            {/* 진행도 */}
+            <div
+              className="flex items-center gap-1 text-xs cursor-help"
+              title={`기본 ${baseMonstersPerFloor}마리${(Math.floor(equipmentMonsterReduction) + collectionBonus.monsterReduction + relicMonsterReduction) > 0 ? `\n감소: -${Math.floor(equipmentMonsterReduction) + collectionBonus.monsterReduction + relicMonsterReduction}마리` : ''}${Math.floor(equipmentMonsterReduction) > 0 ? `\n  └ 장비: -${Math.floor(equipmentMonsterReduction)}` : ''}${collectionBonus.monsterReduction > 0 ? `\n  └ 도감: -${collectionBonus.monsterReduction}` : ''}${relicMonsterReduction > 0 ? `\n  └ 유물: -${relicMonsterReduction}` : ''}`}
+            >
+              <span className="text-gray-400">{monstersKilled}/{Math.floor(actualMonstersPerFloor)}</span>
+            </div>
           </div>
         </div>
 
@@ -169,13 +208,11 @@ const PlayerInfo = () => {
             <div className="w-full bg-gray-900/80 rounded-full h-3 overflow-hidden border border-gray-600">
               <div
                 className={`h-full transition-all duration-300 ${
-                  currentMonster.isBoss
-                    ? 'bg-gradient-to-r from-red-600 to-red-400'
-                    : currentMonster.isLegendary
-                      ? 'bg-gradient-to-r from-orange-600 to-orange-400'
-                      : currentMonster.isRare
-                        ? 'bg-gradient-to-r from-purple-600 to-purple-400'
-                        : 'bg-gradient-to-r from-green-600 to-green-400'
+                  currentMonster.isLegendary
+                    ? 'bg-gradient-to-r from-orange-600 to-orange-400'
+                    : currentMonster.isRare
+                      ? 'bg-gradient-to-r from-purple-600 to-purple-400'
+                      : 'bg-gradient-to-r from-green-600 to-green-400'
                 }`}
                 style={{ width: `${hpPercent}%` }}
               />
@@ -183,69 +220,57 @@ const PlayerInfo = () => {
           </div>
 
           {/* 층 컨트롤 */}
-          {player.floorState !== 'boss_battle' && (
-            <div className="flex items-center justify-between">
-              {/* 진행 바 */}
-              <div className="flex-1 mr-2">
-                <div className="w-full bg-gray-900/80 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-300"
-                    style={{ width: `${monsterProgress}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* 버튼들 */}
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={toggleFloorLock}
-                  className={`w-7 h-7 rounded flex items-center justify-center text-sm transition-all ${
-                    player.floorLocked
-                      ? 'bg-yellow-600 hover:bg-yellow-500 text-white'
-                      : 'bg-gray-700/80 hover:bg-gray-600 text-gray-400'
-                  }`}
-                  title={player.floorLocked ? '층 고정 해제' : '층 고정'}
-                >
-                  {player.floorLocked ? '🔒' : '🔓'}
-                </button>
-
-                <button
-                  onClick={goDownFloor}
-                  disabled={player.floor <= 1}
-                  className={`w-7 h-7 rounded flex items-center justify-center text-sm transition-all ${
-                    player.floor > 1
-                      ? 'bg-gray-700/80 hover:bg-gray-600 text-white'
-                      : 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
-                  }`}
-                  title="이전 층으로"
-                >
-                  ⬇️
-                </button>
-
-                <button
-                  onClick={enterBossBattle}
-                  disabled={!canEnterBoss}
-                  className={`px-3 h-7 rounded font-bold text-xs transition-all flex items-center gap-1 ${
-                    canEnterBoss
-                      ? 'bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white shadow-lg'
-                      : 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
-                  }`}
-                >
-                  🔥 보스
-                </button>
+          <div className="flex items-center justify-between">
+            {/* 진행 바 */}
+            <div className="flex-1 mr-2">
+              <div className="w-full bg-gray-900/80 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-300"
+                  style={{ width: `${monsterProgress}%` }}
+                />
               </div>
             </div>
-          )}
 
-          {/* 보스전 중일 때 타이머 바 */}
-          {player.floorState === 'boss_battle' && (
-            <div className="w-full bg-gray-900/80 rounded-full h-2 overflow-hidden border border-red-600">
-              <div
-                className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-1000"
-                style={{ width: `${(player.bossTimer / 20) * 100}%` }}
-              />
+            {/* 버튼들 */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={toggleFloorLock}
+                className={`w-7 h-7 rounded flex items-center justify-center text-sm transition-all ${
+                  player.floorLocked
+                    ? 'bg-yellow-600 hover:bg-yellow-500 text-white'
+                    : 'bg-gray-700/80 hover:bg-gray-600 text-gray-400'
+                }`}
+                title={player.floorLocked ? '층 고정 해제' : '층 고정'}
+              >
+                {player.floorLocked ? '🔒' : '🔓'}
+              </button>
+
+              <button
+                onClick={goDownFloor}
+                disabled={player.floor <= 1}
+                className={`w-7 h-7 rounded flex items-center justify-center text-sm transition-all ${
+                  player.floor > 1
+                    ? 'bg-gray-700/80 hover:bg-gray-600 text-white'
+                    : 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
+                }`}
+                title="이전 층으로"
+              >
+                ⬇️
+              </button>
+
+              <button
+                onClick={enterBossBattle}
+                disabled={!canEnterBoss}
+                className={`px-3 h-7 rounded font-bold text-xs transition-all flex items-center gap-1 ${
+                  canEnterBoss
+                    ? 'bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white shadow-lg'
+                    : 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
+                }`}
+              >
+                🔥 보스
+              </button>
             </div>
-          )}
+          </div>
         </div>
       </div>
 

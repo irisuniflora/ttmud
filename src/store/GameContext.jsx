@@ -162,6 +162,11 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
+  const forfeitBossBattle = () => {
+    engineRef.current.failBossBattle();
+    setGameState({ ...engineRef.current.getState() });
+  };
+
   const toggleFloorLock = () => {
     const result = engineRef.current.toggleFloorLock();
     setGameState({ ...engineRef.current.getState() });
@@ -170,6 +175,14 @@ export const GameProvider = ({ children }) => {
 
   const goDownFloor = () => {
     const result = engineRef.current.goDownFloor();
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const goToFloor = (targetFloor) => {
+    const result = engineRef.current.goToFloor(targetFloor);
     if (result.success) {
       setGameState({ ...engineRef.current.getState() });
     }
@@ -333,8 +346,25 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
+  const enhanceEquipment = (slot, useProtection = false) => {
+    const result = engineRef.current.enhanceEquipment(slot, useProtection);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
   const useSetSelector = (selectorType, setId, slot) => {
     const result = engineRef.current.useSetSelector(selectorType, setId, slot);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  // 봉인석으로 잠재옵션 잠금/해제
+  const useSealStone = (slot, statIndex) => {
+    const result = engineRef.current.useSealStone(slot, statIndex);
     if (result.success) {
       setGameState({ ...engineRef.current.getState() });
     }
@@ -350,13 +380,31 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
-  // 보스 타이머 업데이트 (1초마다)
+  // ===== 전직 시스템 =====
+  const advanceClass = () => {
+    const result = engineRef.current.advanceClass();
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  // 보스 타이머 업데이트 (시간 기반 - 200ms마다 체크)
   useEffect(() => {
     const timerInterval = setInterval(() => {
-      if (engineRef.current) {
+      if (engineRef.current && engineRef.current.state.player.floorState === 'boss_battle') {
         engineRef.current.updateBossTimer();
+        // 상태 변경이 있을 때만 업데이트 (React 최적화)
+        const newState = engineRef.current.getState();
+        setGameState(prev => {
+          if (prev.player.bossTimer !== newState.player.bossTimer ||
+              prev.player.floorState !== newState.player.floorState) {
+            return { ...newState };
+          }
+          return prev;
+        });
       }
-    }, 1000);
+    }, 200);
 
     return () => clearInterval(timerInterval);
   }, []);
@@ -396,8 +444,10 @@ export const GameProvider = ({ children }) => {
       prestige,
       upgradeSkill,
       enterBossBattle,
+      forfeitBossBattle,
       toggleFloorLock,
       goDownFloor,
+      goToFloor,
       // startWorldBossBattle, // 월드보스 비활성화
       // toggleWorldBoss,
       // distributeWorldBossRewards,
@@ -412,8 +462,11 @@ export const GameProvider = ({ children }) => {
       toggleItemLock,
       upgradeEquipmentLevel,
       awakenEquipment,
+      enhanceEquipment,
       useSetSelector,
+      useSealStone,
       claimAchievementReward,
+      advanceClass,
       engine: engineRef.current
     }}>
       {children}

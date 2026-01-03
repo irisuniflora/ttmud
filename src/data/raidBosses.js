@@ -1,9 +1,9 @@
 // 봉인구역 레이드 보스 시스템
 
 // 난이도 레벨 시스템 (무한 레벨)
-// 레벨 1 = 1배, 레벨마다 2배씩 증가
+// 레벨 1 = 1배, 레벨마다 1.5배씩 증가
 export const getDifficultyMultiplier = (level) => {
-  return Math.pow(2, level - 1);
+  return Math.pow(1.5, level - 1);
 };
 
 // 난이도 레벨에 따른 색상

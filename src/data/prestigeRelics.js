@@ -3,11 +3,11 @@
 
 // 고대 유물 목록 (36개)
 export const PRESTIGE_RELICS = {
-  // === 환생 & 유물 관련 ===
+  // === 귀환 & 유물 관련 ===
   book_of_abyss: {
     id: 'book_of_abyss',
     name: '심연의 서',
-    description: '환생당 고대 유물 획득량 증가',
+    description: '귀환당 고대 유물 획득량 증가',
     icon: '📖',
     category: 'prestige',
     effectPerLevel: {
@@ -600,7 +600,7 @@ export const getRelicGachaCost = (gachaCount) => {
 // 모든 유물 효과 합산
 export const getTotalRelicEffects = (relics) => {
   const effects = {
-    // 환생 & 유물
+    // 귀환 & 유물
     relicFragmentPercent: 0,
     relicUpgradeCostReduction: 0,
     damagePerRelic: 0,

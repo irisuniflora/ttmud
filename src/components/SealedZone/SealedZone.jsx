@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useGame } from '../../store/GameContext';
-import { RAID_BOSSES, calculateRaidBossStats, INSCRIPTION_SLOT_CONFIG, checkBossUnlock, getDifficultyName, getDifficultyColor, getDifficultyMultiplier } from '../../data/raidBosses';
+import { RAID_BOSSES, calculateRaidBossStats, INSCRIPTION_SLOT_CONFIG, checkBossUnlock, getDifficultyName, getDifficultyColor } from '../../data/raidBosses';
 import { INSCRIPTIONS, INSCRIPTION_GRADES, INSCRIPTION_ABILITIES, calculateInscriptionStats, migrateGrade } from '../../data/inscriptions';
 import { getTotalRelicEffects } from '../../data/prestigeRelics';
 import { generateSetItem, EQUIPMENT_SLOTS } from '../../data/equipmentSets';
+import { EQUIPMENT_CONFIG } from '../../data/gameBalance';
 import { formatNumber, formatPercent } from '../../utils/formatter';
+import { getTotalSkillEffects } from '../../data/skills';
+import { getHeroById, getHeroStats } from '../../data/heroes';
 import NotificationModal from '../UI/NotificationModal';
 
 // GitHub Pages 배포용 BASE_URL
@@ -18,6 +21,15 @@ const getBossImage = (bossId) => {
 // 문양 이미지 경로 가져오기
 const getInscriptionImage = (inscriptionId) => {
   return `${BASE_URL}images/inscriptions/${inscriptionId}.png`;
+};
+
+// 전직 단계별 폴더명
+const CLASS_FOLDERS = ['base', 'class1', 'class2', 'class3'];
+
+// 현재 전직 단계에 따른 캐릭터 이미지 경로
+const getPlayerImagePath = (classLevel, frame) => {
+  const folder = CLASS_FOLDERS[classLevel] || 'base';
+  return `${BASE_URL}images/field/characters/${folder}/player_${frame}.png`;
 };
 
 // 등급별 카드 스타일 (테두리, 배경, 그림자)
@@ -76,7 +88,57 @@ const getGradeCardStyle = (grade, isSelected = false) => {
 const SealedZone = () => {
   const [activeSubTab, setActiveSubTab] = useState('boss'); // 'boss' 또는 'inscription'
   const { gameState, setGameState, engine } = useGame();
-  const { player, sealedZone = {} } = gameState;
+  const { player, sealedZone = {}, equipment = {}, skillLevels = {}, slotEnhancements = {}, heroes = {}, relics = {} } = gameState;
+
+  // 전투력 계산 (PlayerInfo와 동일한 로직)
+  const calculateCombatPower = () => {
+    const skillEffects = getTotalSkillEffects(skillLevels);
+    const relicEffects = getTotalRelicEffects(relics);
+
+    let heroAttack = 0;
+    let heroCritChance = 0;
+    let heroCritDmg = 0;
+
+    Object.keys(heroes || {}).forEach(heroId => {
+      const heroState = heroes[heroId];
+      if (heroState && heroState.inscribed) {
+        const heroData = getHeroById(heroId);
+        if (heroData) {
+          const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
+          if (stats.attack) heroAttack += stats.attack;
+          if (stats.critChance) heroCritChance += stats.critChance;
+          if (stats.critDmg) heroCritDmg += stats.critDmg;
+        }
+      }
+    });
+
+    let equipmentAttack = 0;
+    let equipmentCritChance = 0;
+    let equipmentCritDmg = 0;
+
+    Object.entries(equipment).forEach(([slot, item]) => {
+      if (item) {
+        const enhancementBonus = 1 + ((slotEnhancements[slot] || 0) * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        item.stats.forEach(stat => {
+          if (stat.id === 'attack') equipmentAttack += stat.value * enhancementBonus;
+          else if (stat.id === 'critChance') equipmentCritChance += stat.value * enhancementBonus;
+          else if (stat.id === 'critDmg') equipmentCritDmg += stat.value * enhancementBonus;
+        });
+      }
+    });
+
+    const totalAttack = Math.floor(player.stats.baseAtk + equipmentAttack + heroAttack);
+    const totalCritChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroCritChance + (relicEffects.critChance || 0);
+    const totalCritDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroCritDmg + (relicEffects.critDmg || 0);
+
+    const critChanceMultiplier = Math.min(totalCritChance, 100) / 100;
+    const avgDamagePerHit = totalAttack * (1 + critChanceMultiplier * (totalCritDmg / 100));
+
+    const relicDamageMultiplier = 1 + (relicEffects.damagePercent || 0) / 100;
+    return Math.floor(avgDamagePerHit * 10 * 30 * relicDamageMultiplier);
+  };
+
+  const combatPower = calculateCombatPower();
 
   const [selectedBoss, setSelectedBoss] = useState(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState(1); // 숫자 레벨 (1부터 시작)
@@ -284,6 +346,51 @@ const SealedZone = () => {
 
   const [showInscriptionInfo, setShowInscriptionInfo] = useState(false);
 
+  // 데미지 플로팅 텍스트 상태
+  const [damageNumbers, setDamageNumbers] = useState([]);
+  const damageIdRef = useRef(0);
+  const [playerFrame, setPlayerFrame] = useState(0);
+  const lastNormalFrame = useRef(0);
+  const [isMonsterHit, setIsMonsterHit] = useState(false);
+  const [isCriticalHit, setIsCriticalHit] = useState(false);
+  const [screenShake, setScreenShake] = useState(false);
+
+  // 데미지 표시 함수
+  const showDamageNumber = (damage, isCrit, isMiss = false) => {
+    damageIdRef.current += 1;
+    const newDamage = {
+      id: damageIdRef.current,
+      value: damage,
+      isCrit,
+      isMiss,
+      x: 50 + (Math.random() - 0.5) * 20,
+      y: 20 + Math.random() * 10,
+    };
+    setDamageNumbers(prev => [...prev.slice(-8), newDamage]);
+    setTimeout(() => {
+      setDamageNumbers(prev => prev.filter(d => d.id !== newDamage.id));
+    }, 1000);
+
+    // 히트 이펙트
+    if (!isMiss) {
+      if (isCrit) {
+        setPlayerFrame(3);
+        setIsCriticalHit(true);
+        setScreenShake(true);
+        setTimeout(() => setIsCriticalHit(false), 300);
+        setTimeout(() => setScreenShake(false), 200);
+      } else {
+        const nextFrame = (lastNormalFrame.current + 1) % 3;
+        lastNormalFrame.current = nextFrame;
+        setPlayerFrame(nextFrame);
+      }
+      setTimeout(() => {
+        setIsMonsterHit(true);
+        setTimeout(() => setIsMonsterHit(false), isCrit ? 250 : 150);
+      }, 100);
+    }
+  };
+
   // 문양 삭제
   const deleteInscription = (inscriptionId) => {
     if (!confirm('정말로 이 문양을 삭제하시겠습니까?')) return;
@@ -471,86 +578,94 @@ const SealedZone = () => {
   // 전투 종료
   const endBattle = (victory) => {
     setInBattle(false);
+    // 전투 상태 초기화
+    setBattleTimer(30);
+    setBossHP(100);
+    setBattleLog([]);
+    setDamageNumbers([]);
 
-    if (victory) {
-      // 보상 계산 (calculateRaidBossStats 사용)
-      const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty);
-      const rewards = bossStats.rewards;
+    // setTimeout으로 감싸서 렌더링 중 setState 방지
+    setTimeout(() => {
+      if (victory) {
+        // 보상 계산 (calculateRaidBossStats 사용)
+        const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty);
+        const rewards = bossStats.rewards;
 
-      // 세트 아이템 드랍 (20% 확률)
-      let droppedSetItem = null;
-      if (Math.random() < 0.20) {
-        // 랜덤 슬롯 선택
-        const slots = Object.keys(EQUIPMENT_SLOTS);
-        const randomSlot = slots[Math.floor(Math.random() * slots.length)];
-        // 난이도 레벨을 floor로 사용하여 템렙 결정
-        droppedSetItem = generateSetItem(randomSlot, selectedDifficulty);
-      }
-
-      // GameEngine 상태도 직접 업데이트 (저장을 위해)
-      if (engine) {
-        engine.state.player.gold += rewards.gold;
-        if (!engine.state.sealedZone) {
-          engine.state.sealedZone = { tickets: 0, ownedInscriptions: [], unlockedBosses: ['vecta'], unlockedInscriptionSlots: 1, bossCoins: 0 };
+        // 세트 아이템 드랍 (20% 확률)
+        let droppedSetItem = null;
+        if (Math.random() < 0.20) {
+          // 랜덤 슬롯 선택
+          const slots = Object.keys(EQUIPMENT_SLOTS);
+          const randomSlot = slots[Math.floor(Math.random() * slots.length)];
+          // 난이도 레벨을 floor로 사용하여 템렙 결정
+          droppedSetItem = generateSetItem(randomSlot, selectedDifficulty);
         }
-        engine.state.sealedZone.bossCoins = (engine.state.sealedZone.bossCoins || 0) + rewards.bossCoins;
 
-        // 드랍된 세트 아이템 인벤토리에 추가
-        if (droppedSetItem) {
-          if (!engine.state.inventory) {
-            engine.state.inventory = [];
+        // GameEngine 상태도 직접 업데이트 (저장을 위해)
+        if (engine) {
+          engine.state.player.gold += rewards.gold;
+          if (!engine.state.sealedZone) {
+            engine.state.sealedZone = { tickets: 0, ownedInscriptions: [], unlockedBosses: ['vecta'], unlockedInscriptionSlots: 1, bossCoins: 0 };
           }
-          engine.state.inventory.push(droppedSetItem);
-        }
-      }
+          engine.state.sealedZone.bossCoins = (engine.state.sealedZone.bossCoins || 0) + rewards.bossCoins;
 
-      setGameState(prev => {
-        const newState = {
+          // 드랍된 세트 아이템 인벤토리에 추가
+          if (droppedSetItem) {
+            if (!engine.state.inventory) {
+              engine.state.inventory = [];
+            }
+            engine.state.inventory.push(droppedSetItem);
+          }
+        }
+
+        setGameState(prev => {
+          const newState = {
+            ...prev,
+            player: {
+              ...prev.player,
+              gold: prev.player.gold + rewards.gold
+            },
+            sealedZone: {
+              ...prev.sealedZone,
+              bossCoins: (prev.sealedZone?.bossCoins || 0) + rewards.bossCoins
+            }
+          };
+
+          // 인벤토리에 세트 아이템 추가
+          if (droppedSetItem) {
+            newState.inventory = [...(prev.inventory || []), droppedSetItem];
+          }
+
+          return newState;
+        });
+
+        // 알림 메시지 생성
+        let notificationMessage = `💰 골드 +${formatNumber(rewards.gold)}\n🪙 보스 코인 +${rewards.bossCoins}`;
+        if (droppedSetItem) {
+          notificationMessage += `\n\n🎁 세트 아이템 획득!\n${droppedSetItem.name} (Lv.${droppedSetItem.itemLevel})`;
+        }
+
+        showNotification(
+          '🎉 승리!',
+          notificationMessage,
+          'success'
+        );
+      } else {
+        // 실패 시 도전권 환불
+        if (engine && engine.state.sealedZone) {
+          engine.state.sealedZone.tickets = (engine.state.sealedZone.tickets || 0) + 1;
+        }
+        setGameState(prev => ({
           ...prev,
-          player: {
-            ...prev.player,
-            gold: prev.player.gold + rewards.gold
-          },
           sealedZone: {
             ...prev.sealedZone,
-            bossCoins: (prev.sealedZone?.bossCoins || 0) + rewards.bossCoins
+            tickets: (prev.sealedZone?.tickets || 0) + 1
           }
-        };
+        }));
 
-        // 인벤토리에 세트 아이템 추가
-        if (droppedSetItem) {
-          newState.inventory = [...(prev.inventory || []), droppedSetItem];
-        }
-
-        return newState;
-      });
-
-      // 알림 메시지 생성
-      let notificationMessage = `💰 골드 +${formatNumber(rewards.gold)}\n🪙 보스 코인 +${rewards.bossCoins}`;
-      if (droppedSetItem) {
-        notificationMessage += `\n\n🎁 세트 아이템 획득!\n${droppedSetItem.name} (Lv.${droppedSetItem.itemLevel})`;
+        showNotification('💀 패배', '시간 초과! 도전권이 환불되었습니다.', 'error');
       }
-
-      showNotification(
-        '🎉 승리!',
-        notificationMessage,
-        'success'
-      );
-    } else {
-      // 실패 시 도전권 환불
-      if (engine && engine.state.sealedZone) {
-        engine.state.sealedZone.tickets = (engine.state.sealedZone.tickets || 0) + 1;
-      }
-      setGameState(prev => ({
-        ...prev,
-        sealedZone: {
-          ...prev.sealedZone,
-          tickets: (prev.sealedZone?.tickets || 0) + 1
-        }
-      }));
-
-      showNotification('💀 패배', '시간 초과! 도전권이 환불되었습니다.', 'error');
-    }
+    }, 0);
   };
 
   // 문양 공격 (여러 문양 동시 공격)
@@ -587,11 +702,15 @@ const SealedZone = () => {
           // 미스 처리
           if (result.isMiss) {
             setBattleLog(log => [...log.slice(-5), `📿 ${inscriptionStats.name} - Miss!`]);
+            showDamageNumber(0, false, true);
             return prevHP;
           }
 
           // 데미지 적용
           const actualDamage = result.damage;
+
+          // 데미지 플로팅 텍스트 표시
+          showDamageNumber(actualDamage, result.isCrit, false);
 
           // 로그 추가
           if (result.isCrit) {
@@ -602,8 +721,9 @@ const SealedZone = () => {
 
           const newHP = Math.max(0, prevHP - actualDamage);
 
+          // 승리 처리를 setTimeout으로 지연시켜 렌더링 중 setState 방지
           if (newHP <= 0) {
-            endBattle(true);
+            setTimeout(() => endBattle(true), 0);
           }
 
           return newHP;
@@ -616,249 +736,259 @@ const SealedZone = () => {
     };
   }, [inBattle, activeInscriptions, selectedBoss, selectedDifficulty, ownedInscriptions]);
 
-  if (inBattle) {
-    // 전투 화면
+  // 전투 화면 컴포넌트 (인라인용)
+  const renderBattlePanel = () => {
+    if (!inBattle || !selectedBoss) return null;
+
     const bossData = RAID_BOSSES[selectedBoss];
     const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty);
     const hpPercent = (bossHP / bossStats.hp) * 100;
+    const timerPercent = (battleTimer / 30) * 100;
+    const playerImageSrc = getPlayerImagePath(player.classLevel || 0, playerFrame);
+
+    // HP 구간 계산 (클리어 가능성 판단) - 전투력 기반
+    // 남은 시간 비율만큼의 전투력으로 남은 HP를 처리할 수 있는지 확인
+    const remainingPower = combatPower * (battleTimer / 30);
+    const canClear = remainingPower >= bossHP;
 
     return (
-      <div className="bg-game-panel border border-game-border rounded-lg p-4 shadow-md">
-        {/* 보스 헤더 (이미지 + 이름 + 타이머) */}
-        <div className="flex items-center gap-4 mb-4">
-          {/* 보스 이미지 */}
-          <div className="relative flex-shrink-0">
-            <img
-              src={getBossImage(selectedBoss)}
-              alt={bossData.name}
-              className="w-16 h-16 object-contain animate-pulse"
-              style={{
-                imageRendering: 'pixelated',
-                filter: 'drop-shadow(0 0 8px #ef4444)'
-              }}
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'flex';
-              }}
-            />
-            <div className="text-4xl hidden items-center justify-center w-16 h-16">{bossData.icon}</div>
+      <div className="flex-1 bg-gradient-to-r from-red-900/30 to-gray-800/50 border border-red-500/30 rounded-lg p-3">
+        {/* 상단 정보 바 */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-red-400">{bossData.name}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${getDifficultyColor(selectedDifficulty)} bg-gray-800`}>
+              Lv.{selectedDifficulty}
+            </span>
           </div>
-          <div className="flex-1">
-            <h2 className="text-xl font-bold text-gray-100">{bossData.name}</h2>
-            <div className="text-xs text-gray-400">{bossData.description}</div>
+          <div className="flex items-center gap-1">
+            <span className={`text-xs font-bold ${canClear ? 'text-green-400' : 'text-red-400'}`}>
+              {canClear ? '✓ 클리어 가능' : '✗ 클리어 불가'}
+            </span>
           </div>
-          <div className="text-2xl font-bold text-red-400">⏱️ {battleTimer}초</div>
         </div>
 
-        {/* 보스 HP 바 */}
-        <div className="mb-4">
-          <div className="flex justify-between text-sm mb-1">
-            <span className="text-gray-300">HP</span>
-            <span className="text-gray-300">{formatNumber(bossHP)} / {formatNumber(bossStats.hp)}</span>
-          </div>
-          <div className="w-full bg-gray-700 rounded-full h-6 overflow-hidden">
+        {/* 좌우 레이아웃: 전투화면 | 정보패널 */}
+        <div className="flex gap-3">
+          {/* 좌측: 전투 화면 (캐릭터 vs 보스) */}
+          <div
+            className={`flex-1 relative overflow-hidden rounded-lg border border-purple-900/50 ${screenShake ? 'animate-shake' : ''}`}
+            style={{ height: '200px', background: 'linear-gradient(180deg, #0d0d1a 0%, #1a1025 40%, #251530 70%, #0d0d15 100%)' }}
+          >
+            {/* 크리티컬 플래시 효과 */}
+            {isCriticalHit && (
+              <div
+                className="absolute inset-0 z-20 pointer-events-none animate-critFlash"
+                style={{ background: 'radial-gradient(circle, rgba(255,215,0,0.4) 0%, transparent 70%)' }}
+              />
+            )}
+
+            {/* 바닥 그라데이션 */}
+            <div className="absolute bottom-0 left-0 right-0 h-12" style={{ background: 'linear-gradient(180deg, transparent 0%, rgba(13,13,26,0.9) 100%)' }} />
+
+            {/* 캐릭터 (좌측) */}
+            <div className="absolute" style={{ bottom: '10%', left: '12%' }}>
+              <div className="flex items-end justify-center" style={{ width: '80px', height: '70px', filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.7))' }}>
+                <img
+                  key={playerImageSrc}
+                  src={playerImageSrc}
+                  alt="Player"
+                  className="w-full h-full object-contain"
+                  style={{ imageRendering: 'pixelated' }}
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = `${BASE_URL}images/field/characters/base/player_0.png`;
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* 보스 (우측) */}
             <div
-              className="h-full bg-red-500 transition-all duration-200"
-              style={{ width: `${hpPercent}%` }}
-            />
-          </div>
-        </div>
-
-        {/* 보스 패턴 상태 표시 */}
-        {(bossPatternState.hasShield || bossPatternState.isRegenerating || bossPatternState.equipmentDestroyed) && (
-          <div className="mb-4 flex gap-2 flex-wrap">
-            {bossPatternState.hasShield && (
-              <div className="bg-blue-900 border border-blue-500 rounded px-3 py-1 text-sm">
-                <span className="text-blue-400">🛡️ 보호막: {formatNumber(Math.floor(bossPatternState.shieldHP))} / {formatNumber(Math.floor(bossPatternState.maxShieldHP))}</span>
+              className={`absolute transition-all duration-150 ${isMonsterHit ? (isCriticalHit ? 'translate-x-3' : 'translate-x-1') : ''}`}
+              style={{
+                bottom: '10%',
+                right: '12%',
+                filter: isMonsterHit
+                  ? 'brightness(2) saturate(0.5)'
+                  : 'drop-shadow(0 0 10px #8B5CF6) drop-shadow(0 0 20px #6D28D9)',
+              }}
+            >
+              <div className="flex items-end justify-center" style={{ width: '90px', height: '80px' }}>
+                <img
+                  src={getBossImage(selectedBoss)}
+                  alt={bossData.name}
+                  className="w-full h-full object-contain"
+                  style={{ imageRendering: 'pixelated' }}
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
+                />
+                <div className="text-4xl hidden items-center justify-center">{bossData.icon}</div>
               </div>
-            )}
-            {bossPatternState.isRegenerating && (
-              <div className="bg-green-900 border border-green-500 rounded px-3 py-1 text-sm">
-                <span className="text-green-400">♻️ 재생 중 ({Math.floor(bossPatternState.regenAmount).toLocaleString()}/2초)</span>
-              </div>
-            )}
-            {bossPatternState.equipmentDestroyed && (
-              <div className="bg-red-900 border border-red-500 rounded px-3 py-1 text-sm">
-                <span className="text-red-400">⚠️ 장비 파괴됨!</span>
-              </div>
-            )}
-          </div>
-        )}
+            </div>
 
-        {/* 보스 패턴 설명 */}
-        <div className="bg-gray-800 border border-gray-700 rounded p-3 mb-4">
-          <div className="text-sm text-gray-300">
-            <div className="font-bold text-orange-400 mb-1">{bossData.pattern.icon} {bossData.pattern.name}</div>
-            <div>{bossData.pattern.description}</div>
-          </div>
-        </div>
+            {/* 데미지 숫자 팝업 */}
+            {damageNumbers.map(dmg => (
+              <div
+                key={dmg.id}
+                className="absolute pointer-events-none z-50"
+                style={{
+                  right: `${dmg.x - 20}%`,
+                  top: `${dmg.y}%`,
+                  textShadow: dmg.isCrit
+                    ? '0 0 8px #ff0000, 0 0 16px #ff4444, 2px 2px 4px rgba(0,0,0,1)'
+                    : dmg.isMiss
+                    ? '1px 1px 2px rgba(0,0,0,0.9)'
+                    : '1px 1px 2px rgba(0,0,0,0.9), -1px -1px 2px rgba(0,0,0,0.9)',
+                  animation: dmg.isCrit ? 'critDamageFloat 1s ease-out forwards' : 'damageFloat 1s ease-out forwards',
+                  fontSize: dmg.isCrit ? '1.2rem' : dmg.isMiss ? '0.8rem' : '1rem',
+                  color: dmg.isMiss ? '#888888' : dmg.isCrit ? '#FFD700' : '#FFFFFF',
+                  fontWeight: 700,
+                }}
+              >
+                {dmg.isMiss ? 'MISS' : (
+                  <>
+                    {dmg.isCrit && <span style={{ color: '#FF4444' }}>★</span>}
+                    {formatNumber(dmg.value)}
+                    {dmg.isCrit && <span style={{ color: '#FF4444' }}>★</span>}
+                  </>
+                )}
+              </div>
+            ))}
 
-        {/* 버프/디버프 상태창 */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          {/* 보스 버프/디버프 */}
-          <div className="bg-gray-800 border border-gray-700 rounded p-3">
-            <h4 className="text-xs font-bold text-red-400 mb-2">👹 보스 상태</h4>
-            <div className="space-y-1">
+            {/* 활성 문양 표시 (우측 상단) */}
+            <div className="absolute top-1 right-1 flex gap-0.5">
+              {activeInscriptions.slice(0, 5).map(inscId => {
+                const inscription = ownedInscriptions.find(i => i.id === inscId);
+                if (!inscription) return null;
+                return (
+                  <div key={inscId} className="w-6 h-6 bg-black/50 rounded border border-purple-500/50 p-0.5">
+                    <img
+                      src={getInscriptionImage(inscription.inscriptionId)}
+                      alt=""
+                      className="w-full h-full object-contain"
+                      style={{ imageRendering: 'pixelated' }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 보스 패턴 상태 (좌측 상단) */}
+            <div className="absolute top-1 left-1 flex flex-col gap-0.5">
               {bossPatternState.hasShield && (
-                <div
-                  className="flex items-center gap-1 text-xs cursor-help"
-                  title="보스의 보호막이 활성화되어 있습니다. 보호막을 먼저 파괴해야 본체에 데미지를 입힐 수 있습니다."
-                >
-                  <span className="text-blue-400">🛡️</span>
-                  <span className="text-blue-300">보호막 ({Math.floor((bossPatternState.shieldHP / bossPatternState.maxShieldHP) * 100)}%)</span>
+                <div className="bg-blue-900/80 border border-blue-500 rounded px-1 py-0.5 text-[8px] text-blue-300">
+                  🛡️ {Math.floor((bossPatternState.shieldHP / bossPatternState.maxShieldHP) * 100)}%
                 </div>
               )}
               {bossPatternState.isRegenerating && (
-                <div
-                  className="flex items-center gap-1 text-xs cursor-help"
-                  title={`보스가 재생 중입니다. 2초마다 ${Math.floor(bossPatternState.regenAmount).toLocaleString()} HP를 회복합니다.`}
-                >
-                  <span className="text-green-400">♻️</span>
-                  <span className="text-green-300">재생 중</span>
+                <div className="bg-green-900/80 border border-green-500 rounded px-1 py-0.5 text-[8px] text-green-300">
+                  ♻️ 재생
                 </div>
-              )}
-              {bossData.pattern?.evasionRate > 0 && (
-                <div
-                  className="flex items-center gap-1 text-xs cursor-help"
-                  title={`보스가 ${bossData.pattern.evasionRate}% 확률로 공격을 회피합니다. 명중률이나 필중 효과로 대응하세요.`}
-                >
-                  <span className="text-purple-400">💨</span>
-                  <span className="text-purple-300">회피 {bossData.pattern.evasionRate}%</span>
-                </div>
-              )}
-              {bossData.pattern?.type === 'crit_immunity' && (
-                <div
-                  className="flex items-center gap-1 text-xs cursor-help"
-                  title="모든 치명타 공격이 일반 공격으로 변환됩니다. 치명타에 의존하지 않는 순수 공격력/관통 빌드가 유리합니다."
-                >
-                  <span className="text-yellow-400">⚙️</span>
-                  <span className="text-yellow-300">치명타 무효</span>
-                </div>
-              )}
-              {/* 치유 감소 디버프 체크 */}
-              {(() => {
-                const hasHealReduction = activeInscriptions.some(inscId => {
-                  const inscription = ownedInscriptions.find(i => i.id === inscId);
-                  if (!inscription) return false;
-                  const inscData = INSCRIPTIONS[inscription.inscriptionId];
-                  return inscData?.abilities?.some(a => a.type === 'heal_reduction');
-                });
-                return hasHealReduction && bossPatternState.isRegenerating && (
-                  <div
-                    className="flex items-center gap-1 text-xs cursor-help"
-                    title="부패의 문양 효과: 보스의 재생 효과가 70% 감소합니다."
-                  >
-                    <span className="text-purple-400">🚫</span>
-                    <span className="text-purple-300">치유 감소 -70%</span>
-                  </div>
-                );
-              })()}
-              {!bossPatternState.hasShield && !bossPatternState.isRegenerating && !bossData.pattern?.evasionRate && bossData.pattern?.type !== 'crit_immunity' && (
-                <div className="text-xs text-gray-500">효과 없음</div>
               )}
             </div>
+
+            {/* CSS 애니메이션 */}
+            <style>{`
+              @keyframes damageFloat {
+                0% { opacity: 1; transform: translateY(0) scale(1); }
+                50% { opacity: 1; transform: translateY(-20px) scale(1.2); }
+                100% { opacity: 0; transform: translateY(-40px) scale(0.8); }
+              }
+              @keyframes critDamageFloat {
+                0% { opacity: 1; transform: translateY(0) scale(1.5); }
+                20% { transform: translateY(-10px) scale(1.8); }
+                50% { opacity: 1; transform: translateY(-25px) scale(1.6); }
+                100% { opacity: 0; transform: translateY(-50px) scale(1); }
+              }
+              .animate-shake {
+                animation: shake 0.2s ease-in-out;
+              }
+              @keyframes shake {
+                0%, 100% { transform: translateX(0); }
+                20% { transform: translateX(-4px) rotate(-1deg); }
+                40% { transform: translateX(4px) rotate(1deg); }
+                60% { transform: translateX(-3px) rotate(-0.5deg); }
+                80% { transform: translateX(3px) rotate(0.5deg); }
+              }
+              .animate-critFlash {
+                animation: critFlash 0.3s ease-out;
+              }
+              @keyframes critFlash {
+                0% { opacity: 0; }
+                30% { opacity: 1; }
+                100% { opacity: 0; }
+              }
+            `}</style>
           </div>
 
-          {/* 내 버프/디버프 */}
-          <div className="bg-gray-800 border border-gray-700 rounded p-3">
-            <h4 className="text-xs font-bold text-blue-400 mb-2">⚔️ 내 상태</h4>
-            <div className="space-y-1">
-              {/* 캐릭터 DPS 표시 */}
-              <div className="flex items-center gap-1 text-xs">
-                <span className="text-cyan-400">⚔️</span>
-                <span className="text-gray-300">캐릭터 DPS: <span className="text-cyan-300 font-bold">{formatNumber(engine?.calculateTotalDPS()?.damage || 0)}</span></span>
+          {/* 우측: 정보 패널 (HP, 타이머, 로그, 포기버튼) */}
+          <div className="w-48 flex flex-col">
+            {/* HP 바 */}
+            <div className="mb-2">
+              <div className="flex justify-between text-[10px] mb-0.5">
+                <span className="text-red-400 font-bold">HP</span>
+                <span className="text-gray-300">{formatNumber(bossHP)} / {formatNumber(bossStats.hp)}</span>
               </div>
-              {/* 장비 파괴 디버프 */}
-              {bossPatternState.equipmentDestroyed && (
+              <div className="relative w-full bg-gray-800 rounded-full h-5 overflow-hidden border border-gray-600">
                 <div
-                  className="flex items-center gap-1 text-xs cursor-help"
-                  title="장비가 일시적으로 파괴되어 장비의 모든 효과(공격력, 방어력, 옵션)가 무효화됩니다. 전투가 끝나면 자동으로 복구됩니다."
-                >
-                  <span className="text-red-400">⚠️</span>
-                  <span className="text-red-300">장비 파괴됨</span>
+                  className={`h-full transition-all duration-200 ${
+                    hpPercent > 50 ? 'bg-gradient-to-r from-red-600 to-red-500' :
+                    hpPercent > 25 ? 'bg-gradient-to-r from-orange-600 to-orange-500' :
+                    'bg-gradient-to-r from-yellow-600 to-yellow-500'
+                  }`}
+                  style={{ width: `${hpPercent}%` }}
+                />
+                <div className="absolute top-0 bottom-0 left-[75%] w-0.5 bg-white/30" />
+                <div className="absolute top-0 bottom-0 left-[50%] w-0.5 bg-white/40" />
+                <div className="absolute top-0 bottom-0 left-[25%] w-0.5 bg-white/30" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-[10px] font-bold text-white drop-shadow-lg">{hpPercent.toFixed(1)}%</span>
                 </div>
-              )}
-
-              {/* 활성화된 문양 어빌리티 표시 */}
-              {activeInscriptions.map(inscId => {
-                const inscription = ownedInscriptions.find(i => i.id === inscId);
-                if (!inscription) return null;
-                const inscData = INSCRIPTIONS[inscription.inscriptionId];
-
-                // 주요 어빌리티만 표시
-                const hasShieldPenetration = inscData?.abilities?.some(a => a.type === 'shield_penetration');
-                const hasTrueHit = inscData?.abilities?.some(a => a.type === 'true_hit');
-                const hasEquipmentImmunity = inscData?.abilities?.some(a => a.type === 'equipment_immunity');
-
-                return (
-                  <React.Fragment key={inscId}>
-                    {hasShieldPenetration && (
-                      <div
-                        className="flex items-center gap-1 text-xs cursor-help"
-                        title="심판의 문양 효과: 보스의 보호막을 무시하고 직접 본체에 데미지를 입힐 수 있습니다."
-                      >
-                        <span className="text-yellow-400">⚡</span>
-                        <span className="text-yellow-300">보호막 관통</span>
-                      </div>
-                    )}
-                    {hasTrueHit && (
-                      <div
-                        className="flex items-center gap-1 text-xs cursor-help"
-                        title="유성의 문양 효과: 모든 공격이 적중하여 보스의 회피를 무시합니다."
-                      >
-                        <span className="text-orange-400">🎯</span>
-                        <span className="text-orange-300">필중</span>
-                      </div>
-                    )}
-                    {hasEquipmentImmunity && (
-                      <div
-                        className="flex items-center gap-1 text-xs cursor-help"
-                        title="수호의 문양 효과: 보스의 장비 파괴 공격에 면역이 되어 장비가 절대 파괴되지 않습니다."
-                      >
-                        <span className="text-green-400">🔰</span>
-                        <span className="text-green-300">장비 파괴 면역</span>
-                      </div>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-
-              {/* 파괴의 문양 - 다음 공격 치명타 보장 */}
-              {battleState.guaranteedCritNext && (
-                <div
-                  className="flex items-center gap-1 text-xs cursor-help"
-                  title="파괴의 문양 효과: 다음 공격이 100% 확률로 치명타로 적중합니다. 공격 후 효과가 소멸됩니다."
-                >
-                  <span className="text-red-400">💥</span>
-                  <span className="text-red-300">다음 공격 치명타!</span>
-                </div>
-              )}
-
-              {!bossPatternState.equipmentDestroyed &&
-               !battleState.guaranteedCritNext &&
-               activeInscriptions.length === 0 && (
-                <div className="text-xs text-gray-500">효과 없음</div>
-              )}
+              </div>
             </div>
+
+            {/* 타이머 바 */}
+            <div className="mb-2">
+              <div className="flex justify-between text-[10px] mb-0.5">
+                <span className="text-yellow-400 font-bold">⏱️ 시간</span>
+                <span className={`font-bold ${battleTimer <= 10 ? 'text-red-400 animate-pulse' : 'text-gray-300'}`}>
+                  {battleTimer}초
+                </span>
+              </div>
+              <div className="relative w-full bg-gray-800 rounded-full h-3 overflow-hidden border border-gray-600">
+                <div
+                  className={`h-full transition-all duration-1000 ${
+                    timerPercent > 50 ? 'bg-gradient-to-r from-green-600 to-green-500' :
+                    timerPercent > 25 ? 'bg-gradient-to-r from-yellow-600 to-yellow-500' :
+                    'bg-gradient-to-r from-red-600 to-red-500 animate-pulse'
+                  }`}
+                  style={{ width: `${timerPercent}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 전투 로그 */}
+            <div className="flex-1 bg-gray-900/50 border border-gray-700 rounded p-1.5 overflow-y-auto mb-2" style={{ minHeight: '80px' }}>
+              {battleLog.slice(-6).map((log, i) => (
+                <div key={i} className="text-[9px] text-gray-400">{log}</div>
+              ))}
+            </div>
+
+            {/* 포기 버튼 */}
+            <button
+              onClick={() => endBattle(false)}
+              className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded font-bold text-sm"
+            >
+              포기
+            </button>
           </div>
         </div>
-
-        {/* 전투 로그 */}
-        <div className="bg-gray-900 border border-gray-700 rounded p-2 h-32 overflow-y-auto">
-          {battleLog.map((log, i) => (
-            <div key={i} className="text-xs text-gray-400">{log}</div>
-          ))}
-        </div>
-
-        <button
-          onClick={() => endBattle(false)}
-          className="mt-4 w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded"
-        >
-          포기
-        </button>
       </div>
     );
-  }
+  };
 
   return (
     <div className="space-y-4">
@@ -889,249 +1019,270 @@ const SealedZone = () => {
       {/* 보스 도전 탭 */}
       {activeSubTab === 'boss' && (
         <div className="bg-game-panel border border-game-border rounded-lg p-4 shadow-md">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-100">🔒 봉인구역</h2>
-            <div className="text-sm text-gray-300">
-              도전권: <span className="text-yellow-400 font-bold">{tickets}</span>
-            </div>
+      {/* 좌우 레이아웃: 보스 선택 (왼쪽) + 상세정보/전투 (오른쪽) */}
+      <div className="flex gap-3">
+        {/* 왼쪽: 보스 선택 리스트 (2열) */}
+        <div className="w-44 flex-shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-400">도전권: <span className="text-yellow-400 font-bold">{tickets}</span></span>
           </div>
+          <div className="grid grid-cols-2 gap-1.5 max-h-[350px] overflow-y-auto pr-1">
+            {Object.entries(RAID_BOSSES).map(([bossId, boss]) => {
+              const unlocked = checkBossUnlock(bossId, player.floor);
 
-      {/* 보스 선택 - 가로 스크롤 탭 */}
-      <div className="mb-4 -mx-1 mt-2">
-        <div className="flex gap-2 overflow-x-auto pb-2 pt-2 px-1 scrollbar-thin scrollbar-thumb-gray-600">
-          {Object.entries(RAID_BOSSES).map(([bossId, boss]) => {
-            const unlocked = checkBossUnlock(bossId, player.floor);
+              return (
+                <button
+                  key={bossId}
+                  onClick={() => unlocked && !inBattle && setSelectedBoss(bossId)}
+                  disabled={!unlocked || inBattle}
+                  className={`p-1.5 rounded-lg border-2 relative transition-all ${
+                    selectedBoss === bossId
+                      ? 'bg-red-900/60 border-red-500 shadow-lg shadow-red-500/40'
+                      : unlocked && !inBattle
+                      ? 'bg-gray-800/80 border-gray-600 hover:bg-gray-700 hover:border-gray-500'
+                      : 'bg-gray-900/50 border-gray-800 opacity-40 cursor-not-allowed'
+                  }`}
+                >
+                  {/* 보스 이미지 */}
+                  <div className="relative flex justify-center mb-0.5">
+                    <img
+                      src={getBossImage(bossId)}
+                      alt={boss.name}
+                      className={`w-10 h-10 object-contain ${!unlocked ? 'grayscale opacity-50' : ''}`}
+                      style={{
+                        imageRendering: 'pixelated',
+                        filter: unlocked && selectedBoss === bossId ? 'drop-shadow(0 0 6px #ef4444)' : undefined
+                      }}
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
+                    />
+                    <div className="text-xl hidden items-center justify-center">{boss.icon}</div>
+                  </div>
+                  <div className="text-[9px] font-bold text-gray-200 text-center truncate">{boss.name.split(' ').pop()}</div>
+                  {!unlocked && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-lg">
+                      <span className="text-[8px] text-gray-400">🔒 {boss.unlockFloor}층</span>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-            return (
-              <button
-                key={bossId}
-                onClick={() => unlocked && setSelectedBoss(bossId)}
-                disabled={!unlocked}
-                className={`flex-shrink-0 w-20 p-2 rounded-lg border-2 relative transition-all ${
-                  selectedBoss === bossId
-                    ? 'bg-red-900/60 border-red-500 shadow-lg shadow-red-500/40 scale-105 z-10'
-                    : unlocked
-                    ? 'bg-gray-800/80 border-gray-600 hover:bg-gray-700 hover:border-gray-500'
-                    : 'bg-gray-900/50 border-gray-800 opacity-40 cursor-not-allowed'
-                }`}
-              >
-                {/* 보스 이미지 - 크게 */}
-                <div className="relative flex justify-center mb-1">
+        {/* 오른쪽: 전투 중이면 전투 화면, 아니면 보스 상세 정보 */}
+        {inBattle ? (
+          // 전투 화면
+          renderBattlePanel()
+        ) : selectedBoss ? (
+          <div className="flex-1 bg-gradient-to-r from-red-900/30 to-gray-800/50 border border-red-500/30 rounded-lg p-3">
+            <div className="flex gap-4">
+              {/* 보스 초상화 (컴팩트) */}
+              <div className="flex-shrink-0 flex flex-col items-center w-24">
+                <div className="relative">
                   <img
-                    src={getBossImage(bossId)}
-                    alt={boss.name}
-                    className={`w-14 h-14 object-contain ${!unlocked ? 'grayscale opacity-50' : ''}`}
+                    src={getBossImage(selectedBoss)}
+                    alt={RAID_BOSSES[selectedBoss].name}
+                    className="w-20 h-20 object-contain"
                     style={{
                       imageRendering: 'pixelated',
-                      filter: unlocked && selectedBoss === bossId ? 'drop-shadow(0 0 8px #ef4444)' : undefined
+                      filter: 'drop-shadow(0 0 10px #ef4444)'
                     }}
                     onError={(e) => {
                       e.target.style.display = 'none';
                       e.target.nextSibling.style.display = 'flex';
                     }}
                   />
-                  <div className="text-3xl hidden items-center justify-center">{boss.icon}</div>
+                  <div className="text-3xl hidden items-center justify-center w-20 h-20">{RAID_BOSSES[selectedBoss].icon}</div>
                 </div>
-                <div className="text-[10px] font-bold text-gray-200 text-center truncate">{boss.name.split(' ').pop()}</div>
-                {!unlocked && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-                    <span className="text-[10px] text-gray-400">🔒 {boss.unlockFloor}층</span>
+                {/* 난이도 선택 (초상화 아래) */}
+                <div className="mt-1 w-full">
+                  <div className="text-center mb-0.5">
+                    <span className={`text-xs font-bold ${getDifficultyColor(selectedDifficulty)}`}>
+                      Lv.{selectedDifficulty}
+                    </span>
                   </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 선택된 보스 상세 정보 + 문양 슬롯 */}
-      {selectedBoss && (
-        <div className="mb-4 bg-gradient-to-r from-red-900/30 to-gray-800/50 border border-red-500/30 rounded-lg p-4 overflow-visible">
-          <div className="flex gap-4 overflow-visible">
-            {/* 왼쪽: 보스 초상화 + 정보 */}
-            <div className="flex items-center gap-4 flex-1">
-              {/* 큰 초상화 */}
-              <div className="flex-shrink-0 p-2">
-                <img
-                  src={getBossImage(selectedBoss)}
-                  alt={RAID_BOSSES[selectedBoss].name}
-                  className="w-28 h-28 object-contain"
-                  style={{
-                    imageRendering: 'pixelated',
-                    filter: 'drop-shadow(0 0 10px #ef4444)'
-                  }}
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    e.target.nextSibling.style.display = 'flex';
-                  }}
-                />
-                <div className="text-5xl hidden items-center justify-center w-28 h-28">{RAID_BOSSES[selectedBoss].icon}</div>
-              </div>
-              {/* 보스 정보 */}
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-red-400">{RAID_BOSSES[selectedBoss].name}</h3>
-                <div className="text-xs text-gray-400 mb-2">{RAID_BOSSES[selectedBoss].description}</div>
-                <div className="text-sm text-orange-400 font-bold mb-1">
-                  ⚔️ {RAID_BOSSES[selectedBoss].pattern.description}
-                </div>
-                <div className="text-xs text-gray-500">
-                  HP: {formatNumber(calculateRaidBossStats(selectedBoss, selectedDifficulty).hp)}
-                </div>
-
-                {/* 난이도 선택 */}
-                <div className="mt-3 pt-3 border-t border-gray-700">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center gap-0.5">
                     <button
                       onClick={() => setSelectedDifficulty(Math.max(1, selectedDifficulty - 10))}
-                      className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold text-xs"
+                      className="w-6 h-4 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold text-[8px]"
                     >
                       -10
                     </button>
                     <button
                       onClick={() => setSelectedDifficulty(Math.max(1, selectedDifficulty - 1))}
-                      className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold text-xs"
+                      className="w-4 h-4 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold text-[9px]"
                     >
-                      -1
+                      -
                     </button>
-                    <div className="flex-1 text-center">
-                      <div className={`text-sm font-bold ${getDifficultyColor(selectedDifficulty)}`}>
-                        {getDifficultyName(selectedDifficulty)}
-                      </div>
-                      <div className="text-[10px] text-gray-400">
-                        배율: x{getDifficultyMultiplier(selectedDifficulty).toFixed(1)}
-                      </div>
-                    </div>
                     <button
                       onClick={() => setSelectedDifficulty(selectedDifficulty + 1)}
-                      className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold text-xs"
+                      className="w-4 h-4 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold text-[9px]"
                     >
-                      +1
+                      +
                     </button>
                     <button
                       onClick={() => setSelectedDifficulty(selectedDifficulty + 10)}
-                      className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold text-xs"
+                      className="w-6 h-4 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold text-[8px]"
                     >
                       +10
                     </button>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* 오른쪽: 문양 슬롯 */}
-            <div className="w-80 flex-shrink-0 border-l border-gray-700 pl-4 overflow-visible relative z-20 flex flex-col">
-              {/* 슬롯 헤더 */}
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-300 font-bold">
-                  슬롯: {activeInscriptions.length}/{unlockedInscriptionSlots}
-                </span>
-                {unlockedInscriptionSlots < INSCRIPTION_SLOT_CONFIG.maxSlots && (
-                  <button
-                    onClick={() => {
-                      const nextSlot = unlockedInscriptionSlots + 1;
-                      const cost = INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${nextSlot}`];
-                      const bossCoins = sealedZone.bossCoins || 0;
-                      if (bossCoins >= cost) {
-                        if (confirm(`${nextSlot}번째 슬롯을 ${formatNumber(cost)} 보스코인으로 해금하시겠습니까?`)) {
-                          // GameEngine 상태도 직접 업데이트
-                          if (engine) {
-                            engine.state.sealedZone.bossCoins = (engine.state.sealedZone.bossCoins || 0) - cost;
-                            engine.state.sealedZone.unlockedInscriptionSlots = nextSlot;
-                          }
-                          setGameState(prev => ({
-                            ...prev,
-                            sealedZone: {
-                              ...prev.sealedZone,
-                              bossCoins: (prev.sealedZone.bossCoins || 0) - cost,
-                              unlockedInscriptionSlots: nextSlot
-                            }
-                          }));
-                        }
-                      } else {
-                        alert('보스코인이 부족합니다!');
-                      }
-                    }}
-                    className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-0.5 rounded"
-                  >
-                    🔓 해금 ({formatNumber(INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${unlockedInscriptionSlots + 1}`])} 🪙)
-                  </button>
-                )}
-              </div>
-
-              {/* 문양 슬롯 (컴팩트) */}
-              <div className="space-y-1.5 max-h-32 overflow-visible p-1">
-                {Array.from({ length: unlockedInscriptionSlots }).map((_, idx) => {
-                  const inscriptionId = activeInscriptions[idx];
-                  const inscription = inscriptionId ? ownedInscriptions.find(i => i.id === inscriptionId) : null;
-                  const inscriptionData = inscription ? calculateInscriptionStats(inscription.inscriptionId, migrateGrade(inscription.grade)) : null;
-                  const inscriptionBase = inscription ? INSCRIPTIONS[inscription.inscriptionId] : null;
-                  const slotGradeStyle = inscription ? getGradeCardStyle(migrateGrade(inscription.grade)) : null;
-
+              {/* 보스 정보 (더 컴팩트하게) */}
+              <div className="flex-1 flex flex-col min-w-0">
+                <h3 className="text-base font-bold text-red-400">{RAID_BOSSES[selectedBoss].name}</h3>
+                <div className="text-[10px] text-orange-400 font-bold mb-1 p-1.5 bg-gray-800/50 rounded truncate">
+                  ⚔️ {RAID_BOSSES[selectedBoss].pattern.description}
+                </div>
+                {/* 예상 클리어 표시 */}
+                {(() => {
+                  const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty);
+                  const canClear = combatPower >= bossStats.hp;
+                  const clearRatio = combatPower > 0 ? (combatPower / bossStats.hp * 100).toFixed(0) : 0;
                   return (
-                    <div
-                      key={idx}
-                      className={`border rounded-lg p-2 ${
-                        inscription
-                          ? slotGradeStyle.className
-                          : 'bg-gray-800 border-gray-600 border-dashed'
-                      }`}
-                      style={inscription ? slotGradeStyle.borderStyle : {}}
-                    >
-                      {inscription ? (
-                        <div className="flex items-center gap-2">
-                          {/* 문양 이미지 */}
-                          <img
-                            src={getInscriptionImage(inscription.inscriptionId)}
-                            alt={inscriptionData.name}
-                            className="w-8 h-8 object-contain"
-                            style={{ imageRendering: 'pixelated' }}
-                            onError={(e) => { e.target.style.display = 'none'; }}
-                          />
-                          {/* 문양 정보 (간략) */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1">
-                              <span className={`text-[10px] font-bold ${inscriptionData.gradeColor}`}>
-                                {inscriptionData.gradeName}
-                              </span>
-                              <span className="text-[10px] text-gray-100 truncate">{inscriptionData.name}</span>
-                            </div>
-                            <div className="text-[9px] text-gray-400">
-                              ATK +{formatNumber(inscriptionData.attack)} | 치확 +{inscriptionData.critChance.toFixed(1)}%
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-center py-1">
-                          <span className="text-gray-600 text-[10px]">슬롯 {idx + 1} - 비어있음</span>
-                        </div>
-                      )}
+                    <div className="flex flex-col gap-0.5 p-1.5 bg-gray-900/50 rounded text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400">보스 HP</span>
+                        <span className="text-red-400 font-bold">{formatNumber(bossStats.hp)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400">전투력</span>
+                        <span className="text-cyan-400 font-bold">⚡ {formatNumber(combatPower)}</span>
+                      </div>
+                      <div className={`text-center py-0.5 rounded font-bold text-[10px] ${canClear ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
+                        {canClear ? `✓ 클리어 가능 (${clearRatio}%)` : `✗ 클리어 불가 (${clearRatio}%)`}
+                      </div>
                     </div>
                   );
-                })}
+                })()}
               </div>
 
-              {/* 도전 버튼 */}
-              <button
-                onClick={startBattle}
-                disabled={tickets <= 0 || activeInscriptions.length === 0}
-                className={`w-full py-2 mt-auto rounded font-bold text-sm ${
-                  tickets <= 0 || activeInscriptions.length === 0
-                    ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                    : 'bg-red-600 hover:bg-red-700 text-white'
-                }`}
-              >
-                ⚔️ 도전하기 (도전권 -1)
-              </button>
+              {/* 문양 슬롯 - 6:4 비율로 더 넓게 */}
+              <div className="w-72 flex-shrink-0 border-l border-gray-700 pl-3 flex flex-col">
+                {/* 슬롯 헤더 */}
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-gray-300 font-bold">
+                    슬롯 {activeInscriptions.length}/{unlockedInscriptionSlots}
+                  </span>
+                  {unlockedInscriptionSlots < INSCRIPTION_SLOT_CONFIG.maxSlots && (
+                    <button
+                      onClick={() => {
+                        const nextSlot = unlockedInscriptionSlots + 1;
+                        const cost = INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${nextSlot}`];
+                        const bossCoins = sealedZone.bossCoins || 0;
+                        if (bossCoins >= cost) {
+                          if (confirm(`${nextSlot}번째 슬롯을 ${formatNumber(cost)} 보스코인으로 해금하시겠습니까?`)) {
+                            if (engine) {
+                              engine.state.sealedZone.bossCoins = (engine.state.sealedZone.bossCoins || 0) - cost;
+                              engine.state.sealedZone.unlockedInscriptionSlots = nextSlot;
+                            }
+                            setGameState(prev => ({
+                              ...prev,
+                              sealedZone: {
+                                ...prev.sealedZone,
+                                bossCoins: (prev.sealedZone.bossCoins || 0) - cost,
+                                unlockedInscriptionSlots: nextSlot
+                              }
+                            }));
+                          }
+                        } else {
+                          alert('보스코인이 부족합니다!');
+                        }
+                      }}
+                      className="text-[9px] bg-yellow-600 hover:bg-yellow-700 text-white px-1 py-0.5 rounded"
+                    >
+                      🔓 ({formatNumber(INSCRIPTION_SLOT_CONFIG.unlockCosts[`slot${unlockedInscriptionSlots + 1}`])}🪙)
+                    </button>
+                  )}
+                </div>
+
+                {/* 문양 슬롯 목록 - 스탯 표시 추가 */}
+                <div className="space-y-1 flex-1 overflow-y-auto max-h-40">
+                  {Array.from({ length: unlockedInscriptionSlots }).map((_, idx) => {
+                    const inscriptionId = activeInscriptions[idx];
+                    const inscription = inscriptionId ? ownedInscriptions.find(i => i.id === inscriptionId) : null;
+                    const inscriptionData = inscription ? calculateInscriptionStats(inscription.inscriptionId, migrateGrade(inscription.grade)) : null;
+                    const slotGradeStyle = inscription ? getGradeCardStyle(migrateGrade(inscription.grade)) : null;
+                    const inscriptionBase = inscription ? INSCRIPTIONS[inscription.inscriptionId] : null;
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`border rounded p-1.5 ${
+                          inscription
+                            ? slotGradeStyle.className
+                            : 'bg-gray-800 border-gray-600 border-dashed'
+                        }`}
+                        style={inscription ? slotGradeStyle.borderStyle : {}}
+                      >
+                        {inscription ? (
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={getInscriptionImage(inscription.inscriptionId)}
+                              alt={inscriptionData.name}
+                              className="w-8 h-8 object-contain flex-shrink-0"
+                              style={{ imageRendering: 'pixelated' }}
+                              onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                            <div className="flex-1 min-w-0">
+                              {/* 등급 + 이름 */}
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <span className={`text-[9px] font-bold ${inscriptionData.gradeColor}`}>
+                                  {inscriptionData.gradeName}
+                                </span>
+                                <span className="text-[9px] text-gray-100 truncate">{inscriptionData.name}</span>
+                              </div>
+                              {/* 스탯 표시 - 공격력 + 특수능력 */}
+                              <div className="flex items-center gap-2 text-[8px]">
+                                <span className="text-orange-300">⚔️ {formatNumber(inscriptionData.attack)}</span>
+                                <span className="text-cyan-400">{inscriptionBase?.specialAbility?.name}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-1">
+                            <span className="text-gray-600 text-[9px]">슬롯 {idx + 1}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 도전 버튼 */}
+                <button
+                  onClick={startBattle}
+                  disabled={tickets <= 0 || activeInscriptions.length === 0}
+                  className={`w-full py-2 mt-2 rounded font-bold text-sm ${
+                    tickets <= 0 || activeInscriptions.length === 0
+                      ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                      : 'bg-red-600 hover:bg-red-700 text-white'
+                  }`}
+                >
+                  ⚔️ 도전 (도전권 -1)
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="flex-1 flex items-center justify-center bg-gray-800/30 border border-gray-700 rounded-lg p-8">
+            <span className="text-gray-500">← 보스를 선택하세요</span>
+          </div>
+        )}
+      </div>
 
       {selectedBoss && (
         <>
-          {/* 보유 문양 선택 - 모든 문양 표시 (미보유는 비활성화) */}
+          {/* 보유 문양 선택 - 전투 중에도 표시 (선택은 비활성화) */}
           <div className="mb-4">
-            <h3 className="text-sm font-bold text-gray-200 mb-2">문양 선택 (클릭: 선택/해제)</h3>
+            <h3 className="text-sm font-bold text-gray-200 mb-2">
+              문양 선택 {inBattle && <span className="text-yellow-400 text-xs">(전투 중)</span>}
+            </h3>
             <div className="grid grid-cols-10 gap-2 p-2 bg-gray-800/30 rounded-lg border border-gray-700">
               {(() => {
                 // 각 문양별 최고 등급 문양만 추출
@@ -1190,12 +1341,12 @@ const SealedZone = () => {
                   return (
                     <button
                       key={inscriptionId}
-                      onClick={() => isOwned && toggleInscriptionSelection(owned.id)}
-                      disabled={!isOwned}
+                      onClick={() => isOwned && !inBattle && toggleInscriptionSelection(owned.id)}
+                      disabled={!isOwned || inBattle}
                       className={`p-1.5 rounded-lg border-2 relative transition-all ${
                         isSelected
                           ? 'bg-blue-900/80 border-blue-400 ring-2 ring-blue-400 scale-105 z-10'
-                          : isOwned
+                          : isOwned && !inBattle
                           ? `bg-gray-900 border-gray-600 hover:scale-105 hover:z-10 ${glowColors[grade]}`
                           : 'bg-gray-900/30 border-gray-800 opacity-40 cursor-not-allowed'
                       }`}

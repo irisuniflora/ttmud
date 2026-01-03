@@ -305,9 +305,9 @@ export const EQUIPMENT_CONFIG = {
   },
 };
 
-// ===== 환생 시스템 =====
+// ===== 귀환 시스템 =====
 export const PRESTIGE_CONFIG = {
-  // 환생 가능 최소 스테이지
+  // 귀환 가능 최소 스테이지
   minStage: 50,
 
   // PP 획득 계산식
@@ -381,7 +381,7 @@ export const RELIC_CONFIG = {
     },
   },
 
-  // 환생당 고대 유물 획득량
+  // 귀환당 고대 유물 획득량
   relicFragments: {
     basePerPrestige: 10, // 기본 획득량
     bonusPerFloor: 0.1,  // 층당 추가 획득 %
@@ -403,6 +403,74 @@ export const COMBAT_CONFIG = {
   aoeCalculation: 'BASE_DMG * AOE_PERCENT / 100',
 };
 
+// ===== 전직 시스템 =====
+export const CLASS_CONFIG = {
+  // 전직 단계: 0 = 기본, 1 = 1차, 2 = 2차, 3 = 3차
+  levels: [
+    {
+      id: 0,
+      name: '초심자',
+      requiredLevel: 1, // 처음부터
+      bonuses: {
+        attackPercent: 0,
+        critChance: 0,
+        critDamage: 0,
+        goldPercent: 0
+      },
+      skills: [] // 해금 스킬
+    },
+    {
+      id: 1,
+      name: '숙련자',
+      requiredLevel: 30,
+      bonuses: {
+        attackPercent: 50,
+        critChance: 5,
+        critDamage: 20,
+        goldPercent: 30
+      },
+      skills: ['class1_skill1', 'class1_skill2']
+    },
+    {
+      id: 2,
+      name: '전문가',
+      requiredLevel: 100,
+      bonuses: {
+        attackPercent: 150,
+        critChance: 10,
+        critDamage: 50,
+        goldPercent: 80
+      },
+      skills: ['class2_skill1', 'class2_skill2']
+    },
+    {
+      id: 3,
+      name: '마스터',
+      requiredLevel: 200,
+      bonuses: {
+        attackPercent: 400,
+        critChance: 20,
+        critDamage: 100,
+        goldPercent: 200
+      },
+      skills: ['class3_skill1', 'class3_skill2']
+    }
+  ]
+};
+
+// 전직 가능 여부 확인
+export const canAdvanceClass = (currentClassLevel, playerLevel) => {
+  const nextClass = CLASS_CONFIG.levels[currentClassLevel + 1];
+  if (!nextClass) return false;
+  return playerLevel >= nextClass.requiredLevel;
+};
+
+// 현재 전직 보너스 계산
+export const getClassBonuses = (classLevel) => {
+  const classData = CLASS_CONFIG.levels[classLevel] || CLASS_CONFIG.levels[0];
+  return classData.bonuses;
+};
+
 // ===== 스킬 시스템 =====
 // (skills.js에서 개별 관리, 여기서는 공통 설정만)
 export const SKILL_CONFIG = {
@@ -411,7 +479,7 @@ export const SKILL_CONFIG = {
     costMultiplier: 1.5, // 레벨당 비용 증가 배수
   },
 
-  // PP로 구매하는 스킬 (환생 스킬)
+  // PP로 구매하는 스킬 (귀환 스킬)
   ppSkills: {
     costMultiplier: 1.3,
   },
