@@ -101,7 +101,7 @@ const getPlayerImagePath = (classLevel, frame) => {
   return `${BASE_URL}images/field/characters/${folder}/player_${frame}.png`;
 };
 
-const BattleField = () => {
+const BattleField = ({ fullHeight = false }) => {
   const { gameState } = useGame();
   const { player, currentMonster, combatLog = [] } = gameState;
 
@@ -226,10 +226,10 @@ const BattleField = () => {
   }, [combatLog]);
 
   return (
-    <div className="bg-black p-4 rounded-lg">
+    <div className={`bg-black rounded-lg ${fullHeight ? 'h-full p-0' : 'p-4'}`}>
       <div
-        className={`relative w-full overflow-hidden rounded ${screenShake ? 'animate-shake' : ''}`}
-        style={{ aspectRatio: '5 / 2' }}
+        className={`relative w-full overflow-hidden rounded ${screenShake ? 'animate-shake' : ''} ${fullHeight ? 'h-full' : ''}`}
+        style={fullHeight ? {} : { aspectRatio: '5 / 2' }}
       >
         {/* 크리티컬 플래시 효과 */}
         {isCriticalHit && (

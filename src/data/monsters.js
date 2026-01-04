@@ -174,17 +174,27 @@ export const getBossGold = (stage) => {
   return getMonsterGold(stage) * 5;
 };
 
-// 희귀 몬스터 출현 확률
+// 희귀 몬스터 출현 확률 (보스)
 export const RARE_MONSTER_CHANCE = 5; // 5% 확률
 
-// 전설 몬스터 출현 확률 (희귀 수집 시)
+// 전설 몬스터 출현 확률 (보스, 희귀 수집 시)
 export const LEGENDARY_MONSTER_CHANCE = 2; // 2% 확률
 
-// 희귀 몬스터 수집 확률 (처치 시)
-export const RARE_MONSTER_COLLECTION_CHANCE = 20; // 20% 확률
+// 희귀 몬스터 출현 확률 (일반 몬스터)
+export const RARE_MONSTER_SPAWN_CHANCE = 5; // 5% 확률로 출현
 
-// 전설 몬스터 수집 확률 (처치 시)
-export const LEGENDARY_MONSTER_COLLECTION_CHANCE = 20; // 20% 확률
+// 전설 몬스터 출현 확률 (일반 몬스터) - 희귀 수집 여부와 무관하게 독립적
+export const LEGENDARY_MONSTER_SPAWN_CHANCE = 1; // 1% 확률로 출현
+
+// 희귀 몬스터 포획 확률 (처치 시)
+export const RARE_MONSTER_CAPTURE_CHANCE = 50; // 50% 확률로 포획
+
+// 전설 몬스터 포획 확률 (처치 시)
+export const LEGENDARY_MONSTER_CAPTURE_CHANCE = 30; // 30% 확률로 포획
+
+// 구버전 호환용 (기존 코드에서 사용)
+export const RARE_MONSTER_COLLECTION_CHANCE = RARE_MONSTER_SPAWN_CHANCE;
+export const LEGENDARY_MONSTER_COLLECTION_CHANCE = LEGENDARY_MONSTER_SPAWN_CHANCE;
 
 // 도감용 희귀 몬스터 목록 가져오기
 export const getRareMonsterList = () => {
@@ -295,14 +305,17 @@ const getMonsterNameForFloor = (floor, isBoss = false, isRare = false, monsterIn
 };
 
 export const getMonsterForStage = (stage, isBoss = false, forceRare = false, forceLegendary = false, collection = null, rareSpawnBonus = 0, legendarySpawnBonus = 0) => {
-  // 새로운 스폰 로직: 몬스터 타입을 먼저 결정 후, 수집 여부에 따라 희귀/전설 결정
+  // 희귀/전설 독립적 확률 시스템
+  // 희귀: 5% 출현, 50% 포획
+  // 전설: 1% 출현, 30% 포획
+  // 희귀를 수집하지 않아도 전설 출현 가능
   let isRare = false;
   let isLegendary = false;
   let monsterIndex = null;
 
   // 유물 효과로 스폰율 증가
-  const adjustedRareChance = RARE_MONSTER_COLLECTION_CHANCE + rareSpawnBonus;
-  const adjustedLegendaryChance = LEGENDARY_MONSTER_COLLECTION_CHANCE + legendarySpawnBonus;
+  const adjustedRareSpawnChance = RARE_MONSTER_SPAWN_CHANCE + rareSpawnBonus;
+  const adjustedLegendarySpawnChance = LEGENDARY_MONSTER_SPAWN_CHANCE + legendarySpawnBonus;
   const adjustedRareBossChance = RARE_MONSTER_CHANCE + rareSpawnBonus;
   const adjustedLegendaryBossChance = LEGENDARY_MONSTER_CHANCE + legendarySpawnBonus;
 
@@ -313,17 +326,16 @@ export const getMonsterForStage = (stage, isBoss = false, forceRare = false, for
     const rareId = `rare_${rangeStart}_${monsterIndex}`;
     const legendaryId = `legendary_${rangeStart}_${monsterIndex}`;
 
-    // 2. 해당 몬스터의 희귀 수집 여부 확인
+    // 2. 해당 몬스터의 수집 여부 확인
     const rareCollected = collection.rareMonsters?.[rareId]?.unlocked || false;
     const legendaryCollected = collection.legendaryMonsters?.[legendaryId]?.unlocked || false;
 
-    // 3. 수집 상태에 따라 희귀/전설/일반 결정
-    if (!rareCollected) {
-      // 희귀가 수집 안됨 → 희귀 출현 가능
-      isRare = forceRare || Math.random() * 100 < adjustedRareChance;
-    } else if (rareCollected && !legendaryCollected) {
-      // 희귀는 수집됨, 전설은 수집 안됨 → 전설 출현 가능
-      isLegendary = forceLegendary || Math.random() * 100 < adjustedLegendaryChance;
+    // 3. 독립적 확률로 희귀/전설 결정 (수집 안 된 것만)
+    // 전설 먼저 체크 (더 희귀하므로 우선순위)
+    if (!legendaryCollected && (forceLegendary || Math.random() * 100 < adjustedLegendarySpawnChance)) {
+      isLegendary = true;
+    } else if (!rareCollected && (forceRare || Math.random() * 100 < adjustedRareSpawnChance)) {
+      isRare = true;
     }
     // 둘 다 수집됨 → 일반 몬스터 (isRare = false, isLegendary = false)
   } else {

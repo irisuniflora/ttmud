@@ -3,6 +3,7 @@ import { useGame } from '../../store/GameContext';
 import { FLOOR_RANGES, getCollectionBonus, getBossCollectionBonus } from '../../data/monsters';
 import { MONSTER_SETS, SET_CATEGORIES, SET_EFFECT_TYPES, checkSetCompletion, calculateSetBonuses, MONSTER_GRADES } from '../../data/monsterSets';
 import { formatNumberWithCommas } from '../../utils/formatter';
+import { CONSUMABLE_TYPES } from '../../data/consumables';
 
 // GitHub Pages 배포용 BASE_URL
 const BASE_URL = import.meta.env.BASE_URL || '/';
@@ -61,14 +62,19 @@ const MonsterImage = ({ floorStart, monsterIndex, isBoss = false, isUnlocked = f
 };
 
 const Collection = () => {
-  const { gameState, inscribeMonster, engine } = useGame();
+  const { gameState, setGameState, inscribeMonster, engine } = useGame();
   const { collection, statistics, consumables = {} } = gameState;
-  const [activeTab, setActiveTab] = useState('sets');
+  const [activeTab, setActiveTab] = useState('monsters');
   const [activeCategory, setActiveCategory] = useState('special');
   const [inscribeModal, setInscribeModal] = useState(null); // { setId, monster, monsterId }
   const [resultModal, setResultModal] = useState(null);
   const [selectionModal, setSelectionModal] = useState(false);
   const [selectionResult, setSelectionResult] = useState(null);
+  const [selectedZone, setSelectedZone] = useState(null); // 선택권 사용 시 선택된 지역
+  const [selectedGrade, setSelectedGrade] = useState('rare'); // 선택권 사용 시 선택된 등급
+
+  // 도감 선택권 개수
+  const selectionTickets = consumables[CONSUMABLE_TYPES.MONSTER_SELECTION_TICKET] || 0;
 
   // 각인된 몬스터 데이터
   const inscribedMonsters = collection.inscribedMonsters || {};
@@ -116,6 +122,71 @@ const Collection = () => {
       return collection.legendaryMonsters?.[legendaryId]?.unlocked;
     }
     return false;
+  };
+
+  // 도감 선택권 사용 - 몬스터 등록
+  const useSelectionTicket = (floor, monsterIndex, grade) => {
+    if (selectionTickets <= 0) return;
+
+    const floorData = FLOOR_RANGES[floor];
+    if (!floorData) return;
+
+    const monsterName = floorData.monsters[monsterIndex];
+    if (!monsterName) return;
+
+    // 이미 수집된 몬스터인지 확인
+    const monsterId = grade === 'rare' ? `rare_${floor}_${monsterIndex}` : `legendary_${floor}_${monsterIndex}`;
+    const collectionKey = grade === 'rare' ? 'rareMonsters' : 'legendaryMonsters';
+
+    if (collection[collectionKey]?.[monsterId]?.unlocked) {
+      setSelectionResult({ success: false, message: '이미 수집된 몬스터입니다.' });
+      return;
+    }
+
+    // engine.state 직접 업데이트 (저장용)
+    if (engine) {
+      if (!engine.state.consumables) engine.state.consumables = {};
+      engine.state.consumables[CONSUMABLE_TYPES.MONSTER_SELECTION_TICKET] =
+        (engine.state.consumables[CONSUMABLE_TYPES.MONSTER_SELECTION_TICKET] || 0) - 1;
+
+      if (!engine.state.collection) engine.state.collection = {};
+      if (!engine.state.collection[collectionKey]) engine.state.collection[collectionKey] = {};
+      engine.state.collection[collectionKey][monsterId] = {
+        unlocked: true,
+        count: 1,
+        firstCaught: Date.now()
+      };
+    }
+
+    // 선택권 소모 및 도감 등록
+    setGameState(prev => ({
+      ...prev,
+      consumables: {
+        ...prev.consumables,
+        [CONSUMABLE_TYPES.MONSTER_SELECTION_TICKET]: (prev.consumables?.[CONSUMABLE_TYPES.MONSTER_SELECTION_TICKET] || 0) - 1
+      },
+      collection: {
+        ...prev.collection,
+        [collectionKey]: {
+          ...prev.collection[collectionKey],
+          [monsterId]: {
+            unlocked: true,
+            count: 1,
+            firstCaught: Date.now()
+          }
+        }
+      }
+    }));
+
+    setSelectionResult({
+      success: true,
+      message: `${grade === 'rare' ? '💎 희귀' : '👑 전설'} ${monsterName}을(를) 도감에 등록했습니다!`,
+      monsterName,
+      grade,
+      floor,
+      monsterIndex
+    });
+    setSelectionModal(false);
   };
 
   // 몬스터가 각인 가능한지 확인
@@ -187,16 +258,6 @@ const Collection = () => {
       {/* 탭 선택 */}
       <div className="flex gap-2">
         <button
-          onClick={() => setActiveTab('sets')}
-          className={`flex-1 py-2 rounded font-bold ${
-            activeTab === 'sets'
-              ? 'bg-cyan-600 text-white'
-              : 'bg-game-panel text-gray-300 border border-game-border'
-          }`}
-        >
-          세트
-        </button>
-        <button
           onClick={() => setActiveTab('monsters')}
           className={`flex-1 py-2 rounded font-bold ${
             activeTab === 'monsters'
@@ -215,6 +276,16 @@ const Collection = () => {
           }`}
         >
           보스
+        </button>
+        <button
+          onClick={() => setActiveTab('sets')}
+          className={`flex-1 py-2 rounded font-bold ${
+            activeTab === 'sets'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-game-panel text-gray-300 border border-game-border'
+          }`}
+        >
+          세트
         </button>
         <button
           onClick={() => setActiveTab('stats')}
@@ -355,7 +426,7 @@ const Collection = () => {
 
                           {/* 등급 + 지역 */}
                           <p className="text-[9px] text-gray-500 text-center">
-                            {MONSTER_GRADES[monster.grade].icon} {monster.zone}층
+                            {MONSTER_GRADES[monster.grade].icon} {monster.zone}-{monster.zone + 4}층
                           </p>
 
                           {/* 각인 상태 / 버튼 */}
@@ -388,7 +459,96 @@ const Collection = () => {
 
       {/* ===== 몬스터 도감 탭 ===== */}
       {activeTab === 'monsters' && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-3">
+          {/* 도감 선택권 버튼 */}
+          <div className="flex items-center justify-between bg-gradient-to-r from-orange-900/50 to-yellow-900/50 border border-orange-500 rounded-lg p-3">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">📜</span>
+              <div>
+                <p className="text-sm font-bold text-orange-400">몬스터 도감 선택권</p>
+                <p className="text-xs text-gray-400">원하는 몬스터를 바로 도감에 등록!</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-yellow-400">{selectionTickets}개</span>
+              <button
+                onClick={() => setSelectionModal(true)}
+                disabled={selectionTickets <= 0}
+                className={`px-4 py-2 rounded font-bold text-sm ${
+                  selectionTickets > 0
+                    ? 'bg-orange-600 hover:bg-orange-500 text-white'
+                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                사용하기
+              </button>
+            </div>
+          </div>
+
+          {/* 토큰 교환 버튼 */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* 희귀 토큰 */}
+            <div className="flex items-center justify-between bg-gradient-to-r from-purple-900/50 to-blue-900/50 border border-purple-500 rounded-lg p-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">💎</span>
+                <div>
+                  <p className="text-xs font-bold text-purple-400">희귀 토큰</p>
+                  <p className="text-[10px] text-gray-400">10개로 랜덤 희귀 등록</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-purple-300">{consumables[CONSUMABLE_TYPES.RARE_TOKEN] || 0}</span>
+                <button
+                  onClick={() => {
+                    if (engine) {
+                      const result = engine.exchangeTokenForRandomMonster('rare');
+                      setSelectionResult(result);
+                    }
+                  }}
+                  disabled={(consumables[CONSUMABLE_TYPES.RARE_TOKEN] || 0) < 10}
+                  className={`px-2 py-1 rounded font-bold text-xs ${
+                    (consumables[CONSUMABLE_TYPES.RARE_TOKEN] || 0) >= 10
+                      ? 'bg-purple-600 hover:bg-purple-500 text-white'
+                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  교환
+                </button>
+              </div>
+            </div>
+
+            {/* 전설 토큰 */}
+            <div className="flex items-center justify-between bg-gradient-to-r from-orange-900/50 to-red-900/50 border border-orange-500 rounded-lg p-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">👑</span>
+                <div>
+                  <p className="text-xs font-bold text-orange-400">전설 토큰</p>
+                  <p className="text-[10px] text-gray-400">10개로 랜덤 전설 등록</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-orange-300">{consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] || 0}</span>
+                <button
+                  onClick={() => {
+                    if (engine) {
+                      const result = engine.exchangeTokenForRandomMonster('legendary');
+                      setSelectionResult(result);
+                    }
+                  }}
+                  disabled={(consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] || 0) < 10}
+                  className={`px-2 py-1 rounded font-bold text-xs ${
+                    (consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] || 0) >= 10
+                      ? 'bg-orange-600 hover:bg-orange-500 text-white'
+                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  교환
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
           {Object.entries(FLOOR_RANGES).map(([floorStart, data]) => {
             const floor = parseInt(floorStart);
 
@@ -499,6 +659,7 @@ const Collection = () => {
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
@@ -690,7 +851,7 @@ const Collection = () => {
                     {inscribeModal.monster.name}
                   </p>
                   <p className="text-sm text-gray-400">
-                    {MONSTER_GRADES[inscribeModal.monster.grade].icon} {MONSTER_GRADES[inscribeModal.monster.grade].name} • {inscribeModal.monster.zone}층
+                    {MONSTER_GRADES[inscribeModal.monster.grade].icon} {MONSTER_GRADES[inscribeModal.monster.grade].name} • {inscribeModal.monster.zone}-{inscribeModal.monster.zone + 4}층
                   </p>
                 </div>
               </div>
@@ -759,6 +920,138 @@ const Collection = () => {
 
             <button
               onClick={() => setResultModal(null)}
+              className="w-full py-2 rounded font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 도감 선택권 사용 모달 */}
+      {selectionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={() => setSelectionModal(false)}>
+          <div className="bg-gray-800 border-2 border-orange-500 rounded-lg p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-bold text-orange-400 mb-4 text-center">📜 몬스터 도감 선택권</h3>
+            <p className="text-sm text-gray-300 text-center mb-4">등록할 몬스터를 선택하세요 (보유: {selectionTickets}개)</p>
+
+            {/* 등급 선택 */}
+            <div className="flex justify-center gap-2 mb-4">
+              <button
+                onClick={() => setSelectedGrade('rare')}
+                className={`px-4 py-2 rounded font-bold ${
+                  selectedGrade === 'rare' ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300'
+                }`}
+              >
+                💎 희귀
+              </button>
+              <button
+                onClick={() => setSelectedGrade('legendary')}
+                className={`px-4 py-2 rounded font-bold ${
+                  selectedGrade === 'legendary' ? 'bg-orange-600 text-white' : 'bg-gray-700 text-gray-300'
+                }`}
+              >
+                👑 전설
+              </button>
+            </div>
+
+            {/* 지역별 몬스터 목록 */}
+            <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+              {Object.entries(FLOOR_RANGES).map(([floorStart, data]) => {
+                const floor = parseInt(floorStart);
+                return (
+                  <div key={floor} className="bg-gray-900 border border-gray-700 rounded-lg p-3">
+                    <h4 className="text-sm font-bold text-cyan-400 mb-2">
+                      {data.name} ({floor}~{floor + 4}층)
+                    </h4>
+                    <div className="grid grid-cols-5 gap-2">
+                      {data.monsters.map((monsterName, idx) => {
+                        const monsterId = selectedGrade === 'rare'
+                          ? `rare_${floor}_${idx}`
+                          : `legendary_${floor}_${idx}`;
+                        const collectionKey = selectedGrade === 'rare' ? 'rareMonsters' : 'legendaryMonsters';
+                        const isCollected = collection[collectionKey]?.[monsterId]?.unlocked;
+                        const isInscribed = inscribedMonsters[`${selectedGrade}_${floor}_${idx}`];
+
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => !isCollected && !isInscribed && useSelectionTicket(floor, idx, selectedGrade)}
+                            disabled={isCollected || isInscribed}
+                            className={`p-2 rounded border text-center transition-all ${
+                              isCollected || isInscribed
+                                ? 'bg-gray-800 border-gray-600 opacity-50 cursor-not-allowed'
+                                : selectedGrade === 'rare'
+                                ? 'bg-purple-900/30 border-purple-500 hover:bg-purple-800/50 cursor-pointer'
+                                : 'bg-orange-900/30 border-orange-500 hover:bg-orange-800/50 cursor-pointer'
+                            }`}
+                          >
+                            <MonsterImage
+                              floorStart={floor}
+                              monsterIndex={idx}
+                              isUnlocked={true}
+                              isRare={selectedGrade === 'rare'}
+                              isLegendary={selectedGrade === 'legendary'}
+                              size="sm"
+                            />
+                            <p className={`text-[8px] mt-1 truncate ${
+                              selectedGrade === 'rare' ? 'text-purple-300' : 'text-orange-300'
+                            }`}>
+                              {monsterName}
+                            </p>
+                            {(isCollected || isInscribed) && (
+                              <span className="text-[8px] text-green-400">
+                                {isInscribed ? '각인됨' : '수집됨'}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => setSelectionModal(false)}
+              className="w-full mt-4 py-2 rounded font-bold bg-gray-700 hover:bg-gray-600 text-white"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 선택권 사용 결과 모달 */}
+      {selectionResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={() => setSelectionResult(null)}>
+          <div className={`bg-gray-800 border-2 rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl ${
+            selectionResult.success ? 'border-green-500' : 'border-red-500'
+          }`} onClick={(e) => e.stopPropagation()}>
+            <h3 className={`text-xl font-bold mb-4 text-center ${
+              selectionResult.success ? 'text-green-400' : 'text-red-400'
+            }`}>
+              {selectionResult.success ? '🎉 등록 완료!' : '❌ 등록 실패'}
+            </h3>
+
+            {selectionResult.success && (
+              <div className="flex justify-center mb-4">
+                <MonsterImage
+                  floorStart={selectionResult.floor}
+                  monsterIndex={selectionResult.monsterIndex}
+                  isUnlocked={true}
+                  isRare={selectionResult.grade === 'rare'}
+                  isLegendary={selectionResult.grade === 'legendary'}
+                  size="lg"
+                />
+              </div>
+            )}
+
+            <p className="text-center text-white mb-4">{selectionResult.message}</p>
+
+            <button
+              onClick={() => setSelectionResult(null)}
               className="w-full py-2 rounded font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors"
             >
               확인

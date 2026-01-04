@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { EQUIPMENT_SETS, EQUIPMENT_SLOT_NAMES, OPTION_GRADES, ANCIENT_CONFIG, NORMAL_GRADES } from '../../data/equipmentSets';
+import { EQUIPMENT_SETS, EQUIPMENT_SLOT_NAMES, OPTION_GRADES, ANCIENT_CONFIG, NORMAL_GRADES, getEnhanceBonus } from '../../data/equipmentSets';
 import { formatNumber, formatStatValue } from '../../utils/formatter';
 
 // 툴팁 컴포넌트 - 마우스 오버 시 아이템 정보 표시
@@ -184,22 +184,57 @@ const ItemTooltip = ({ item, children, equipment = {}, disabled = false }) => {
         </div>
 
         {/* 기본 능력치 */}
-        {item.stats && item.stats.filter(s => s.isMain).length > 0 && (
-          <div className="px-3 py-2 border-b border-gray-700">
-            <div className="text-xs text-gray-500 mb-1">기본 능력치</div>
-            {item.stats.filter(s => s.isMain).map((stat, idx) => {
-              const isReduction = stat.id === 'monstersPerStageReduction';
-              return (
-                <div key={idx} className="flex justify-between items-center text-xs">
-                  <span className="text-cyan-300">{stat.name}</span>
-                  <span className="text-cyan-300 font-bold">
-                    {isReduction ? '-' : '+'}{formatStatValue(stat.value, stat.suffix)}{stat.suffix}
-                  </span>
+        {(() => {
+          // 기본 능력치 찾기: isMain 플래그가 있거나, mainStat 프로퍼티 사용
+          const mainStats = item.stats?.filter(s => s.isMain) || [];
+          // mainStat 프로퍼티가 있으면 그것도 포함 (레거시 지원)
+          if (mainStats.length === 0 && item.mainStat) {
+            mainStats.push(item.mainStat);
+          }
+          // 여전히 없으면 첫 번째 스탯을 기본 옵션으로 간주 (레거시 지원)
+          if (mainStats.length === 0 && item.stats?.length > 0) {
+            const firstStat = item.stats[0];
+            // attack, accuracy, critChance 등 기본 스탯 ID인 경우만
+            const mainStatIds = ['attack', 'accuracy', 'critChance', 'monstersPerStageReduction', 'skipChance', 'ppBonus'];
+            if (mainStatIds.includes(firstStat.id)) {
+              mainStats.push(firstStat);
+            }
+          }
+
+          if (mainStats.length === 0) return null;
+
+          const enhanceLevel = item.enhanceLevel || 0;
+          const enhanceBonusPercent = getEnhanceBonus(enhanceLevel);
+
+          return (
+            <div className="px-3 py-2 border-b border-gray-700">
+              <div className="text-xs text-gray-500 mb-1">기본 능력치</div>
+              {mainStats.map((stat, idx) => {
+                const isReduction = stat.id === 'monstersPerStageReduction';
+                const bonusValue = enhanceBonusPercent > 0 ? Math.floor(stat.value * enhanceBonusPercent / 100) : 0;
+                const suffix = stat.suffix || '';
+                return (
+                  <div key={idx} className="flex justify-between items-center text-xs">
+                    <span className="text-cyan-300">{stat.name}</span>
+                    <span className="text-cyan-300 font-bold">
+                      {isReduction ? '-' : '+'}{formatStatValue(stat.value, suffix)}{suffix === '%' ? '' : suffix}
+                      {enhanceLevel > 0 && bonusValue > 0 && (
+                        <span className="text-yellow-400 ml-1">
+                          (+{formatStatValue(bonusValue, suffix)}{suffix === '%' ? '' : suffix})
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+              {enhanceLevel > 0 && (
+                <div className="text-[10px] text-yellow-400 mt-1">
+                  강화 +{enhanceLevel} → +{enhanceBonusPercent}%
                 </div>
-              );
-            })}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })()}
 
         {/* 잠재 능력치 */}
         {item.stats && item.stats.filter(s => !s.isMain).length > 0 && (

@@ -1,4 +1,5 @@
-import { getMonsterForStage, getCollectionBonus, getBossCollectionBonus, RARE_MONSTER_COLLECTION_CHANCE, LEGENDARY_MONSTER_COLLECTION_CHANCE } from '../data/monsters.js';
+import { getMonsterForStage, getCollectionBonus, getBossCollectionBonus, RARE_MONSTER_CAPTURE_CHANCE, LEGENDARY_MONSTER_CAPTURE_CHANCE } from '../data/monsters.js';
+import { CONSUMABLE_TYPES } from '../data/consumables.js';
 import { HEROES, getHeroById, getHeroStats, getNextGrade, getUpgradeCost, getStarUpgradeCost } from '../data/heroes.js';
 // import { generateItem } from '../data/items.js'; // 구 시스템 - 사용 안함
 import { getTotalSkillEffects, getSkillCost } from '../data/skills.js';
@@ -43,7 +44,8 @@ import {
   getEnhanceCost,
   getEnhanceSuccessRate,
   getDowngradeAmount,
-  getProtectionRequired
+  getProtectionRequired,
+  getEnhanceBonus
 } from '../data/equipmentSets.js';
 import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js';
 import { MONSTER_SETS, checkSetCompletion, calculateSetBonuses as calcMonsterSetBonuses } from '../data/monsterSets.js';
@@ -289,20 +291,25 @@ export class GameEngine {
 
     Object.entries(equipment).forEach(([slot, item]) => {
       if (item) {
-        const enhancementLevel = slotEnhancements[slot] || 0;
-        const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        // 슬롯 강화 보너스 (구 시스템)
+        const slotEnhancementLevel = slotEnhancements[slot] || 0;
+        const slotEnhancementBonus = 1 + (slotEnhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        // 아이템 자체 강화 보너스 (신 시스템 - +1~+20)
+        const itemEnhanceBonus = 1 + getEnhanceBonus(item.enhanceLevel) / 100;
         // 유물 슬롯별 보너스 + 전체 장비 보너스
         const relicSlotBonus = 1 + equipmentPercentBonus + (slotBonuses[slot] || 0);
 
         item.stats.forEach(stat => {
-          // 크리티컬 스탯은 강화 효과 제외
+          // 크리티컬 스탯은 슬롯 강화 효과 제외 (아이템 강화는 기본옵션에만 적용)
           const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
-          const bonus = isExcluded ? 1 : enhancementBonus;
+          const slotBonus = isExcluded ? 1 : slotEnhancementBonus;
+          // 아이템 강화 보너스는 기본옵션(isMain)에만 적용
+          const itemBonus = stat.isMain ? itemEnhanceBonus : 1;
 
           if (stat.id === 'attack') {
-            equipmentAttackFlat += stat.value * bonus * relicSlotBonus;
+            equipmentAttackFlat += stat.value * slotBonus * itemBonus * relicSlotBonus;
           } else if (stat.id === 'attackPercent') {
-            equipmentAttackPercent += stat.value * bonus * relicSlotBonus;
+            equipmentAttackPercent += stat.value * slotBonus * itemBonus * relicSlotBonus;
           }
         });
       }
@@ -414,22 +421,27 @@ export class GameEngine {
     let equipmentBossDamageIncrease = 0;
     Object.entries(equipment).forEach(([slot, item]) => {
       if (item) {
-        const enhancementLevel = slotEnhancements[slot] || 0;
-        const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        // 슬롯 강화 보너스 (구 시스템)
+        const slotEnhancementLevel = slotEnhancements[slot] || 0;
+        const slotEnhancementBonus = 1 + (slotEnhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        // 아이템 자체 강화 보너스 (신 시스템 - +1~+20)
+        const itemEnhanceBonus = 1 + getEnhanceBonus(item.enhanceLevel) / 100;
         // 유물 슬롯별 보너스 + 전체 장비 보너스
         const relicSlotBonus = 1 + equipmentPercentBonus + (slotBonuses[slot] || 0);
 
         item.stats.forEach(stat => {
-          // 크리티컬 스탯은 강화 효과 제외
+          // 크리티컬 스탯은 슬롯 강화 효과 제외 (아이템 강화는 기본옵션에만 적용)
           const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
-          const bonus = isExcluded ? 1 : enhancementBonus;
+          const slotBonus = isExcluded ? 1 : slotEnhancementBonus;
+          // 아이템 강화 보너스는 기본옵션(isMain)에만 적용
+          const itemBonus = stat.isMain ? itemEnhanceBonus : 1;
 
           if (stat.id === 'critChance') {
-            equipmentCritChance += stat.value * bonus * relicSlotBonus;
+            equipmentCritChance += stat.value * slotBonus * itemBonus * relicSlotBonus;
           } else if (stat.id === 'critDmg') {
-            equipmentCritDmg += stat.value * bonus * relicSlotBonus;
+            equipmentCritDmg += stat.value * slotBonus * itemBonus * relicSlotBonus;
           } else if (stat.id === 'bossDamageIncrease') {
-            equipmentBossDamageIncrease += stat.value * bonus * relicSlotBonus;
+            equipmentBossDamageIncrease += stat.value * slotBonus * itemBonus * relicSlotBonus;
           }
         });
       }
@@ -558,21 +570,27 @@ export class GameEngine {
     const slotEnhancements = this.state.slotEnhancements || {};
     Object.entries(this.state.equipment).forEach(([slot, item]) => {
       if (item) {
-        const enhancementLevel = slotEnhancements[slot] || 0;
-        const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        // 슬롯 강화 보너스 (구 시스템)
+        const slotEnhancementLevel = slotEnhancements[slot] || 0;
+        const slotEnhancementBonus = 1 + (slotEnhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        // 아이템 자체 강화 보너스 (신 시스템 - +1~+20)
+        const itemEnhanceBonus = 1 + getEnhanceBonus(item.enhanceLevel) / 100;
+
         item.stats.forEach(stat => {
-          // 크리티컬 스탯은 강화 효과 제외
+          // 크리티컬 스탯은 슬롯 강화 효과 제외
           const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
-          const bonus = isExcluded ? 1 : enhancementBonus;
+          const slotBonus = isExcluded ? 1 : slotEnhancementBonus;
+          // 아이템 강화 보너스는 기본옵션(isMain)에만 적용
+          const itemBonus = stat.isMain ? itemEnhanceBonus : 1;
 
           if (stat.id === 'goldBonus') {
-            equipmentGoldBonus += stat.value * bonus;
+            equipmentGoldBonus += stat.value * slotBonus * itemBonus;
           } else if (stat.id === 'expBonus') {
-            equipmentExpBonus += stat.value * bonus;
+            equipmentExpBonus += stat.value * slotBonus * itemBonus;
           } else if (stat.id === 'skipChance') {
-            equipmentSkipChance += stat.value * bonus;
+            equipmentSkipChance += stat.value * slotBonus * itemBonus;
           } else if (stat.id === 'monstersPerStageReduction') {
-            equipmentMonsterReduction += stat.value; // 고정값이므로 enhancementBonus 미적용
+            equipmentMonsterReduction += stat.value; // 고정값이므로 강화 보너스 미적용
           }
         });
       }
@@ -658,7 +676,7 @@ export class GameEngine {
     // 완벽의 정수 드랍 (글로벌 드랍)
     this.tryDropStatMaxItem();
 
-    // 희귀 몬스터 도감 등록 (30% 확률)
+    // 희귀 몬스터 도감 등록 (50% 포획 확률)
     if (currentMonster.isRare && !currentMonster.isBoss && currentMonster.monsterIndex !== undefined) {
       // 새로운 ID 형식: rare_floorStart_monsterIndex
       // 101층 이상은 1-100으로 매핑 (접두사만 다르고 같은 몬스터)
@@ -678,19 +696,24 @@ export class GameEngine {
       // 처치 횟수 증가
       collection.rareMonsters[rareId].count++;
 
-      // 아직 미수집 상태면 30% 확률로 수집
+      // 아직 미수집 상태면 50% 확률로 수집
       if (!collection.rareMonsters[rareId].unlocked) {
-        if (Math.random() * 100 < RARE_MONSTER_COLLECTION_CHANCE) {
+        if (Math.random() * 100 < RARE_MONSTER_CAPTURE_CHANCE) {
           collection.rareMonsters[rareId].unlocked = true;
           statistics.rareMonstersCaptured++; // 통계: 수집한 희귀 몬스터 수 증가
-          this.addCombatLog(`✨ 희귀 몬스터 수집 완료! ${currentMonster.name}`, 'rare_monster');
+          this.addCombatLog(`✨ 희귀 몬스터 포획 성공! ${currentMonster.name}`, 'rare_monster');
         } else {
-          this.addCombatLog(`⚔️ 희귀 몬스터 처치! ${currentMonster.name} (미수집)`, 'rare_monster');
+          this.addCombatLog(`⚔️ 희귀 몬스터 처치! ${currentMonster.name} (포획 실패)`, 'rare_monster');
         }
+      } else {
+        // 이미 포획된 몬스터면 희귀 토큰 지급
+        if (!this.state.consumables) this.state.consumables = {};
+        this.state.consumables[CONSUMABLE_TYPES.RARE_TOKEN] = (this.state.consumables[CONSUMABLE_TYPES.RARE_TOKEN] || 0) + 1;
+        this.addCombatLog(`💎 희귀 토큰 획득! (${this.state.consumables[CONSUMABLE_TYPES.RARE_TOKEN]}개)`, 'token');
       }
     }
 
-    // 희귀 보스 도감 등록 (30% 확률)
+    // 희귀 보스 도감 등록 (50% 포획 확률)
     if (currentMonster.isRare && currentMonster.isBoss) {
       // ID 형식: rare_boss_floorStart
       // 101층 이상은 1-100으로 매핑 (접두사만 다르고 같은 보스)
@@ -714,18 +737,18 @@ export class GameEngine {
       // 처치 횟수 증가
       collection.rareBosses[rareId].count++;
 
-      // 아직 미수집 상태면 30% 확률로 수집
+      // 아직 미수집 상태면 50% 확률로 수집
       if (!collection.rareBosses[rareId].unlocked) {
-        if (Math.random() * 100 < RARE_MONSTER_COLLECTION_CHANCE) {
+        if (Math.random() * 100 < RARE_MONSTER_CAPTURE_CHANCE) {
           collection.rareBosses[rareId].unlocked = true;
-          this.addCombatLog(`✨ 희귀 보스 수집 완료! ${currentMonster.name}`, 'rare_boss');
+          this.addCombatLog(`✨ 희귀 보스 포획 성공! ${currentMonster.name}`, 'rare_boss');
         } else {
-          this.addCombatLog(`⚔️ 희귀 보스 처치! ${currentMonster.name} (미수집)`, 'rare_boss');
+          this.addCombatLog(`⚔️ 희귀 보스 처치! ${currentMonster.name} (포획 실패)`, 'rare_boss');
         }
       }
     }
 
-    // 전설 몬스터 도감 등록 (30% 확률)
+    // 전설 몬스터 도감 등록 (30% 포획 확률)
     if (currentMonster.isLegendary && !currentMonster.isBoss && currentMonster.monsterIndex !== undefined) {
       // 101층 이상은 1-100으로 매핑 (접두사만 다르고 같은 몬스터)
       const baseFloor = ((currentMonster.stage - 1) % 100) + 1;
@@ -750,16 +773,21 @@ export class GameEngine {
 
       // 아직 미수집 상태면 30% 확률로 수집
       if (!collection.legendaryMonsters[legendaryId].unlocked) {
-        if (Math.random() * 100 < LEGENDARY_MONSTER_COLLECTION_CHANCE) {
+        if (Math.random() * 100 < LEGENDARY_MONSTER_CAPTURE_CHANCE) {
           collection.legendaryMonsters[legendaryId].unlocked = true;
-          this.addCombatLog(`🌟 전설 몬스터 수집 완료! ${currentMonster.name}`, 'legendary_monster');
+          this.addCombatLog(`🌟 전설 몬스터 포획 성공! ${currentMonster.name}`, 'legendary_monster');
         } else {
-          this.addCombatLog(`⚔️ 전설 몬스터 처치! ${currentMonster.name} (미수집)`, 'legendary_monster');
+          this.addCombatLog(`⚔️ 전설 몬스터 처치! ${currentMonster.name} (포획 실패)`, 'legendary_monster');
         }
+      } else {
+        // 이미 포획된 몬스터면 전설 토큰 지급
+        if (!this.state.consumables) this.state.consumables = {};
+        this.state.consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] = (this.state.consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] || 0) + 1;
+        this.addCombatLog(`👑 전설 토큰 획득! (${this.state.consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN]}개)`, 'token');
       }
     }
 
-    // 전설 보스 도감 등록 (30% 확률)
+    // 전설 보스 도감 등록 (30% 포획 확률)
     if (currentMonster.isLegendary && currentMonster.isBoss) {
       // ID 형식: legendary_boss_floorStart
       // 101층 이상은 1-100으로 매핑 (접두사만 다르고 같은 보스)
@@ -785,11 +813,11 @@ export class GameEngine {
 
       // 아직 미수집 상태면 30% 확률로 수집
       if (!collection.legendaryBosses[legendaryId].unlocked) {
-        if (Math.random() * 100 < LEGENDARY_MONSTER_COLLECTION_CHANCE) {
+        if (Math.random() * 100 < LEGENDARY_MONSTER_CAPTURE_CHANCE) {
           collection.legendaryBosses[legendaryId].unlocked = true;
-          this.addCombatLog(`🌟 전설 보스 수집 완료! ${currentMonster.name}`, 'legendary_boss');
+          this.addCombatLog(`🌟 전설 보스 포획 성공! ${currentMonster.name}`, 'legendary_boss');
         } else {
-          this.addCombatLog(`⚔️ 전설 보스 처치! ${currentMonster.name} (미수집)`, 'legendary_boss');
+          this.addCombatLog(`⚔️ 전설 보스 처치! ${currentMonster.name} (포획 실패)`, 'legendary_boss');
         }
       }
     }
@@ -912,15 +940,21 @@ export class GameEngine {
     const slotEnhancements = this.state.slotEnhancements || {};
     Object.entries(this.state.equipment).forEach(([slot, item]) => {
       if (item) {
-        const enhancementLevel = slotEnhancements[slot] || 0;
-        const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        // 슬롯 강화 보너스 (구 시스템)
+        const slotEnhancementLevel = slotEnhancements[slot] || 0;
+        const slotEnhancementBonus = 1 + (slotEnhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        // 아이템 자체 강화 보너스 (신 시스템 - +1~+20)
+        const itemEnhanceBonus = 1 + getEnhanceBonus(item.enhanceLevel) / 100;
+
         item.stats.forEach(stat => {
-          // 크리티컬 스탯은 강화 효과 제외
+          // 크리티컬 스탯은 슬롯 강화 효과 제외
           const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
-          const bonus = isExcluded ? 1 : enhancementBonus;
+          const slotBonus = isExcluded ? 1 : slotEnhancementBonus;
+          // 아이템 강화 보너스는 기본옵션(isMain)에만 적용
+          const itemBonus = stat.isMain ? itemEnhanceBonus : 1;
 
           if (stat.id === 'dropRate') {
-            equipmentDropRate += stat.value * bonus;
+            equipmentDropRate += stat.value * slotBonus * itemBonus;
           }
         });
       }
@@ -1784,16 +1818,22 @@ export class GameEngine {
     const slotEnhancements = this.state.slotEnhancements || {};
     Object.entries(this.state.equipment).forEach(([slot, item]) => {
       if (item) {
-        const enhancementLevel = slotEnhancements[slot] || 0;
-        const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        // 슬롯 강화 보너스 (구 시스템)
+        const slotEnhancementLevel = slotEnhancements[slot] || 0;
+        const slotEnhancementBonus = 1 + (slotEnhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        // 아이템 자체 강화 보너스 (신 시스템 - +1~+20)
+        const itemEnhanceBonus = 1 + getEnhanceBonus(item.enhanceLevel) / 100;
+
         item.stats.forEach(stat => {
           const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats.includes(stat.id);
-          const bonus = isExcluded ? 1 : enhancementBonus;
+          const slotBonus = isExcluded ? 1 : slotEnhancementBonus;
+          // 아이템 강화 보너스는 기본옵션(isMain)에만 적용
+          const itemBonus = stat.isMain ? itemEnhanceBonus : 1;
 
           if (stat.id === 'goldBonus') {
-            equipmentGoldBonus += stat.value * bonus;
+            equipmentGoldBonus += stat.value * slotBonus * itemBonus;
           } else if (stat.id === 'expBonus') {
-            equipmentExpBonus += stat.value * bonus;
+            equipmentExpBonus += stat.value * slotBonus * itemBonus;
           }
         });
       }
@@ -2666,6 +2706,119 @@ export class GameEngine {
     return { success: false, message: '잘못된 몬스터 타입입니다' };
   }
 
+  // 토큰 교환으로 랜덤 몬스터 도감 등록
+  exchangeTokenForRandomMonster(tokenType) {
+    const { collection } = this.state;
+    if (!this.state.consumables) this.state.consumables = {};
+    const consumables = this.state.consumables;
+
+    const EXCHANGE_AMOUNT = 10; // 10개로 교환
+
+    // 희귀 토큰 교환
+    if (tokenType === 'rare') {
+      const tokenCount = consumables[CONSUMABLE_TYPES.RARE_TOKEN] || 0;
+      if (tokenCount < EXCHANGE_AMOUNT) {
+        return { success: false, message: `희귀 토큰이 부족합니다. (${tokenCount}/${EXCHANGE_AMOUNT})` };
+      }
+
+      // 미수집 희귀 몬스터 목록 찾기
+      const unlockedRareMonsters = [];
+      const FLOOR_RANGES = require('../data/monsters.js').FLOOR_RANGES;
+
+      Object.keys(FLOOR_RANGES).forEach(floorStart => {
+        const floor = parseInt(floorStart);
+        for (let i = 0; i < 10; i++) {
+          const rareId = `rare_${floor}_${i}`;
+          if (!collection.rareMonsters?.[rareId]?.unlocked) {
+            unlockedRareMonsters.push({
+              id: rareId,
+              floor,
+              index: i,
+              name: FLOOR_RANGES[floorStart].monsters[i]
+            });
+          }
+        }
+      });
+
+      if (unlockedRareMonsters.length === 0) {
+        return { success: false, message: '모든 희귀 몬스터가 이미 수집되었습니다!' };
+      }
+
+      // 랜덤 선택
+      const selected = unlockedRareMonsters[Math.floor(Math.random() * unlockedRareMonsters.length)];
+
+      // 토큰 소모
+      consumables[CONSUMABLE_TYPES.RARE_TOKEN] -= EXCHANGE_AMOUNT;
+
+      // 도감 등록
+      if (!collection.rareMonsters) collection.rareMonsters = {};
+      if (!collection.rareMonsters[selected.id]) {
+        collection.rareMonsters[selected.id] = { name: selected.name, count: 0, unlocked: false };
+      }
+      collection.rareMonsters[selected.id].unlocked = true;
+
+      this.addCombatLog(`💎 토큰 교환! ${selected.name}을(를) 도감에 등록!`, 'rare_monster');
+      return {
+        success: true,
+        message: `💎 ${selected.name}을(를) 도감에 등록했습니다!`,
+        monster: selected
+      };
+    }
+
+    // 전설 토큰 교환
+    if (tokenType === 'legendary') {
+      const tokenCount = consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] || 0;
+      if (tokenCount < EXCHANGE_AMOUNT) {
+        return { success: false, message: `전설 토큰이 부족합니다. (${tokenCount}/${EXCHANGE_AMOUNT})` };
+      }
+
+      // 미수집 전설 몬스터 목록 찾기
+      const unlockedLegendaryMonsters = [];
+      const FLOOR_RANGES = require('../data/monsters.js').FLOOR_RANGES;
+
+      Object.keys(FLOOR_RANGES).forEach(floorStart => {
+        const floor = parseInt(floorStart);
+        for (let i = 0; i < 10; i++) {
+          const legendaryId = `legendary_${floor}_${i}`;
+          if (!collection.legendaryMonsters?.[legendaryId]?.unlocked) {
+            unlockedLegendaryMonsters.push({
+              id: legendaryId,
+              floor,
+              index: i,
+              name: FLOOR_RANGES[floorStart].monsters[i]
+            });
+          }
+        }
+      });
+
+      if (unlockedLegendaryMonsters.length === 0) {
+        return { success: false, message: '모든 전설 몬스터가 이미 수집되었습니다!' };
+      }
+
+      // 랜덤 선택
+      const selected = unlockedLegendaryMonsters[Math.floor(Math.random() * unlockedLegendaryMonsters.length)];
+
+      // 토큰 소모
+      consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] -= EXCHANGE_AMOUNT;
+
+      // 도감 등록
+      if (!collection.legendaryMonsters) collection.legendaryMonsters = {};
+      if (!collection.legendaryMonsters[selected.id]) {
+        collection.legendaryMonsters[selected.id] = { name: selected.name, count: 0, unlocked: false };
+      }
+      collection.legendaryMonsters[selected.id].unlocked = true;
+
+      this.addCombatLog(`👑 토큰 교환! ${selected.name}을(를) 도감에 등록!`, 'legendary_monster');
+      return {
+        success: true,
+        message: `👑 ${selected.name}을(를) 도감에 등록했습니다!`,
+        monster: selected
+      };
+    }
+
+    return { success: false, message: '잘못된 토큰 타입입니다' };
+  }
+
   // 방생 마일스톤 보상 체크
   checkReleaseMilestones() {
     const { collection } = this.state;
@@ -3176,6 +3329,51 @@ export class GameEngine {
     return {
       success: true,
       message: `${gradeLabel} ${targetItems.length}개 분해! 장비조각 +${totalFragments}`,
+      count: targetItems.length,
+      fragments: totalFragments,
+      totalFragments: this.state.equipmentFragments
+    };
+  }
+
+  // 세트템 일괄 분해 (잠금 아이템 보호)
+  disassembleAllSet() {
+    const { newInventory = [] } = this.state;
+
+    // 세트템 필터링: type이 'set'이거나 setId가 있는 경우
+    const isSetItem = (item) => {
+      return item.type === 'set' || item.setId;
+    };
+
+    // 분해 대상 필터링: 세트템 + 잠금 안된 것
+    const targetItems = newInventory.filter(item => {
+      if (!isSetItem(item)) return false;
+      if (item.locked) return false; // 잠금된 아이템은 제외
+      return true;
+    });
+
+    if (targetItems.length === 0) {
+      return { success: false, message: '분해할 세트 아이템이 없습니다 (잠금 아이템 제외)' };
+    }
+
+    let totalFragments = 0;
+    targetItems.forEach(item => {
+      totalFragments += getDisassembleFragments(item);
+    });
+
+    // 대상 아이템 ID 목록
+    const targetIds = new Set(targetItems.map(item => item.id));
+
+    // 대상 아이템 제거
+    this.state.newInventory = newInventory.filter(item => !targetIds.has(item.id));
+
+    // 장비조각 추가
+    this.state.equipmentFragments = (this.state.equipmentFragments || 0) + totalFragments;
+
+    this.addCombatLog(`🔨 세트템 ${targetItems.length}개 일괄 분해 → 장비조각 +${totalFragments}`, 'disassemble');
+
+    return {
+      success: true,
+      message: `세트템 ${targetItems.length}개 분해! 장비조각 +${totalFragments}`,
       count: targetItems.length,
       fragments: totalFragments,
       totalFragments: this.state.equipmentFragments

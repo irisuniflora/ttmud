@@ -5,6 +5,7 @@ import { getTotalSkillEffects } from '../../data/skills';
 import { getHeroById, getHeroStats } from '../../data/heroes';
 import { EQUIPMENT_CONFIG, getMonstersPerFloor, FLOOR_CONFIG } from '../../data/gameBalance';
 import { getTotalRelicEffects } from '../../data/prestigeRelics';
+import { getEnhanceBonus } from '../../data/equipmentSets';
 import BattleField from '../Battle/BattleField';
 import BossBattle from '../Battle/BossBattle';
 
@@ -45,11 +46,15 @@ const PlayerInfo = () => {
 
     Object.entries(equipment).forEach(([slot, item]) => {
       if (item) {
-        const enhancementBonus = 1 + ((slotEnhancements[slot] || 0) * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        const slotEnhancementBonus = 1 + ((slotEnhancements[slot] || 0) * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+        const itemEnhanceBonus = 1 + getEnhanceBonus(item.enhanceLevel) / 100;
         item.stats.forEach(stat => {
-          if (stat.id === 'attack') equipmentAttack += stat.value * enhancementBonus;
-          else if (stat.id === 'critChance') equipmentCritChance += stat.value * enhancementBonus;
-          else if (stat.id === 'critDmg') equipmentCritDmg += stat.value * enhancementBonus;
+          const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats?.includes(stat.id);
+          const slotBonus = isExcluded ? 1 : slotEnhancementBonus;
+          const itemBonus = stat.isMain ? itemEnhanceBonus : 1;
+          if (stat.id === 'attack') equipmentAttack += stat.value * slotBonus * itemBonus;
+          else if (stat.id === 'critChance') equipmentCritChance += stat.value * slotBonus * itemBonus;
+          else if (stat.id === 'critDmg') equipmentCritDmg += stat.value * slotBonus * itemBonus;
         });
       }
     });
@@ -136,45 +141,13 @@ const PlayerInfo = () => {
           <div className="flex items-center justify-between">
             {/* 층 & 몬스터 정보 */}
             <div className="flex items-center gap-2">
-              {showFloorInput ? (
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    value={targetFloor}
-                    onChange={(e) => setTargetFloor(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const floor = parseInt(targetFloor);
-                        if (floor > 0) {
-                          goToFloor(floor);
-                        }
-                        setShowFloorInput(false);
-                        setTargetFloor('');
-                      } else if (e.key === 'Escape') {
-                        setShowFloorInput(false);
-                        setTargetFloor('');
-                      }
-                    }}
-                    onBlur={() => {
-                      setShowFloorInput(false);
-                      setTargetFloor('');
-                    }}
-                    autoFocus
-                    placeholder={`1~${player.highestFloor}`}
-                    min="1"
-                    max={player.highestFloor}
-                    className="w-20 px-1.5 py-0.5 bg-gray-800 border border-gray-600 rounded text-white text-sm text-center"
-                  />
-                </div>
-              ) : (
-                <span
-                  className="text-white font-bold text-lg cursor-pointer hover:text-cyan-400 transition-colors"
-                  onClick={() => setShowFloorInput(true)}
-                  title={`클릭하여 층 이동 (최고 ${player.highestFloor}층)`}
-                >
-                  {player.floor}층
-                </span>
-              )}
+              <span
+                className="text-white font-bold text-lg cursor-pointer hover:text-cyan-400 transition-colors"
+                onClick={() => setShowFloorInput(true)}
+                title={`클릭하여 층 이동 (최고 ${player.highestFloor}층)`}
+              >
+                {player.floor}층
+              </span>
               {player.floorLocked && <span className="text-yellow-400 text-xs">🔒</span>}
               <span className="text-gray-400">|</span>
               <span className={`font-semibold ${
@@ -246,6 +219,19 @@ const PlayerInfo = () => {
               </button>
 
               <button
+                onClick={() => setShowFloorInput(true)}
+                disabled={player.highestFloor <= 1}
+                className={`w-7 h-7 rounded flex items-center justify-center text-sm transition-all ${
+                  player.highestFloor > 1
+                    ? 'bg-cyan-700/80 hover:bg-cyan-600 text-white'
+                    : 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
+                }`}
+                title={`층 이동 (1~${player.highestFloor}층)`}
+              >
+                🪜
+              </button>
+
+              <button
                 onClick={goDownFloor}
                 disabled={player.floor <= 1}
                 className={`w-7 h-7 rounded flex items-center justify-center text-sm transition-all ${
@@ -289,6 +275,102 @@ const PlayerInfo = () => {
           </span>
         </div>
       </div>
+
+      {/* 층 이동 플로팅 모달 */}
+      {showFloorInput && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowFloorInput(false)}>
+          <div
+            className="bg-gray-900 border-2 border-cyan-500/50 rounded-xl p-4 shadow-2xl shadow-cyan-500/20 min-w-[200px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center mb-3">
+              <div className="text-cyan-400 font-bold text-lg mb-1">🪜 층 이동</div>
+              <div className="text-gray-400 text-xs">1 ~ {player.highestFloor}층 이동 가능</div>
+            </div>
+            <div className="flex items-center gap-2 mb-3">
+              <input
+                type="number"
+                value={targetFloor}
+                onChange={(e) => setTargetFloor(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const floor = parseInt(targetFloor);
+                    if (floor > 0 && floor <= player.highestFloor) {
+                      goToFloor(floor);
+                      setShowFloorInput(false);
+                      setTargetFloor('');
+                    }
+                  } else if (e.key === 'Escape') {
+                    setShowFloorInput(false);
+                    setTargetFloor('');
+                  }
+                }}
+                autoFocus
+                placeholder="층 입력"
+                min="1"
+                max={player.highestFloor}
+                className="flex-1 px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-center text-lg focus:border-cyan-500 focus:outline-none"
+              />
+              <span className="text-gray-400">층</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowFloorInput(false);
+                  setTargetFloor('');
+                }}
+                className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-bold text-sm transition-all"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  const floor = parseInt(targetFloor);
+                  if (floor > 0 && floor <= player.highestFloor) {
+                    goToFloor(floor);
+                    setShowFloorInput(false);
+                    setTargetFloor('');
+                  }
+                }}
+                disabled={!targetFloor || parseInt(targetFloor) < 1 || parseInt(targetFloor) > player.highestFloor}
+                className={`flex-1 py-2 rounded-lg font-bold text-sm transition-all ${
+                  targetFloor && parseInt(targetFloor) >= 1 && parseInt(targetFloor) <= player.highestFloor
+                    ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                이동
+              </button>
+            </div>
+            {/* 빠른 이동 버튼 */}
+            <div className="mt-3 pt-3 border-t border-gray-700">
+              <div className="text-gray-500 text-xs mb-2">빠른 이동</div>
+              <div className="flex gap-1 flex-wrap">
+                <button
+                  onClick={() => { goToFloor(1); setShowFloorInput(false); setTargetFloor(''); }}
+                  className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs"
+                >
+                  1층
+                </button>
+                {player.highestFloor > 10 && (
+                  <button
+                    onClick={() => { goToFloor(Math.floor(player.highestFloor / 2)); setShowFloorInput(false); setTargetFloor(''); }}
+                    className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs"
+                  >
+                    {Math.floor(player.highestFloor / 2)}층
+                  </button>
+                )}
+                <button
+                  onClick={() => { goToFloor(player.highestFloor); setShowFloorInput(false); setTargetFloor(''); }}
+                  className="px-2 py-1 bg-cyan-800 hover:bg-cyan-700 text-cyan-300 rounded text-xs"
+                >
+                  최고층 ({player.highestFloor})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

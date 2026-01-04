@@ -43,7 +43,7 @@ const getContrastTextColor = (hexColor) => {
 };
 
 const NewEquipment = () => {
-  const { gameState, equipNewItem, unequipNewItem, disassembleNewItem, disassembleAllNormal, toggleItemLock, upgradeEquipmentLevel, awakenEquipment, enhanceEquipment, useSetSelector, updateSettings, useOrb, useSealStone } = useGame();
+  const { gameState, equipNewItem, unequipNewItem, disassembleNewItem, disassembleAllNormal, disassembleAllSet, toggleItemLock, upgradeEquipmentLevel, awakenEquipment, enhanceEquipment, useSetSelector, updateSettings, useOrb, useSealStone } = useGame();
   const { equipment, newInventory = [], equipmentFragments = 0, settings = {}, setSelectors = {}, orbs = 0 } = gameState;
 
   const [showSets, setShowSets] = useState(false);
@@ -723,6 +723,16 @@ const NewEquipment = () => {
                           enhanceEquipment(selectedItemData._equippedSlot, useProtection);
                         };
 
+                        // 풀강(+20) 완료 시 다른 UI 표시
+                        if (currentEnhance >= ENHANCE_CONFIG.maxEnhance) {
+                          return (
+                            <div className="bg-gradient-to-r from-amber-900/50 to-yellow-900/50 border border-amber-500/50 rounded p-3 text-center">
+                              <div className="text-lg font-black text-amber-400 mb-1">✨ 풀강 완료! ✨</div>
+                              <div className="text-[10px] text-amber-300/80">+{currentEnhance} 최대 강화 달성</div>
+                            </div>
+                          );
+                        }
+
                         return (
                           <div className="space-y-1">
                             {/* 강화 정보 바 */}
@@ -1024,6 +1034,22 @@ const NewEquipment = () => {
                         className="flex-1 px-2 py-1 bg-gray-500 hover:bg-gray-400 text-white rounded text-[10px] font-bold"
                       >
                         전체 분해
+                      </button>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-gray-700">
+                      <button
+                        onClick={() => {
+                          const result = disassembleAllSet();
+                          if (result.success) {
+                            showNotification('세트템 일괄 분해', result.message, 'success');
+                          } else {
+                            showNotification('분해 실패', result.message, 'warning');
+                          }
+                          setShowDisassembleOptions(false);
+                        }}
+                        className="w-full px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-[10px] font-bold"
+                      >
+                        🔮 세트템 일괄분해
                       </button>
                     </div>
                     <div className="text-[8px] text-gray-500 mt-1 text-center">

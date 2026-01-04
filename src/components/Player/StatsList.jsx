@@ -5,7 +5,7 @@ import { getTotalSkillEffects } from '../../data/skills';
 import { getHeroById, getHeroStats } from '../../data/heroes';
 import { EQUIPMENT_CONFIG, CLASS_CONFIG, canAdvanceClass, getClassBonuses } from '../../data/gameBalance';
 import { getTotalRelicEffects } from '../../data/prestigeRelics';
-import { EQUIPMENT_SETS, EQUIPMENT_SLOT_NAMES } from '../../data/equipmentSets';
+import { EQUIPMENT_SETS, EQUIPMENT_SLOT_NAMES, getEnhanceBonus } from '../../data/equipmentSets';
 import { calculateSetBonuses, SET_EFFECT_TYPES } from '../../data/monsterSets';
 
 // 스탯 상세 분석 팝업 컴포넌트
@@ -172,6 +172,8 @@ const StatsList = () => {
     if (item) {
       const enhancementLevel = slotEnhancements[slot] || 0;
       const enhancementBonus = 1 + (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
+      // 아이템 자체 강화 보너스 (+1~+20 강화)
+      const itemEnhanceBonus = 1 + getEnhanceBonus(item.enhanceLevel) / 100;
       // 유물 보너스: 전체 장비 보너스 + 해당 슬롯 보너스
       const slotBonus = slotRelicBonusMap[slot] || 0;
       const relicBonus = 1 + (allEquipmentBonus + slotBonus) / 100;
@@ -180,11 +182,18 @@ const StatsList = () => {
       const setData = item.setId ? EQUIPMENT_SETS[item.setId] : null;
       const itemName = setData ? `${setData.name} ${EQUIPMENT_SLOT_NAMES[slot]}` : `${EQUIPMENT_SLOT_NAMES[slot]}`;
 
-      item.stats.forEach(stat => {
-        // 크리티컬 스탯은 강화 효과 제외
+      // 기본 스탯 ID 목록 (강화 보너스 적용 대상)
+      const mainStatIds = ['attack', 'accuracy', 'critChance', 'monstersPerStageReduction', 'skipChance', 'ppBonus'];
+
+      item.stats.forEach((stat, statIdx) => {
+        // 크리티컬 스탯은 슬롯 강화 효과 제외
         const isExcluded = EQUIPMENT_CONFIG.enhancement.excludedStats?.includes(stat.id);
-        const bonus = isExcluded ? 1 : enhancementBonus;
-        const finalValue = stat.value * bonus * relicBonus;
+        const slotEnhanceBonus = isExcluded ? 1 : enhancementBonus;
+        // 아이템 강화 보너스는 기본옵션(isMain)에만 적용
+        // 레거시 지원: isMain 플래그가 없는 경우 첫번째 스탯이 mainStatIds에 있으면 기본옵션으로 취급
+        const isMainStat = stat.isMain || (statIdx === 0 && mainStatIds.includes(stat.id));
+        const itemBonus = isMainStat ? itemEnhanceBonus : 1;
+        const finalValue = stat.value * slotEnhanceBonus * itemBonus * relicBonus;
 
         if (equipmentStats.hasOwnProperty(stat.id)) {
           equipmentStats[stat.id] += finalValue;
@@ -193,7 +202,8 @@ const StatsList = () => {
             name: itemName,
             statId: stat.id,
             baseValue: stat.value,
-            enhancementBonus: bonus,
+            enhancementBonus: slotEnhanceBonus,
+            itemEnhanceBonus: itemBonus,
             relicBonus,
             finalValue
           });
@@ -460,6 +470,11 @@ const StatsList = () => {
           <span className="text-white font-bold">{currentClass?.name || '초심자'}</span>
           {currentClassLevel > 0 && (
             <span className="text-yellow-400 text-xs">({currentClassLevel}차)</span>
+          )}
+          {currentClassLevel > 0 && classBonuses && (
+            <span className="text-[10px] text-cyan-400">
+              공+{classBonuses.attackPercent}% 치확+{classBonuses.critChance}% 치뎀+{classBonuses.critDamage}%
+            </span>
           )}
         </div>
         {nextClass ? (

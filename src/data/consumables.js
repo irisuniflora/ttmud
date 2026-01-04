@@ -5,7 +5,9 @@ export const CONSUMABLE_TYPES = {
   SEALED_ZONE_TICKET: 'sealed_zone_ticket',
   MONSTER_SELECTION_TICKET: 'monster_selection_ticket',
   GEAR_ORB: 'gear_orb',
-  STAT_MAX_ITEM: 'stat_max_item'
+  STAT_MAX_ITEM: 'stat_max_item',
+  RARE_TOKEN: 'rare_token',
+  LEGENDARY_TOKEN: 'legendary_token'
 };
 
 // 소모품 정의
@@ -45,6 +47,26 @@ export const CONSUMABLES = {
     maxStack: 99,
     usable: true,
     rarity: 'mythic'
+  },
+  [CONSUMABLE_TYPES.RARE_TOKEN]: {
+    id: CONSUMABLE_TYPES.RARE_TOKEN,
+    name: '희귀 토큰',
+    description: '이미 포획한 희귀 몬스터 처치 시 획득. 10개로 랜덤 희귀 몬스터 도감 등록!',
+    icon: '💎',
+    maxStack: 999,
+    usable: true,
+    rarity: 'rare',
+    exchangeAmount: 10
+  },
+  [CONSUMABLE_TYPES.LEGENDARY_TOKEN]: {
+    id: CONSUMABLE_TYPES.LEGENDARY_TOKEN,
+    name: '전설 토큰',
+    description: '이미 포획한 전설 몬스터 처치 시 획득. 10개로 랜덤 전설 몬스터 도감 등록!',
+    icon: '👑',
+    maxStack: 999,
+    usable: true,
+    rarity: 'legendary',
+    exchangeAmount: 10
   }
 };
 
