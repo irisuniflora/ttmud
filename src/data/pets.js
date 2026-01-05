@@ -40,7 +40,7 @@ export const PET_ABILITIES = {
     id: 'shield_break',
     name: '보호막 파괴',
     description: '보호막에 추가 피해 +50%',
-    icon: '💥',
+    icon: '🛡️',
     counters: ['nepheron']
   },
   shield_penetration: {
@@ -54,7 +54,7 @@ export const PET_ABILITIES = {
     id: 'shield_rage',
     name: '보호막 분노',
     description: '보호막이 있을 때 공격 속도 +50%',
-    icon: '⚡',
+    icon: '💨',
     counters: ['nepheron']
   },
 
@@ -116,14 +116,14 @@ export const PET_ABILITIES = {
     id: 'true_hit',
     name: '필중',
     description: '회피 무시 효과 (모든 공격 명중)',
-    icon: '✨',
+    icon: '💫',
     counters: ['silen']
   },
   miss_power: {
     id: 'miss_power',
     name: '회피 분노',
     description: '미스 날 때마다 다음 공격 데미지 +30%',
-    icon: '💥',
+    icon: '😤',
     counters: ['silen']
   }
 };

@@ -76,7 +76,7 @@ export const EQUIPMENT_SETS = {
     name: '영원의 현자',
     description: '시간을 초월한 지식의 수호자',
     color: '#00BFFF', // 하늘색
-    icon: '📚',
+    icon: '📈',
     setBonus: {
       3: {
         name: '현자의 가르침',
@@ -95,7 +95,7 @@ export const EQUIPMENT_SETS = {
     name: '바람을 삼킨 자',
     description: '바람보다 빠른 전설의 추격자',
     color: '#00FF7F', // 연두
-    icon: '⚡',
+    icon: '💨',
     setBonus: {
       3: {
         name: '질풍의 발걸음',
@@ -238,10 +238,10 @@ export const POTENTIAL_STATS = {
 export const CRIT_CHANCE_CAP = 100;
 
 // ===== 옵션 등급 시스템 =====
-// 옵션 등급: 0=하옵(80%), 1=중옵(90%), 2=극옵(100%)
+// 옵션 등급: 0=하옵(60%), 1=중옵(80%), 2=극옵(100%)
 export const OPTION_GRADES = {
-  LOW: 0,    // 하옵 80%
-  MID: 1,    // 중옵 90%
+  LOW: 0,    // 하옵 60%
+  MID: 1,    // 중옵 80%
   HIGH: 2    // 극옵 100%
 };
 
@@ -257,8 +257,8 @@ export const ANCIENT_CONFIG = {
 };
 
 export const OPTION_GRADE_MULTIPLIERS = {
-  [OPTION_GRADES.LOW]: 0.8,
-  [OPTION_GRADES.MID]: 0.9,
+  [OPTION_GRADES.LOW]: 0.6,
+  [OPTION_GRADES.MID]: 0.8,
   [OPTION_GRADES.HIGH]: 1.0
 };
 
@@ -449,11 +449,23 @@ export const getUpgradeCost = (item) => {
   return (totalUpgrades + 1) * ITEM_LEVEL_CONFIG.baseCost;
 };
 
-// 업글 가능 여부 확인
-export const canUpgradeItem = (item) => {
+// 업글 가능 여부 확인 (최고층수/10 제한 포함)
+export const canUpgradeItem = (item, highestFloor = Infinity) => {
   // upgradesLeft가 undefined면 기본값(10) 사용
   const upgradesLeft = item.upgradesLeft ?? ITEM_LEVEL_CONFIG.defaultUpgradesLeft;
-  return upgradesLeft > 0;
+  if (upgradesLeft <= 0) return false;
+
+  // 최고층수/10 제한 체크
+  const maxLevel = Math.floor(highestFloor / 10);
+  const currentLevel = item.itemLevel || 1;
+  if (currentLevel >= maxLevel) return false;
+
+  return true;
+};
+
+// 최대 템렙 계산 (최고층수 기반)
+export const getMaxItemLevel = (highestFloor) => {
+  return Math.floor(highestFloor / 10);
 };
 
 // ===== 장비조각 시스템 =====
@@ -932,10 +944,17 @@ export const calculateTotalEquipmentEffects = (equippedItems) => {
 
 // ===== 템렙 강화 =====
 
-// 템렙 강화
-export const upgradeItemLevel = (item, fragments) => {
+// 템렙 강화 (최고층수/10 제한 포함)
+export const upgradeItemLevel = (item, fragments, highestFloor = Infinity) => {
+  // 최대 레벨 제한 체크
+  const maxLevel = getMaxItemLevel(highestFloor);
+  const currentLevel = item.itemLevel || 1;
+  if (currentLevel >= maxLevel) {
+    return { success: false, message: `최고층(${highestFloor})에서 템렙 ${maxLevel}까지만 강화 가능합니다` };
+  }
+
   // 업글 횟수 체크
-  if (!canUpgradeItem(item)) {
+  if (!canUpgradeItem(item, highestFloor)) {
     return { success: false, message: '업그레이드 횟수가 남아있지 않습니다' };
   }
 
@@ -1099,44 +1118,3 @@ export const togglePotentialLock = (item, statIndex) => {
   };
 };
 
-// 완벽의 정수로 잠재옵션 1개를 극옵(100%)으로 변경
-export const perfectPotentialStat = (item, statIndex) => {
-  if (!item || !item.stats || !item.stats[statIndex]) {
-    return false;
-  }
-
-  const stat = item.stats[statIndex];
-
-  // 기본옵션(isMain)은 변경 불가
-  if (stat.isMain) {
-    return false;
-  }
-
-  // 몬스터 감소 옵션은 불가
-  if (stat.id === 'monstersPerStageReduction') {
-    return false;
-  }
-
-  // 이미 극옵이면 불가
-  if (stat.optionGrade === OPTION_GRADES.HIGH) {
-    return false;
-  }
-
-  const statConfig = POTENTIAL_STATS[stat.id];
-  if (!statConfig) {
-    return false;
-  }
-
-  const itemLevel = item.itemLevel || 1;
-  const baseValue = calculatePotentialValue(stat.id, itemLevel);
-  const normalPenalty = item.type === 'normal' ? 0.6 : 1;
-  const gradeMultiplier = getGradeMultiplier(OPTION_GRADES.HIGH);
-
-  const rawValue = baseValue * gradeMultiplier * normalPenalty;
-  const finalValue = Math.round(rawValue * 10) / 10;
-
-  stat.value = Math.max(0, finalValue);
-  stat.optionGrade = OPTION_GRADES.HIGH;
-
-  return true;
-};

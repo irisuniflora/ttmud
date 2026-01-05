@@ -290,12 +290,18 @@ const PrestigeRelics = () => {
                     inscriptionStatBonus: '문양 기본 스탯',
                     inscriptionLevelBonus: '문양 레벨당 스탯',
                     inscriptionUpgradeCostReduction: '문양 강화 비용 감소',
+                    inscriptionDropRate: '문양 드랍률',
                     collectionStatBonus: '도감 스탯 보너스',
+                    collectionGoldBonus: '도감 골드 보너스',
+                    collectionDamageBonus: '도감 데미지 보너스',
                     explorerBonus: '탐험 보너스',
                     rareMonsterSpawnRate: '희귀 몬스터 출현율',
+                    rareMonsterSpawn: '희귀 몬스터 출현율',
+                    legendaryMonsterSpawn: '전설 몬스터 출현율',
                     rareMonsterRewardBonus: '희귀 몬스터 보상',
                     monstersPerStageReduction: '스테이지당 몬스터 수 감소',
                     bossTimeLimit: '보스 처치 제한시간',
+                    bossSkipChance: '보스 스킵 확률',
                     monsterHpReduction: '몬스터 HP 감소',
                     challengeTokenBonus: '도전권 획득 보너스',
                     goldRelicBonus: '유물 골드 보너스',
@@ -308,8 +314,10 @@ const PrestigeRelics = () => {
                     bootsPercent: '신발 능력치',
                     necklacePercent: '목걸이 능력치',
                     ringPercent: '반지 능력치',
+                    glovesPercent: '장갑 능력치',
                     inscriptionDamage: '문양 데미지',
-                    inscriptionStats: '문양 스탯'
+                    inscriptionStats: '문양 스탯',
+                    raidTicketDropRate: '레이드 티켓 드랍률'
                   };
                   const suffix = effectType.includes('Percent') || effectType.includes('Chance') ||
                     effectType.includes('Spawn') || effectType.includes('Reduction') ||

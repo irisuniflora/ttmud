@@ -1,4 +1,5 @@
-import { getMonsterForStage, getCollectionBonus, getBossCollectionBonus, RARE_MONSTER_CAPTURE_CHANCE, LEGENDARY_MONSTER_CAPTURE_CHANCE } from '../data/monsters.js';
+import { getMonsterForStage, getCollectionBonus, getBossCollectionBonus, RARE_MONSTER_CAPTURE_CHANCE, LEGENDARY_MONSTER_CAPTURE_CHANCE, FLOOR_RANGES } from '../data/monsters.js';
+import { formatNumber } from '../utils/formatter.js';
 import { CONSUMABLE_TYPES } from '../data/consumables.js';
 import { HEROES, getHeroById, getHeroStats, getNextGrade, getUpgradeCost, getStarUpgradeCost } from '../data/heroes.js';
 // import { generateItem } from '../data/items.js'; // 구 시스템 - 사용 안함
@@ -59,10 +60,6 @@ export class GameEngine {
     // 데이터 마이그레이션: orbs 초기화
     if (this.state.orbs === undefined || this.state.orbs === null || isNaN(this.state.orbs)) {
       this.state.orbs = 0;
-    }
-    // gearCores 삭제 (완벽의 정수로 통합)
-    if (this.state.gearCores !== undefined) {
-      delete this.state.gearCores;
     }
     if (!this.state.consumables) {
       this.state.consumables = {};
@@ -245,8 +242,15 @@ export class GameEngine {
       }
     }
 
-    const { damage, isCrit } = this.calculateTotalDPS();
+    const { damage, isCrit, extraHitChance } = this.calculateTotalDPS();
     this.dealDamage(damage, isCrit);
+
+    // 추가타격 체크 (다크 리퍼) - 몬스터가 아직 살아있으면
+    if (this.state.currentMonster.hp > 0 && extraHitChance > 0 && Math.random() * 100 < extraHitChance) {
+      const { damage: extraDmg, isCrit: extraCrit } = this.calculateTotalDPS();
+      this.dealDamage(extraDmg, extraCrit);
+      this.addCombatLog('⚡ 추가타격!', 'extra_hit');
+    }
 
     // 월드보스 데미지 누적 (비활성화)
     // this.tickWorldBossDamage();
@@ -326,9 +330,8 @@ export class GameEngine {
       goldBonus: 0,
       dropRate: 0,
       expBonus: 0,
-      dotDmgPercent: 0,
-      hpPercentDmgChance: 0,
-      hpPercentDmgValue: 0,
+      extraHitChance: 0,
+      accuracy: 0,
       stageSkipChance: 0
     };
 
@@ -382,6 +385,10 @@ export class GameEngine {
     const classBonuses = this.getClassBonuses();
     if (classBonuses.attackPercent > 0) {
       totalDmg *= (1 + classBonuses.attackPercent / 100);
+    }
+    // 전직 최종 데미지% 곱연산 적용
+    if (classBonuses.finalDamagePercent > 0) {
+      totalDmg *= (1 + classBonuses.finalDamagePercent / 100);
     }
 
     // 방생 보너스 곱연산 적용 (101층 이상은 1-100층으로 매핑)
@@ -492,25 +499,11 @@ export class GameEngine {
       }
     }
 
-    // 체력 퍼센트 데미지 (영웅 + 도감세트)
-    const totalHpPercentDmg = heroBuffs.hpPercentDmgValue + (setBonus.hpPercentDmg || 0);
-    if (heroBuffs.hpPercentDmgChance > 0 && totalHpPercentDmg > 0 && Math.random() * 100 < heroBuffs.hpPercentDmgChance) {
-      const hpPercentDmg = Math.floor(this.state.currentMonster.maxHp * (totalHpPercentDmg / 100));
-      finalDmg += hpPercentDmg;
-    }
-
-    // 도트 데미지 (영웅 + 도감세트)
-    const totalDotPercent = heroBuffs.dotDmgPercent + (setBonus.dotDamage || 0);
-    if (totalDotPercent > 0) {
-      const dotDmg = Math.floor(totalDmg * (totalDotPercent / 100));
-      finalDmg += dotDmg;
-    }
-
     // 크리티컬 발동 체크
     const isCrit = Math.random() * 100 < critChance;
     const finalDamage = isCrit ? Math.floor(finalDmg * (critDmg / 100)) : Math.floor(finalDmg);
 
-    return { damage: finalDamage, isCrit };
+    return { damage: finalDamage, isCrit, extraHitChance: heroBuffs.extraHitChance };
   }
 
   // 데미지 적용
@@ -521,7 +514,7 @@ export class GameEngine {
     statistics.totalDamageDealt += damage;
 
     // 매 틱마다 데미지 로그 추가 (BattleField 애니메이션용)
-    const formattedDamage = damage.toLocaleString();
+    const formattedDamage = formatNumber(damage);
     if (isCrit) {
       this.addCombatLog(`💥 치명타! ${formattedDamage} 데미지`, 'critical');
     } else {
@@ -672,9 +665,6 @@ export class GameEngine {
 
     // 오브 드랍
     this.tryDropOrb();
-
-    // 완벽의 정수 드랍 (글로벌 드랍)
-    this.tryDropStatMaxItem();
 
     // 희귀 몬스터 도감 등록 (50% 포획 확률)
     if (currentMonster.isRare && !currentMonster.isBoss && currentMonster.monsterIndex !== undefined) {
@@ -1160,26 +1150,6 @@ export class GameEngine {
     return false;
   }
 
-  // 완벽의 정수 드랍 시도 (글로벌 드랍)
-  tryDropStatMaxItem() {
-    const { player } = this.state;
-    // 기본 확률: 0.00001%
-    // 층수에 따른 가중치: sqrt(floor)
-    const baseRate = 0.00001; // 0.00001%
-    const floorWeight = Math.sqrt(player.floor);
-    const dropRate = baseRate * floorWeight;
-
-    if (Math.random() * 100 < dropRate) {
-      if (!this.state.consumables) {
-        this.state.consumables = {};
-      }
-      this.state.consumables.stat_max_item = (this.state.consumables.stat_max_item || 0) + 1;
-      this.addCombatLog('⚙️ 완벽의 정수 획득!', 'stat_max');
-      return true;
-    }
-    return false;
-  }
-
   // 문양 드랍 (보스방에서만, 층별로 특정 문양 드랍)
   tryDropInscription() {
     // 동적 import 대신 직접 함수 구현
@@ -1328,6 +1298,49 @@ export class GameEngine {
       return true;
     }
     return false;
+  }
+
+  // 문양 합성 (같은 종류 5개 -> 상위 등급 1개)
+  fuseInscriptions(inscriptionId, fromGrade) {
+    const GRADE_ORDER = ['common', 'uncommon', 'rare', 'epic', 'unique', 'legendary', 'mythic', 'dark'];
+    const gradeIndex = GRADE_ORDER.indexOf(fromGrade);
+
+    if (gradeIndex >= GRADE_ORDER.length - 1) {
+      return { success: false, message: '최고 등급은 합성할 수 없습니다.' };
+    }
+
+    if (!this.state.sealedZone?.ownedInscriptions) {
+      return { success: false, message: '문양이 없습니다.' };
+    }
+
+    // 해당 종류 + 등급의 문양 찾기
+    const matchingInscriptions = this.state.sealedZone.ownedInscriptions.filter(
+      i => i.inscriptionId === inscriptionId && i.grade === fromGrade
+    );
+
+    if (matchingInscriptions.length < 5) {
+      return { success: false, message: `${fromGrade} 등급 문양이 5개 필요합니다. (현재: ${matchingInscriptions.length}개)` };
+    }
+
+    // 5개 제거
+    const itemsToRemove = matchingInscriptions.slice(0, 5).map(i => i.id);
+    const toGrade = GRADE_ORDER[gradeIndex + 1];
+
+    // 새 상위 등급 문양 생성
+    const newInscription = {
+      id: `inscription_${Date.now()}_${Math.random()}`,
+      inscriptionId: inscriptionId,
+      grade: toGrade,
+      level: 1
+    };
+
+    // 상태 업데이트
+    this.state.sealedZone.ownedInscriptions = this.state.sealedZone.ownedInscriptions.filter(
+      i => !itemsToRemove.includes(i.id)
+    );
+    this.state.sealedZone.ownedInscriptions.push(newInscription);
+
+    return { success: true, newGrade: toGrade, inscriptionId };
   }
 
   // 봉인구역 도전권 드랍 (보스몬스터 처치 시)
@@ -2112,7 +2125,7 @@ export class GameEngine {
       soldCount++;
 
       // 판매 로그 추가 (등급 정보 포함)
-      this.addCombatLog(`${item.name} 판매 +${price.toLocaleString()}G`, 'sold', item.rarity);
+      this.addCombatLog(`${item.name} 판매 +${formatNumber(price)}G`, 'sold', item.rarity);
     });
 
     // 인벤토리에서 판매한 아이템 제거
@@ -2173,49 +2186,6 @@ export class GameEngine {
     this.state.settings = {
       ...this.state.settings,
       ...newSettings
-    };
-  }
-
-  // 완벽의 정수 사용 (장비의 특정 옵션 1개를 극옵으로 변경)
-  usePerfectEssence(slot, statIndex) {
-    const { equipment, consumables = {} } = this.state;
-
-    // 완벽의 정수 소지 확인
-    if (!consumables.stat_max_item || consumables.stat_max_item < 1) {
-      return { success: false, message: '완벽의 정수가 부족합니다' };
-    }
-
-    // 장비 착용 확인
-    const item = equipment[slot];
-    if (!item) {
-      return { success: false, message: '해당 슬롯에 장비가 없습니다' };
-    }
-
-    // 옵션 인덱스 확인
-    if (!item.stats || !item.stats[statIndex]) {
-      return { success: false, message: '잘못된 옵션입니다' };
-    }
-
-    const stat = item.stats[statIndex];
-
-    // 이미 극옵인지 확인
-    if (stat.optionGrade === OPTION_GRADES.HIGH) {
-      return { success: false, message: '이미 극옵 상태입니다' };
-    }
-
-    // 옵션 극옵화 (새 장비 시스템)
-    const success = perfectPotentialStat(item, statIndex);
-    if (!success) {
-      return { success: false, message: '극옵화에 실패했습니다 (기본옵션/몬스터감소 불가)' };
-    }
-
-    // 완벽의 정수 소모
-    this.state.consumables.stat_max_item -= 1;
-
-    return {
-      success: true,
-      message: `${stat.name} 옵션을 극옵으로 변경했습니다!`,
-      stat: item.stats[statIndex]
     };
   }
 
@@ -2707,23 +2677,23 @@ export class GameEngine {
   }
 
   // 토큰 교환으로 랜덤 몬스터 도감 등록
-  exchangeTokenForRandomMonster(tokenType) {
+  exchangeTokenForRandomMonster(tokenType, count = 1) {
     const { collection } = this.state;
     if (!this.state.consumables) this.state.consumables = {};
     const consumables = this.state.consumables;
 
-    const EXCHANGE_AMOUNT = 10; // 10개로 교환
+    const EXCHANGE_AMOUNT = 50; // 50개로 교환
 
     // 희귀 토큰 교환
     if (tokenType === 'rare') {
       const tokenCount = consumables[CONSUMABLE_TYPES.RARE_TOKEN] || 0;
-      if (tokenCount < EXCHANGE_AMOUNT) {
-        return { success: false, message: `희귀 토큰이 부족합니다. (${tokenCount}/${EXCHANGE_AMOUNT})` };
+      const totalCost = EXCHANGE_AMOUNT * count;
+      if (tokenCount < totalCost) {
+        return { success: false, message: `희귀 토큰이 부족합니다. (${tokenCount}/${totalCost})` };
       }
 
       // 미수집 희귀 몬스터 목록 찾기
       const unlockedRareMonsters = [];
-      const FLOOR_RANGES = require('../data/monsters.js').FLOOR_RANGES;
 
       Object.keys(FLOOR_RANGES).forEach(floorStart => {
         const floor = parseInt(floorStart);
@@ -2744,37 +2714,49 @@ export class GameEngine {
         return { success: false, message: '모든 희귀 몬스터가 이미 수집되었습니다!' };
       }
 
-      // 랜덤 선택
-      const selected = unlockedRareMonsters[Math.floor(Math.random() * unlockedRareMonsters.length)];
+      // 실제 교환 가능한 수량 (미수집 몬스터 수 제한)
+      const actualCount = Math.min(count, unlockedRareMonsters.length);
+      const actualCost = EXCHANGE_AMOUNT * actualCount;
 
       // 토큰 소모
-      consumables[CONSUMABLE_TYPES.RARE_TOKEN] -= EXCHANGE_AMOUNT;
+      consumables[CONSUMABLE_TYPES.RARE_TOKEN] -= actualCost;
 
-      // 도감 등록
-      if (!collection.rareMonsters) collection.rareMonsters = {};
-      if (!collection.rareMonsters[selected.id]) {
-        collection.rareMonsters[selected.id] = { name: selected.name, count: 0, unlocked: false };
+      // 랜덤으로 여러 개 선택
+      const selectedMonsters = [];
+      for (let i = 0; i < actualCount; i++) {
+        const availableMonsters = unlockedRareMonsters.filter(m => !selectedMonsters.find(s => s.id === m.id));
+        if (availableMonsters.length === 0) break;
+        const selected = availableMonsters[Math.floor(Math.random() * availableMonsters.length)];
+        selectedMonsters.push(selected);
+
+        // 도감 등록
+        if (!collection.rareMonsters) collection.rareMonsters = {};
+        if (!collection.rareMonsters[selected.id]) {
+          collection.rareMonsters[selected.id] = { name: selected.name, count: 0, unlocked: false };
+        }
+        collection.rareMonsters[selected.id].unlocked = true;
       }
-      collection.rareMonsters[selected.id].unlocked = true;
 
-      this.addCombatLog(`💎 토큰 교환! ${selected.name}을(를) 도감에 등록!`, 'rare_monster');
+      const names = selectedMonsters.map(m => m.name).join(', ');
+      this.addCombatLog(`💎 토큰 교환! ${names}을(를) 도감에 등록!`, 'rare_monster');
       return {
         success: true,
-        message: `💎 ${selected.name}을(를) 도감에 등록했습니다!`,
-        monster: selected
+        message: `💎 ${selectedMonsters.length}마리 등록: ${names}`,
+        monsters: selectedMonsters,
+        count: selectedMonsters.length
       };
     }
 
     // 전설 토큰 교환
     if (tokenType === 'legendary') {
       const tokenCount = consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] || 0;
-      if (tokenCount < EXCHANGE_AMOUNT) {
-        return { success: false, message: `전설 토큰이 부족합니다. (${tokenCount}/${EXCHANGE_AMOUNT})` };
+      const totalCost = EXCHANGE_AMOUNT * count;
+      if (tokenCount < totalCost) {
+        return { success: false, message: `전설 토큰이 부족합니다. (${tokenCount}/${totalCost})` };
       }
 
       // 미수집 전설 몬스터 목록 찾기
       const unlockedLegendaryMonsters = [];
-      const FLOOR_RANGES = require('../data/monsters.js').FLOOR_RANGES;
 
       Object.keys(FLOOR_RANGES).forEach(floorStart => {
         const floor = parseInt(floorStart);
@@ -2795,24 +2777,36 @@ export class GameEngine {
         return { success: false, message: '모든 전설 몬스터가 이미 수집되었습니다!' };
       }
 
-      // 랜덤 선택
-      const selected = unlockedLegendaryMonsters[Math.floor(Math.random() * unlockedLegendaryMonsters.length)];
+      // 실제 교환 가능한 수량 (미수집 몬스터 수 제한)
+      const actualCount = Math.min(count, unlockedLegendaryMonsters.length);
+      const actualCost = EXCHANGE_AMOUNT * actualCount;
 
       // 토큰 소모
-      consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] -= EXCHANGE_AMOUNT;
+      consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] -= actualCost;
 
-      // 도감 등록
-      if (!collection.legendaryMonsters) collection.legendaryMonsters = {};
-      if (!collection.legendaryMonsters[selected.id]) {
-        collection.legendaryMonsters[selected.id] = { name: selected.name, count: 0, unlocked: false };
+      // 랜덤으로 여러 개 선택
+      const selectedMonsters = [];
+      for (let i = 0; i < actualCount; i++) {
+        const availableMonsters = unlockedLegendaryMonsters.filter(m => !selectedMonsters.find(s => s.id === m.id));
+        if (availableMonsters.length === 0) break;
+        const selected = availableMonsters[Math.floor(Math.random() * availableMonsters.length)];
+        selectedMonsters.push(selected);
+
+        // 도감 등록
+        if (!collection.legendaryMonsters) collection.legendaryMonsters = {};
+        if (!collection.legendaryMonsters[selected.id]) {
+          collection.legendaryMonsters[selected.id] = { name: selected.name, count: 0, unlocked: false };
+        }
+        collection.legendaryMonsters[selected.id].unlocked = true;
       }
-      collection.legendaryMonsters[selected.id].unlocked = true;
 
-      this.addCombatLog(`👑 토큰 교환! ${selected.name}을(를) 도감에 등록!`, 'legendary_monster');
+      const names = selectedMonsters.map(m => m.name).join(', ');
+      this.addCombatLog(`👑 토큰 교환! ${names}을(를) 도감에 등록!`, 'legendary_monster');
       return {
         success: true,
-        message: `👑 ${selected.name}을(를) 도감에 등록했습니다!`,
-        monster: selected
+        message: `👑 ${selectedMonsters.length}마리 등록: ${names}`,
+        monsters: selectedMonsters,
+        count: selectedMonsters.length
       };
     }
 
@@ -2940,7 +2934,7 @@ export class GameEngine {
       setId: setId
     };
 
-    this.addCombatLog(`📚 ${monsterName}을(를) 각인했습니다!`, 'inscribe');
+    this.addCombatLog(`📖 ${monsterName}을(를) 각인했습니다!`, 'inscribe');
 
     // 세트 완성 체크
     const setStatus = checkSetCompletion(setId, collection.inscribedMonsters);
@@ -3380,16 +3374,17 @@ export class GameEngine {
     };
   }
 
-  // 장비 템렙 강화 (조각 소모)
+  // 장비 템렙 강화 (조각 소모, 최고층수/10 제한)
   upgradeEquipmentLevel(slot) {
-    const { equipment, equipmentFragments = 0 } = this.state;
+    const { equipment, equipmentFragments = 0, player } = this.state;
     const item = equipment[slot];
+    const highestFloor = player?.highestFloor || 1;
 
     if (!item) {
       return { success: false, message: '장착된 아이템이 없습니다' };
     }
 
-    const result = upgradeItemLevel(item, equipmentFragments);
+    const result = upgradeItemLevel(item, equipmentFragments, highestFloor);
 
     if (result.success) {
       this.state.equipmentFragments = equipmentFragments - result.fragmentCost;
@@ -3445,7 +3440,7 @@ export class GameEngine {
 
     const cost = getEnhanceCost(item);
     if (gold < cost) {
-      return { success: false, message: `골드가 부족합니다 (필요: ${cost.toLocaleString()}G)` };
+      return { success: false, message: `골드가 부족합니다 (필요: ${formatNumber(cost)}G)` };
     }
 
     // 하락 방지권 사용 시 확인
@@ -3507,6 +3502,209 @@ export class GameEngine {
         message: `강화 실패! (현재 +${currentEnhance})`
       };
     }
+  }
+
+  // 인벤토리 아이템 제련 (ID로 찾아서 처리)
+  upgradeInventoryItem(itemId) {
+    const { newInventory = [], equipmentFragments = 0, player } = this.state;
+    const itemIndex = newInventory.findIndex(item => item.id === itemId);
+    const highestFloor = player?.highestFloor || 1;
+
+    if (itemIndex === -1) {
+      return { success: false, message: '아이템을 찾을 수 없습니다' };
+    }
+
+    const item = newInventory[itemIndex];
+    const result = upgradeItemLevel(item, equipmentFragments, highestFloor);
+
+    if (result.success) {
+      this.state.equipmentFragments = equipmentFragments - result.fragmentCost;
+      this.addCombatLog(`⬆️ ${item.name} ${result.message}`, 'upgrade');
+    }
+
+    return result;
+  }
+
+  // 인벤토리 아이템 각성
+  awakenInventoryItem(itemId) {
+    const { newInventory = [], consumables = {} } = this.state;
+    const awakeningStones = consumables.awakening_stone || 0;
+    const itemIndex = newInventory.findIndex(item => item.id === itemId);
+
+    if (itemIndex === -1) {
+      return { success: false, message: '아이템을 찾을 수 없습니다' };
+    }
+
+    const item = newInventory[itemIndex];
+
+    if (awakeningStones < 1) {
+      return { success: false, message: '각성석이 부족합니다! (상점에서 구매)' };
+    }
+
+    const result = awakenItem(item);
+
+    if (result.success) {
+      this.state.consumables = {
+        ...this.state.consumables,
+        awakening_stone: awakeningStones - 1
+      };
+      this.addCombatLog(`✨ ${item.name} ${result.message}`, 'upgrade');
+    }
+
+    return result;
+  }
+
+  // 인벤토리 아이템 강화
+  enhanceInventoryItem(itemId, useProtection = false) {
+    const { newInventory = [], player } = this.state;
+    const gold = player.gold || 0;
+    const itemIndex = newInventory.findIndex(item => item.id === itemId);
+
+    if (itemIndex === -1) {
+      return { success: false, message: '아이템을 찾을 수 없습니다' };
+    }
+
+    const item = newInventory[itemIndex];
+    const currentEnhance = item.enhanceLevel || 0;
+
+    if (currentEnhance >= ENHANCE_CONFIG.maxEnhance) {
+      return { success: false, message: `최대 강화 수치(+${ENHANCE_CONFIG.maxEnhance})에 도달했습니다` };
+    }
+
+    const cost = getEnhanceCost(item);
+    if (gold < cost) {
+      return { success: false, message: `골드가 부족합니다 (필요: ${formatNumber(cost)}G)` };
+    }
+
+    const downgradeProtectionCount = this.state.downgradeProtection || 0;
+    const downgradeAmount = getDowngradeAmount(item);
+    const protectionRequired = getProtectionRequired(currentEnhance);
+
+    if (useProtection && downgradeAmount > 0) {
+      if (downgradeProtectionCount < protectionRequired) {
+        return { success: false, message: `하락 방지권이 부족합니다 (필요: ${protectionRequired}개, 보유: ${downgradeProtectionCount}개)` };
+      }
+      this.state.downgradeProtection = downgradeProtectionCount - protectionRequired;
+    }
+
+    player.gold = gold - cost;
+
+    const successRate = getEnhanceSuccessRate(item);
+    const roll = Math.random() * 100;
+
+    if (roll < successRate) {
+      item.enhanceLevel = currentEnhance + 1;
+      this.addCombatLog(`🔨 ${item.name} +${item.enhanceLevel} 강화 성공!`, 'upgrade');
+      return {
+        success: true,
+        enhanced: true,
+        newLevel: item.enhanceLevel,
+        cost,
+        message: `+${item.enhanceLevel} 강화 성공!`
+      };
+    } else {
+      if (downgradeAmount > 0 && !useProtection) {
+        const newLevel = Math.max(0, currentEnhance - downgradeAmount);
+        item.enhanceLevel = newLevel;
+        this.addCombatLog(`📉 ${item.name} +${currentEnhance} → +${newLevel} 강화 하락!`, 'upgrade');
+        return {
+          success: true,
+          enhanced: false,
+          downgraded: true,
+          downgradeAmount,
+          newLevel,
+          cost,
+          message: `강화 실패! +${currentEnhance} → +${newLevel} (${downgradeAmount}단계 하락)`
+        };
+      }
+
+      this.addCombatLog(`🔨 ${item.name} +${currentEnhance + 1} 강화 실패...`, 'upgrade');
+      return {
+        success: true,
+        enhanced: false,
+        downgraded: false,
+        currentLevel: currentEnhance,
+        cost,
+        message: `강화 실패! (현재 +${currentEnhance})`
+      };
+    }
+  }
+
+  // 인벤토리 아이템 재굴림
+  useOrbOnInventoryItem(itemId) {
+    const { newInventory = [], consumables = {} } = this.state;
+    const itemIndex = newInventory.findIndex(item => item.id === itemId);
+
+    if (this.state.orbs < 1) {
+      return { success: false, message: '오브가 부족합니다' };
+    }
+
+    if (itemIndex === -1) {
+      return { success: false, message: '아이템을 찾을 수 없습니다' };
+    }
+
+    const item = newInventory[itemIndex];
+
+    const lockedCount = (item.potentials || item.stats.filter(s => !s.isMain)).filter(p => p.locked).length;
+    const totalPotentials = item.isAncient ? 4 : 3;
+    if (lockedCount >= totalPotentials) {
+      return { success: false, message: '모든 옵션이 잠겨있어 재굴림할 수 없습니다' };
+    }
+
+    const sealStones = consumables.seal_stone || 0;
+    if (lockedCount > 0 && sealStones < lockedCount) {
+      return { success: false, message: `봉인석이 부족합니다 (필요: ${lockedCount}개, 보유: ${sealStones}개)` };
+    }
+
+    const success = rerollItemPotentials(item);
+    if (!success) {
+      return { success: false, message: '재조정에 실패했습니다' };
+    }
+
+    this.state.orbs -= 1;
+
+    if (lockedCount > 0) {
+      if (!this.state.consumables) this.state.consumables = {};
+      this.state.consumables.seal_stone = (this.state.consumables.seal_stone || 0) - lockedCount;
+    }
+
+    return {
+      success: true,
+      message: lockedCount > 0
+        ? `${item.name}의 잠기지 않은 옵션을 재조정했습니다! (봉인석 -${lockedCount})`
+        : `${item.name}의 옵션을 재조정했습니다!`,
+      item: item,
+      sealStonesUsed: lockedCount
+    };
+  }
+
+  // 인벤토리 아이템 옵션 잠금/해제
+  useSealStoneOnInventoryItem(itemId, statIndex) {
+    const { newInventory = [] } = this.state;
+    const itemIndex = newInventory.findIndex(item => item.id === itemId);
+
+    if (itemIndex === -1) {
+      return { success: false, message: '아이템을 찾을 수 없습니다' };
+    }
+
+    const item = newInventory[itemIndex];
+    const stats = item.stats || [];
+    const subStats = stats.filter(s => !s.isMain);
+    const statToToggle = subStats[statIndex];
+
+    if (!statToToggle) {
+      return { success: false, message: '해당 옵션을 찾을 수 없습니다' };
+    }
+
+    statToToggle.locked = !statToToggle.locked;
+
+    return {
+      success: true,
+      locked: statToToggle.locked,
+      message: statToToggle.locked
+        ? `${statToToggle.name} 옵션을 잠금했습니다 (재굴림 시 봉인석 소모)`
+        : `${statToToggle.name} 옵션 잠금을 해제했습니다`
+    };
   }
 
   // 세트 선택권 사용 (원하는 세트 + 슬롯 선택)

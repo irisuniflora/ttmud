@@ -16,6 +16,7 @@ export const GameProvider = ({ children }) => {
   const engineRef = useRef(null);
   const [gameState, setGameState] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
 
   // 게임 엔진 초기화
   useEffect(() => {
@@ -218,14 +219,6 @@ export const GameProvider = ({ children }) => {
     setGameState({ ...engineRef.current.getState() });
   };
 
-  const usePerfectEssence = (slot, statIndex) => {
-    const result = engineRef.current.usePerfectEssence(slot, statIndex);
-    if (result.success) {
-      setGameState({ ...engineRef.current.getState() });
-    }
-    return result;
-  };
-
   const useOrb = (slot) => {
     const result = engineRef.current.useOrb(slot);
     if (result.success) {
@@ -379,6 +372,47 @@ export const GameProvider = ({ children }) => {
     return result;
   };
 
+  // ===== 인벤토리 아이템 처리 함수 =====
+  const upgradeInventoryItem = (itemId) => {
+    const result = engineRef.current.upgradeInventoryItem(itemId);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const awakenInventoryItem = (itemId) => {
+    const result = engineRef.current.awakenInventoryItem(itemId);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const enhanceInventoryItem = (itemId, useProtection = false) => {
+    const result = engineRef.current.enhanceInventoryItem(itemId, useProtection);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const useOrbOnInventoryItem = (itemId) => {
+    const result = engineRef.current.useOrbOnInventoryItem(itemId);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const useSealStoneOnInventoryItem = (itemId, statIndex) => {
+    const result = engineRef.current.useSealStoneOnInventoryItem(itemId, statIndex);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
   // ===== 업적 시스템 =====
   const claimAchievementReward = (achievementId) => {
     const result = engineRef.current.claimAchievementReward(achievementId);
@@ -395,6 +429,22 @@ export const GameProvider = ({ children }) => {
       setGameState({ ...engineRef.current.getState() });
     }
     return result;
+  };
+
+  // ===== 채팅 시스템 =====
+  const addChatMessage = (content, sender = 'Player') => {
+    const newMessage = {
+      id: Date.now() + Math.random(),
+      content,
+      sender,
+      timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+      createdAt: Date.now()
+    };
+    setChatMessages(prev => [...prev.slice(-29), newMessage]); // 최대 30개 유지
+  };
+
+  const clearChatMessages = () => {
+    setChatMessages([]);
   };
 
   // 보스 타이머 업데이트 (시간 기반 - 200ms마다 체크)
@@ -443,7 +493,6 @@ export const GameProvider = ({ children }) => {
       autoSellItems,
       sellItem,
       updateSettings,
-      usePerfectEssence,
       useOrb,
       releaseMonster,
       releaseAllMonsters,
@@ -474,8 +523,17 @@ export const GameProvider = ({ children }) => {
       enhanceEquipment,
       useSetSelector,
       useSealStone,
+      upgradeInventoryItem,
+      awakenInventoryItem,
+      enhanceInventoryItem,
+      useOrbOnInventoryItem,
+      useSealStoneOnInventoryItem,
       claimAchievementReward,
       advanceClass,
+      // 채팅 시스템
+      chatMessages,
+      addChatMessage,
+      clearChatMessages,
       engine: engineRef.current
     }}>
       {children}

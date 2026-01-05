@@ -16,7 +16,7 @@ const SLOT_ICONS = {
 };
 
 const Equipment = () => {
-  const { gameState, unequipItem, enhanceSlot, usePerfectEssence, useOrb, equipItem, autoEquipAll, autoSellItems, sellItem, updateSettings } = useGame();
+  const { gameState, unequipItem, enhanceSlot, useOrb, equipItem, autoEquipAll, autoSellItems, sellItem, updateSettings } = useGame();
   const { equipment, slotEnhancements = {}, player, orbs = 0, inventory = [], settings = {}, consumables = {} } = gameState;
 
   const [sellRarity, setSellRarity] = React.useState(() => {
@@ -102,21 +102,6 @@ const Equipment = () => {
         return rarityOrder[b.rarity] - rarityOrder[a.rarity];
       });
   });
-
-  const handleUsePerfectEssence = (slot, statIndex) => {
-    const essenceCount = consumables.stat_max_item || 0;
-    if (essenceCount < 1) {
-      showNotification('완벽의 정수 부족', '완벽의 정수가 없습니다', 'warning');
-      return;
-    }
-
-    const result = usePerfectEssence(slot, statIndex);
-    if (result.success) {
-      showNotification('⚙️ 극옵화 성공!', result.message, 'success');
-    } else {
-      showNotification('극옵화 실패', result.message, 'error');
-    }
-  };
 
   const handleUseOrb = (slot) => {
     if (orbs < 1) {
@@ -237,7 +222,6 @@ const Equipment = () => {
                         const bonusValue = isExcluded ? 0 : stat.value * (enhancementLevel * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
                         const formattedBaseValue = formatStatValue(stat.value, stat.suffix);
                         const formattedBonusValue = formatStatValue(bonusValue, stat.suffix);
-                        const essenceCount = consumables.stat_max_item || 0;
 
                         return (
                           <div key={idx} className="flex items-center justify-between gap-1">
@@ -252,16 +236,6 @@ const Equipment = () => {
                               <span className={`text-[10px] font-bold ${diamondColorClass}`}>
                                 {'◆'.repeat(diamondGrade.count)}
                               </span>
-                              {/* 완벽의 정수 버튼 (극옵 아닌 경우만) */}
-                              {essenceCount > 0 && percentage < 100 && (
-                                <button
-                                  onClick={() => handleUsePerfectEssence(slot, idx)}
-                                  className="bg-cyan-600 hover:bg-cyan-700 text-white text-[8px] px-0.5 rounded ml-0.5"
-                                  title="완벽의 정수로 극옵화"
-                                >
-                                  ⚙
-                                </button>
-                              )}
                             </div>
                           </div>
                         );
@@ -573,7 +547,6 @@ const Equipment = () => {
                   <p className="text-gray-400 text-[10px] ml-3">예: 51층 = x1.2, 101층 = x1.44, 151층 = x1.73...</p>
                   <p>• 장비 슬롯 강화 시 해당 슬롯의 모든 스탯이 5%씩 증가합니다</p>
                   <p>• 다이아몬드 등급: <span className="text-gray-500">◆(하옵)</span> <span className="text-blue-400">◆◆(중옵)</span> <span className="text-yellow-400">◆◆◆(상옵)</span> <span className="text-cyan-400">💎💎💎(극옵)</span></p>
-                  <p>• 완벽의 정수(⚙️)를 사용하면 개별 옵션을 극옵으로 변경할 수 있습니다</p>
                   <p>• 오브(🔮)를 사용하면 장비 옵션을 재조정할 수 있습니다</p>
                 </div>
               </div>

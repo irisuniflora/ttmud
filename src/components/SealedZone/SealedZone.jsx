@@ -13,6 +13,25 @@ import NotificationModal from '../UI/NotificationModal';
 // GitHub Pages 배포용 BASE_URL
 const BASE_URL = import.meta.env.BASE_URL || '/';
 
+// 장비 슬롯 설정
+const EQUIPMENT_SLOT_KEYS = ['weapon', 'armor', 'gloves', 'boots', 'necklace', 'ring'];
+const EQUIPMENT_SLOT_NAMES = {
+  weapon: '무기',
+  armor: '갑옷',
+  gloves: '장갑',
+  boots: '신발',
+  necklace: '목걸이',
+  ring: '반지'
+};
+const SLOT_ICONS = {
+  weapon: '⚔️',
+  armor: '🛡️',
+  gloves: '🧤',
+  boots: '👢',
+  necklace: '📿',
+  ring: '💍'
+};
+
 // 보스 이미지 경로 가져오기
 const getBossImage = (bossId) => {
   return `${BASE_URL}images/raid_bosses/${bossId}.png`;
@@ -90,7 +109,40 @@ const SealedZone = () => {
   const { gameState, setGameState, engine } = useGame();
   const { player, sealedZone = {}, equipment = {}, skillLevels = {}, slotEnhancements = {}, heroes = {}, relics = {} } = gameState;
 
-  // 전투력 계산 (PlayerInfo와 동일한 로직)
+  const [selectedBoss, setSelectedBoss] = useState(null);
+  const [selectedDifficulty, setSelectedDifficulty] = useState(1); // 숫자 레벨 (1부터 시작)
+  const [activeInscriptions, setActiveInscriptions] = useState([]); // 문양 배열
+  const [inBattle, setInBattle] = useState(false);
+  const [bossHP, setBossHP] = useState(100);
+  const [battleLog, setBattleLog] = useState([]);
+
+  // 전투 상태 추가
+  const [battleState, setBattleState] = useState({
+    totalAttacks: 0,
+    totalMisses: 0,
+    lastMissed: false,
+    guaranteedCritNext: false
+  });
+
+  // 보스 패턴 상태 추가
+  const [bossPatternState, setBossPatternState] = useState({
+    hasShield: false,
+    shieldHP: 0,
+    maxShieldHP: 0,
+    isRegenerating: false,
+    regenAmount: 0,
+    equipmentDestroyed: false,
+    healReduction: 0, // 치유 감소 %
+    isInvincible: false, // 에스모드 무적 상태
+    invincibleRemaining: 0, // 무적 남은 시간 (ms)
+    destructionRageActive: false, // 파괴 분노 활성화 여부
+    destructionRageRemaining: 0 // 파괴 분노 남은 시간 (ms)
+  });
+
+  // 베크타 장비 파괴 상태: { slotKey: remainingTime (ms) }
+  const [destroyedEquipments, setDestroyedEquipments] = useState({});
+
+  // 전투력 계산 (PlayerInfo와 동일한 로직) - 전투 중 파괴된 장비 제외
   const calculateCombatPower = () => {
     const skillEffects = getTotalSkillEffects(skillLevels);
     const relicEffects = getTotalRelicEffects(relics);
@@ -118,6 +170,11 @@ const SealedZone = () => {
 
     Object.entries(equipment).forEach(([slot, item]) => {
       if (item) {
+        // 베크타 전투 중 파괴된 장비는 스탯 0으로 처리
+        if (inBattle && destroyedEquipments[slot] > 0) {
+          return; // 스탯 계산에서 제외
+        }
+
         // 슬롯 강화 보너스 (구 시스템)
         const slotEnhancementBonus = 1 + ((slotEnhancements[slot] || 0) * EQUIPMENT_CONFIG.enhancement.statBonusPerLevel / 100);
         // 아이템 자체 강화 보너스 (신 시스템 - +1~+20)
@@ -150,32 +207,6 @@ const SealedZone = () => {
 
   const combatPower = calculateCombatPower();
 
-  const [selectedBoss, setSelectedBoss] = useState(null);
-  const [selectedDifficulty, setSelectedDifficulty] = useState(1); // 숫자 레벨 (1부터 시작)
-  const [activeInscriptions, setActiveInscriptions] = useState([]); // 문양 배열
-  const [inBattle, setInBattle] = useState(false);
-  const [bossHP, setBossHP] = useState(100);
-  const [battleLog, setBattleLog] = useState([]);
-
-  // 전투 상태 추가
-  const [battleState, setBattleState] = useState({
-    totalAttacks: 0,
-    totalMisses: 0,
-    lastMissed: false,
-    guaranteedCritNext: false
-  });
-
-  // 보스 패턴 상태 추가
-  const [bossPatternState, setBossPatternState] = useState({
-    hasShield: false,
-    shieldHP: 0,
-    maxShieldHP: 0,
-    isRegenerating: false,
-    regenAmount: 0,
-    equipmentDestroyed: false,
-    healReduction: 0 // 치유 감소 %
-  });
-
   // 알림 모달 상태
   const [notification, setNotification] = useState({ isOpen: false, title: '', message: '', type: 'info' });
 
@@ -188,6 +219,19 @@ const SealedZone = () => {
     const bossData = RAID_BOSSES[selectedBoss];
     if (!bossData) return { damage: 0, isMiss: false, isCrit: false, shieldDamage: 0 };
 
+    // 분쇄의 문양: 무적 즉시 해제 (invincible_destroy)
+    const hasInvincibleDestroy = inscriptionStats?.specialAbility?.type === 'invincible_destroy';
+    if (hasInvincibleDestroy && bossPatternState.isInvincible) {
+      // 무적 즉시 해제
+      setBossPatternState(prev => ({ ...prev, isInvincible: false, invincibleRemaining: 0 }));
+      setBattleLog(log => [...log.slice(-5), `💥 분쇄의 문양이 무적을 파괴했습니다!`]);
+    }
+
+    // 에스모드 무적 상태 체크 - 무적 파괴 문양 없으면 데미지 0
+    if (bossPatternState.isInvincible && !hasInvincibleDestroy) {
+      return { damage: 0, isMiss: false, isCrit: false, shieldDamage: 0, shieldBypassDamage: 0, isInvincible: true };
+    }
+
     // 유물 효과: 문양 스탯/데미지 증가
     const relicEffects = getTotalRelicEffects(gameState.prestigeRelics || {});
     const inscriptionStatsBonus = 1 + (relicEffects.inscriptionStats || 0) / 100;
@@ -198,27 +242,40 @@ const SealedZone = () => {
     const dpsResult = engine ? engine.calculateTotalDPS() : null;
     const playerDPS = dpsResult ? dpsResult.damage : 0;
 
-    // 문양 공격력 (유물: 문양의 정수 적용)
-    let inscriptionDamage = (inscriptionStats.attack || 0) * inscriptionStatsBonus;
-
-    // 공격력 % 증가 (유물 보너스 적용)
-    if (inscriptionStats.attackPercent) {
-      inscriptionDamage *= (1 + (inscriptionStats.attackPercent * inscriptionStatsBonus) / 100);
-    }
-
-    // 기본 데미지 = 캐릭터 전체 DPS + 문양 데미지
-    let baseDamage = playerDPS + inscriptionDamage;
+    // 기본 데미지 = 캐릭터 전체 DPS
+    let baseDamage = playerDPS;
 
     // 어빌리티: true_hit (필중 - 회피 무시) - abilities는 문자열 배열임
     const abilities = inscriptionStats.abilities || [];
     const hasTrueHit = abilities.includes('true_hit');
 
-    // 명중률 체크 (보스 회피율 vs 문양 명중률)
-    const bossEvasion = bossData.pattern?.evasionRate || 0;
+    // 명중률 계산 (새 공식: 명중 >= 회피 → 100%, 명중 < 회피 → 명중/회피*100%)
+    // 보스 회피 (bossStats.evasion - calculateRaidBossStats에서 난이도 반영됨)
+    const bossEvasion = bossStats.evasion || 500;
+    // 동료 명중 계산
+    let heroAccuracy = 0;
+    Object.entries(gameState.heroes || {}).forEach(([heroId, heroState]) => {
+      if (heroState && heroState.inscribed) {
+        const heroData = getHeroById(heroId);
+        if (heroData) {
+          const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
+          if (stats.accuracy) heroAccuracy += stats.accuracy;
+        }
+      }
+    });
+    // 플레이어 명중 = 캐릭터 기본 명중 + 문양 명중 + 동료 명중
+    const playerAccuracy = (gameState.player?.stats?.accuracy || 0) + (inscriptionStats.accuracy || 0) + heroAccuracy;
+
     let hitChance = 100;
 
     if (!hasTrueHit) {
-      hitChance = Math.max(10, 100 - bossEvasion + (inscriptionStats.accuracy || 0));
+      if (playerAccuracy >= bossEvasion) {
+        // 명중 >= 회피: 100% 명중
+        hitChance = 100;
+      } else {
+        // 명중 < 회피: (명중/회피) * 100%
+        hitChance = Math.max(10, (playerAccuracy / bossEvasion) * 100);
+      }
     }
 
     const isHit = Math.random() * 100 < hitChance;
@@ -255,29 +312,25 @@ const SealedZone = () => {
     const defenseReduction = Math.min(0.3, effectiveDefense / (effectiveDefense + 500));
     baseDamage *= (1 - defenseReduction);
 
-    // 특수 능력 적용
-    const specialAbility = inscriptionStats.specialAbility;
-
-    if (specialAbility) {
-      switch (specialAbility.type) {
-        case 'hp_percent_damage': // 갈증의 문양: 보스 최대 HP 5% 추가 피해
-          baseDamage += bossStats.maxHp * (specialAbility.value / 100);
-          break;
-
-        case 'hp_execute': // 영원의 문양: 보스 HP 20% 이하시 데미지 2배
-          if (currentBossHP <= bossStats.maxHp * 0.2) {
-            baseDamage *= 2;
-          }
-          break;
-      }
-    }
-
     // 보호막 관련 어빌리티
     let shieldDamage = 0;
     let bypassShield = false;
+    let shieldBypassDamage = 0; // 공허 문양: 방어막 관통 추가 데미지
 
-    if (abilities.includes('shield_break') && bossPatternState.hasShield) {
-      shieldDamage = baseDamage * 0.5; // 50% 추가 피해
+    if (bossPatternState.hasShield) {
+      // shield_break: 보호막에 +50% 추가 피해
+      if (abilities.includes('shield_break')) {
+        shieldDamage = baseDamage * 0.5;
+      }
+      // shield_double_damage (파괴의 문양): 보호막에 +100% 추가 피해
+      if (inscriptionStats?.specialAbility?.type === 'shield_double_damage') {
+        shieldDamage = baseDamage * 1.0; // 100% 추가 피해
+      }
+      // shield_bypass_damage (공허의 문양): 데미지의 30%가 방어막을 무시하고 실제 체력에 피해
+      if (inscriptionStats?.specialAbility?.type === 'shield_bypass_damage') {
+        const bypassPercent = inscriptionStats.specialAbility.value || 30;
+        shieldBypassDamage = baseDamage * (bypassPercent / 100);
+      }
     }
     if (abilities.includes('shield_penetration')) {
       bypassShield = true;
@@ -286,12 +339,36 @@ const SealedZone = () => {
     // 유물: 폭풍의 문양 (문양 데미지 보너스 증가) 최종 적용
     baseDamage *= inscriptionDamageBonus;
     shieldDamage *= inscriptionDamageBonus;
+    shieldBypassDamage *= inscriptionDamageBonus;
+
+    // 최종 데미지% 적용 (곱연산) - 문양의 finalDamagePercent
+    if (inscriptionStats.finalDamagePercent) {
+      const finalDamageMultiplier = 1 + (inscriptionStats.finalDamagePercent / 100);
+      baseDamage *= finalDamageMultiplier;
+      shieldDamage *= finalDamageMultiplier;
+      shieldBypassDamage *= finalDamageMultiplier;
+    }
+
+    // 파괴 분노: 장비 파괴 시 +50% 데미지 (5초)
+    if (bossPatternState.destructionRageActive) {
+      baseDamage *= 1.5;
+      shieldDamage *= 1.5;
+      shieldBypassDamage *= 1.5;
+    }
+
+    // 무적 관통 시 30% 데미지만
+    if (bossPatternState.isInvincible) {
+      baseDamage *= 0.3;
+      shieldDamage *= 0.3;
+      shieldBypassDamage *= 0.3;
+    }
 
     return {
       damage: Math.floor(baseDamage),
       isMiss: false,
       isCrit,
       shieldDamage: Math.floor(shieldDamage),
+      shieldBypassDamage: Math.floor(shieldBypassDamage),
       bypassShield
     };
   };
@@ -325,8 +402,8 @@ const SealedZone = () => {
         setBattleLog(log => [...log.slice(-5), `♻️ ${bossData.name}이(가) 재생을 시작했습니다!`]);
       }
 
-      // 장비 파괴 (베크타)
-      if (pattern.equipmentBreakChance && Math.random() * 100 < pattern.equipmentBreakChance) {
+      // 장비 파괴 (베크타) - 5초마다 랜덤 장비 1개 파괴
+      if (pattern.type === 'equipment_destroy') {
         // 장비 파괴 면역 체크
         const hasEquipmentImmunity = activeInscriptions.some(inscId => {
           const inscription = ownedInscriptions.find(i => i.id === inscId);
@@ -336,9 +413,57 @@ const SealedZone = () => {
         });
 
         if (!hasEquipmentImmunity) {
-          newState.equipmentDestroyed = true;
-          setBattleLog(log => [...log.slice(-5), `⚠️ ${bossData.name}이(가) 장비를 파괴했습니다!`]);
+          // 현재 파괴되지 않은 장비 중 랜덤 선택
+          const availableSlots = EQUIPMENT_SLOT_KEYS.filter(slot =>
+            equipment[slot] && !destroyedEquipments[slot]
+          );
+
+          if (availableSlots.length > 0) {
+            const randomSlot = availableSlots[Math.floor(Math.random() * availableSlots.length)];
+            const slotName = EQUIPMENT_SLOT_NAMES[randomSlot];
+
+            // 5초간 파괴 상태로 설정
+            setDestroyedEquipments(prev => ({
+              ...prev,
+              [randomSlot]: 5000
+            }));
+
+            newState.equipmentDestroyed = true;
+            setBattleLog(log => [...log.slice(-5), `💥 ${bossData.name}이(가) ${slotName}을(를) 파괴했습니다! (5초)`]);
+
+            // 분노의 문양: destruction_rage 활성화 (5초간 +50% 데미지)
+            const hasDestructionRage = activeInscriptions.some(inscId => {
+              const inscription = ownedInscriptions.find(i => i.id === inscId);
+              if (!inscription) return false;
+              const inscData = INSCRIPTIONS[inscription.inscriptionId];
+              return inscData?.specialAbility?.type === 'destruction_rage';
+            });
+
+            if (hasDestructionRage) {
+              newState.destructionRageActive = true;
+              newState.destructionRageRemaining = 5000; // 5초
+              setBattleLog(log => [...log.slice(-5), `💢 파괴 분노 발동! 5초간 공격력 +50%!`]);
+            }
+          }
         }
+      }
+
+      // 무적 (에스모드) - 10초마다 5초간 무적
+      if (pattern.type === 'invincible' && !newState.isInvincible) {
+        // 무적 해제 문양 체크
+        const hasInvincibleBreak = activeInscriptions.some(inscId => {
+          const inscription = ownedInscriptions.find(i => i.id === inscId);
+          if (!inscription) return false;
+          const inscData = INSCRIPTIONS[inscription.inscriptionId];
+          return inscData?.abilities?.some(a => a.type === 'invincible_break');
+        });
+
+        // 무적 지속시간 (문양 있으면 50% 감소)
+        const duration = hasInvincibleBreak ? pattern.duration * 0.5 : pattern.duration;
+
+        newState.isInvincible = true;
+        newState.invincibleRemaining = duration;
+        setBattleLog(log => [...log.slice(-5), `✨ ${bossData.name}이(가) 무적 상태가 되었습니다! (${duration / 1000}초)`]);
       }
 
       return newState;
@@ -365,13 +490,14 @@ const SealedZone = () => {
   const [screenShake, setScreenShake] = useState(false);
 
   // 데미지 표시 함수
-  const showDamageNumber = (damage, isCrit, isMiss = false) => {
+  const showDamageNumber = (damage, isCrit, isMiss = false, isInvincible = false) => {
     damageIdRef.current += 1;
     const newDamage = {
       id: damageIdRef.current,
       value: damage,
       isCrit,
       isMiss,
+      isInvincible,
       x: 50 + (Math.random() - 0.5) * 20,
       y: 20 + Math.random() * 10,
     };
@@ -380,8 +506,8 @@ const SealedZone = () => {
       setDamageNumbers(prev => prev.filter(d => d.id !== newDamage.id));
     }, 1000);
 
-    // 히트 이펙트
-    if (!isMiss) {
+    // 히트 이펙트 (무적이면 이펙트 없음)
+    if (!isMiss && !isInvincible) {
       if (isCrit) {
         setPlayerFrame(3);
         setIsCriticalHit(true);
@@ -487,6 +613,11 @@ const SealedZone = () => {
       return;
     }
 
+    // 봉인구역 전투 중에는 메인 게임 엔진 일시정지
+    if (engine) {
+      engine.stop();
+    }
+
     // 도전권 차감 - GameEngine 상태도 직접 업데이트
     if (engine && engine.state.sealedZone) {
       engine.state.sealedZone.tickets = (engine.state.sealedZone.tickets || 0) - 1;
@@ -500,6 +631,7 @@ const SealedZone = () => {
     }));
 
     const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty);
+    const bossData = RAID_BOSSES[selectedBoss];
     setBossHP(bossStats.hp);
     setHearts(6); // 하트 6개로 초기화
     setHeartAnimations([]);
@@ -510,21 +642,35 @@ const SealedZone = () => {
       lastMissed: false,
       guaranteedCritNext: false
     });
+
+    // 방어막 초기화 (네페론처럼 초기 방어막이 있는 보스)
+    const hasInitialShield = bossData?.pattern?.hasInitialShield || false;
+    const shieldPercent = bossData?.pattern?.shieldPercent || 0;
+    const initialShieldHP = hasInitialShield ? Math.floor(bossStats.hp * (shieldPercent / 100)) : 0;
+
     setBossPatternState({
-      hasShield: false,
-      shieldHP: 0,
-      maxShieldHP: 0,
+      hasShield: hasInitialShield,
+      shieldHP: initialShieldHP,
+      maxShieldHP: initialShieldHP,
       isRegenerating: false,
       regenAmount: 0,
       equipmentDestroyed: false,
-      healReduction: 0
+      healReduction: 0,
+      isInvincible: false,
+      invincibleRemaining: 0,
+      destructionRageActive: false,
+      destructionRageRemaining: 0
     });
+    setDestroyedEquipments({}); // 장비 파괴 상태 초기화
     setInBattle(true);
   };
 
   // 하트(체력) 시스템 상태
   const [hearts, setHearts] = useState(6); // 6개 하트
   const [heartAnimations, setHeartAnimations] = useState([]); // 하트 깨지는 애니메이션
+
+  // endBattle 함수 최신 참조 유지용 ref
+  const endBattleRef = useRef(null);
 
   // 보스 공격 타이머 (5초마다 하트 1개 감소)
   useEffect(() => {
@@ -533,7 +679,10 @@ const SealedZone = () => {
     const interval = setInterval(() => {
       setHearts(prev => {
         if (prev <= 1) {
-          endBattle(false); // 하트 모두 소진 패배
+          // ref를 통해 최신 endBattle 함수 호출
+          if (endBattleRef.current) {
+            endBattleRef.current(false); // 하트 모두 소진 패배
+          }
           return 0;
         }
         // 하트 깨지는 애니메이션 추가
@@ -559,6 +708,122 @@ const SealedZone = () => {
     return () => clearInterval(patternInterval);
   }, [inBattle, selectedBoss, selectedDifficulty]);
 
+  // 갈증의 문양: 체력 회복 타이머 (hp_regen)
+  useEffect(() => {
+    if (!inBattle) return;
+
+    // 장착된 문양 중 hp_regen 능력이 있는지 확인
+    const equippedInscriptions = gameState.sealedZone?.equippedInscriptions || [];
+    let hasHpRegen = false;
+    let regenInterval = 12000; // 기본 12초
+
+    equippedInscriptions.forEach(inscId => {
+      if (!inscId) return;
+      const inscription = (gameState.sealedZone?.inscriptions || []).find(i => i.id === inscId);
+      if (!inscription) return;
+      const inscBase = INSCRIPTIONS[inscription.inscriptionId];
+      if (inscBase?.specialAbility?.type === 'hp_regen') {
+        hasHpRegen = true;
+        regenInterval = (inscBase.specialAbility.value || 12) * 1000;
+      }
+    });
+
+    if (!hasHpRegen) return;
+
+    const interval = setInterval(() => {
+      setHearts(prev => {
+        if (prev >= 6) return 6; // 최대 6개
+        setBattleLog(log => [...log.slice(-5), `💚 갈증의 문양이 체력을 회복! (${prev} → ${prev + 1})`]);
+        return prev + 1;
+      });
+    }, regenInterval);
+
+    return () => clearInterval(interval);
+  }, [inBattle, gameState.sealedZone?.equippedInscriptions]);
+
+  // 베크타 장비 파괴 타이머 (100ms마다 업데이트)
+  useEffect(() => {
+    if (!inBattle) return;
+
+    const timerInterval = setInterval(() => {
+      setDestroyedEquipments(prev => {
+        const updated = {};
+        let hasChanges = false;
+
+        Object.entries(prev).forEach(([slot, remainingTime]) => {
+          const newTime = remainingTime - 100;
+          if (newTime > 0) {
+            updated[slot] = newTime;
+          } else {
+            hasChanges = true; // 복구됨
+          }
+        });
+
+        // 복구된 장비가 있으면 로그 추가
+        if (hasChanges) {
+          const restoredSlots = Object.keys(prev).filter(slot => !updated[slot]);
+          restoredSlots.forEach(slot => {
+            setBattleLog(log => [...log.slice(-5), `✨ ${EQUIPMENT_SLOT_NAMES[slot]}이(가) 복구되었습니다!`]);
+          });
+        }
+
+        return updated;
+      });
+    }, 100);
+
+    return () => clearInterval(timerInterval);
+  }, [inBattle]);
+
+  // 에스모드 무적 타이머 (100ms마다 업데이트)
+  useEffect(() => {
+    if (!inBattle || !bossPatternState.isInvincible) return;
+
+    const invincibleInterval = setInterval(() => {
+      setBossPatternState(prev => {
+        const newRemaining = prev.invincibleRemaining - 100;
+        if (newRemaining <= 0) {
+          setBattleLog(log => [...log.slice(-5), `💫 무적 상태가 해제되었습니다!`]);
+          return {
+            ...prev,
+            isInvincible: false,
+            invincibleRemaining: 0
+          };
+        }
+        return {
+          ...prev,
+          invincibleRemaining: newRemaining
+        };
+      });
+    }, 100);
+
+    return () => clearInterval(invincibleInterval);
+  }, [inBattle, bossPatternState.isInvincible]);
+
+  // 파괴 분노 타이머 (100ms마다 업데이트)
+  useEffect(() => {
+    if (!inBattle || !bossPatternState.destructionRageActive) return;
+
+    const rageInterval = setInterval(() => {
+      setBossPatternState(prev => {
+        const newRemaining = prev.destructionRageRemaining - 100;
+        if (newRemaining <= 0) {
+          setBattleLog(log => [...log.slice(-5), `💢 파괴 분노가 해제되었습니다.`]);
+          return {
+            ...prev,
+            destructionRageActive: false,
+            destructionRageRemaining: 0
+          };
+        }
+        return {
+          ...prev,
+          destructionRageRemaining: newRemaining
+        };
+      });
+    }, 100);
+
+    return () => clearInterval(rageInterval);
+  }, [inBattle, bossPatternState.destructionRageActive]);
+
   // 보스 재생 처리
   useEffect(() => {
     if (!inBattle || !bossPatternState.isRegenerating) return;
@@ -566,22 +831,31 @@ const SealedZone = () => {
     const regenInterval = setInterval(() => {
       const bossData = RAID_BOSSES[selectedBoss];
 
-      // 치유 감소 어빌리티 체크
-      const hasHealReduction = activeInscriptions.some(inscId => {
+      // 치유 감소 (부패 문양) 체크 - specialAbility 기반 + 등급별 배율
+      let totalHealReduction = 0;
+      activeInscriptions.forEach(inscId => {
         const inscription = ownedInscriptions.find(i => i.id === inscId);
-        if (!inscription) return false;
+        if (!inscription) return;
         const inscData = INSCRIPTIONS[inscription.inscriptionId];
-        return inscData?.abilities?.some(a => a.type === 'heal_reduction');
+        if (inscData?.specialAbility?.type === 'heal_reduction') {
+          // 기본 30% + 등급 배율 적용
+          const gradeData = INSCRIPTION_GRADES[inscription.grade];
+          const gradeMultiplier = gradeData?.statMultiplier || 1;
+          totalHealReduction += (inscData.specialAbility.value || 30) * gradeMultiplier;
+        }
       });
+      // 최대 95%로 제한
+      totalHealReduction = Math.min(totalHealReduction, 95);
 
       setBossHP(prevHP => {
         const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty);
         let regenAmount = bossPatternState.regenAmount;
 
         // 치유 감소 적용
-        if (hasHealReduction) {
-          regenAmount *= 0.3; // 70% 감소
-          setBattleLog(log => [...log.slice(-5), `🚫 치유 감소! ${Math.floor(regenAmount).toLocaleString()} 회복`]);
+        if (totalHealReduction > 0) {
+          const reductionMultiplier = 1 - (totalHealReduction / 100);
+          regenAmount *= reductionMultiplier;
+          setBattleLog(log => [...log.slice(-5), `🚫 치유 감소 ${totalHealReduction.toFixed(0)}%! ${Math.floor(regenAmount).toLocaleString()} 회복`]);
         } else {
           setBattleLog(log => [...log.slice(-5), `♻️ ${bossData.name} 재생: ${Math.floor(regenAmount).toLocaleString()}`]);
         }
@@ -597,6 +871,12 @@ const SealedZone = () => {
   // 전투 종료
   const endBattle = (victory) => {
     setInBattle(false);
+
+    // 메인 게임 엔진 다시 시작
+    if (engine) {
+      engine.start();
+    }
+
     // 전투 상태 초기화
     setHearts(6);
     setHeartAnimations([]);
@@ -611,14 +891,14 @@ const SealedZone = () => {
         const bossStats = calculateRaidBossStats(selectedBoss, selectedDifficulty);
         const rewards = bossStats.rewards;
 
-        // 세트 아이템 드랍 (20% 확률)
+        // 세트 아이템 드랍 (20% 확률) - 보스별 고정 슬롯
         let droppedSetItem = null;
-        if (Math.random() < 0.20) {
-          // 랜덤 슬롯 선택
-          const slots = Object.keys(EQUIPMENT_SLOTS);
-          const randomSlot = slots[Math.floor(Math.random() * slots.length)];
+        const bossData = RAID_BOSSES[selectedBoss];
+        if (Math.random() < 0.20 && bossData?.dropSlot) {
+          // 보스별 고정 슬롯 사용
+          const dropSlot = bossData.dropSlot;
           // 난이도 레벨을 floor로 사용하여 템렙 결정
-          droppedSetItem = generateSetItem(randomSlot, selectedDifficulty);
+          droppedSetItem = generateSetItem(dropSlot, selectedDifficulty);
         }
 
         // GameEngine 상태도 직접 업데이트 (저장을 위해)
@@ -688,6 +968,11 @@ const SealedZone = () => {
     }, 0);
   };
 
+  // endBattle 함수 참조 업데이트 (보스 공격 타이머에서 사용)
+  useEffect(() => {
+    endBattleRef.current = endBattle;
+  });
+
   // 문양 공격 (여러 문양 동시 공격)
   useEffect(() => {
     if (!inBattle || activeInscriptions.length === 0) return;
@@ -701,14 +986,21 @@ const SealedZone = () => {
       if (!inscription) return null;
 
       const inscriptionStats = calculateInscriptionStats(inscription.inscriptionId, inscription.grade);
+      const inscBase = INSCRIPTIONS[inscription.inscriptionId];
       const attackInterval = 1000; // 1초마다 공격
 
-      return setInterval(() => {
-        setBossHP(prevHP => {
-          if (prevHP <= 0) return 0; // 이미 죽었으면 스킵
+      // 영원의 문양: 해당 문양만 추가 타격 (자기 자신에게만 적용)
+      const hasExtraHit = inscBase?.specialAbility?.type === 'extra_hit';
+      const totalHits = hasExtraHit ? 1 + (inscBase.specialAbility.value || 1) : 1;
 
-          // 데미지 계산 (모든 문양 능력 적용)
-          const result = calculateDamage(inscriptionStats, bossStats, prevHP);
+      return setInterval(() => {
+        // 타수만큼 반복 공격 (영원의 문양만 2타)
+        for (let hit = 0; hit < totalHits; hit++) {
+          setBossHP(prevHP => {
+            if (prevHP <= 0) return 0; // 이미 죽었으면 스킵
+
+            // 데미지 계산 (모든 문양 능력 적용)
+            const result = calculateDamage(inscriptionStats, bossStats, prevHP);
 
           // 전투 상태 업데이트
           setBattleState(prev => ({
@@ -719,6 +1011,13 @@ const SealedZone = () => {
             guaranteedCritNext: result.isMiss && inscriptionStats.id === 'destruction'
           }));
 
+          // 무적 상태 처리
+          if (result.isInvincible) {
+            setBattleLog(log => [...log.slice(-5), `✨ 무적! 데미지 무효`]);
+            showDamageNumber(0, false, false, true); // isInvincible = true
+            return prevHP;
+          }
+
           // 미스 처리
           if (result.isMiss) {
             setBattleLog(log => [...log.slice(-5), `📿 ${inscriptionStats.name} - Miss!`]);
@@ -726,20 +1025,65 @@ const SealedZone = () => {
             return prevHP;
           }
 
-          // 데미지 적용
+          // 데미지 적용 (방어막 시스템)
           const actualDamage = result.damage;
+          let hpDamage = 0;
+          let shieldDamageDealt = 0;
+
+          // 방어막 처리 - bossPatternState를 참조하여 처리
+          setBossPatternState(prevPattern => {
+            if (prevPattern.hasShield && prevPattern.shieldHP > 0) {
+              // 방어막 관통 능력이 있으면 체력에 직접 데미지
+              if (result.bypassShield) {
+                hpDamage = actualDamage;
+                return prevPattern;
+              } else {
+                // 방어막 추가 데미지 적용 (shield_break 능력)
+                const totalShieldDamage = actualDamage + (result.shieldDamage || 0);
+
+                // 공허 문양: shieldBypassDamage는 방어막 무시하고 체력에 직접
+                if (result.shieldBypassDamage > 0) {
+                  hpDamage += result.shieldBypassDamage;
+                }
+
+                if (totalShieldDamage >= prevPattern.shieldHP) {
+                  // 방어막 파괴
+                  shieldDamageDealt = prevPattern.shieldHP;
+                  const overflowDamage = totalShieldDamage - prevPattern.shieldHP;
+                  hpDamage += overflowDamage; // 초과 데미지는 체력에
+                  return { ...prevPattern, hasShield: false, shieldHP: 0 };
+                } else {
+                  // 방어막에만 데미지
+                  shieldDamageDealt = totalShieldDamage;
+                  return { ...prevPattern, shieldHP: prevPattern.shieldHP - totalShieldDamage };
+                }
+              }
+            } else {
+              // 방어막 없음 - 체력에 직접 데미지
+              hpDamage = actualDamage;
+              return prevPattern;
+            }
+          });
 
           // 데미지 플로팅 텍스트 표시
           showDamageNumber(actualDamage, result.isCrit, false);
 
-          // 로그 추가
-          if (result.isCrit) {
+          // 로그 추가 (방어막/체력 데미지에 따라 다르게)
+          if (result.bypassShield) {
+            setBattleLog(log => [...log.slice(-5), `🗡️ 방관! ${formatNumber(actualDamage)} 직접 데미지`]);
+          } else if (shieldDamageDealt > 0 && hpDamage === 0) {
+            setBattleLog(log => [...log.slice(-5), `🛡️ 방어막 ${formatNumber(shieldDamageDealt)} 피해`]);
+          } else if (shieldDamageDealt > 0 && hpDamage > 0) {
+            setBattleLog(log => [...log.slice(-5), `💔 방어막 파괴! +${formatNumber(hpDamage)} 데미지`]);
+          } else if (result.isCrit) {
             setBattleLog(log => [...log.slice(-5), `💥 치명타! ${formatNumber(actualDamage)} 데미지`]);
           } else {
             setBattleLog(log => [...log.slice(-5), `⚔️ ${formatNumber(actualDamage)} 데미지`]);
           }
 
-          const newHP = Math.max(0, prevHP - actualDamage);
+          // 실제 체력 데미지 계산 (방어막이 있으면 hpDamage만 적용)
+          const finalHpDamage = hpDamage > 0 ? hpDamage : (shieldDamageDealt > 0 ? 0 : actualDamage);
+          const newHP = Math.max(0, prevHP - finalHpDamage);
 
           // 승리 처리를 setTimeout으로 지연시켜 렌더링 중 setState 방지
           if (newHP <= 0) {
@@ -747,7 +1091,8 @@ const SealedZone = () => {
           }
 
           return newHP;
-        });
+          });
+        } // for loop end
       }, attackInterval);
     }).filter(Boolean);
 
@@ -832,17 +1177,85 @@ const SealedZone = () => {
                 </span>
               </div>
             </div>
-            {/* 보스 패턴 상태 */}
-            {(bossPatternState.hasShield || bossPatternState.isRegenerating) && (
-              <div className="flex gap-2 mt-2">
-                {bossPatternState.hasShield && (
-                  <div className="bg-blue-900/80 border border-blue-500 rounded-lg px-2 py-1 text-xs text-blue-300 font-bold">
-                    🛡️ 보호막 {Math.floor((bossPatternState.shieldHP / bossPatternState.maxShieldHP) * 100)}%
+            {/* 방어막 HP 바 */}
+            {bossPatternState.hasShield && bossPatternState.maxShieldHP > 0 && (
+              <div className="relative w-full bg-gray-900 rounded-full h-4 overflow-hidden border-2 border-cyan-700 mt-2">
+                <div
+                  className="h-full transition-all duration-200 bg-gradient-to-r from-cyan-600 to-blue-500"
+                  style={{ width: `${(bossPatternState.shieldHP / bossPatternState.maxShieldHP) * 100}%` }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xs font-bold text-white drop-shadow-lg">
+                    🛡️ {formatNumber(bossPatternState.shieldHP)} / {formatNumber(bossPatternState.maxShieldHP)}
+                  </span>
+                </div>
+              </div>
+            )}
+            {/* 보스 회피/방어 + 플레이어 명중 표시 */}
+            {(() => {
+              // 플레이어 총 명중 계산
+              const playerBaseAccuracy = gameState.player?.stats?.accuracy || 0;
+              let hasTrueHit = false;
+              const inscriptionAccuracy = activeInscriptions.reduce((sum, inscId) => {
+                const insc = ownedInscriptions.find(i => i.id === inscId);
+                if (!insc) return sum;
+                const stats = calculateInscriptionStats(insc.inscriptionId, insc.grade);
+                // true_hit 능력 체크
+                if (stats.abilities && stats.abilities.includes('true_hit')) {
+                  hasTrueHit = true;
+                }
+                return sum + (stats.accuracy || 0);
+              }, 0);
+              // 동료 명중 계산
+              let heroAccuracy = 0;
+              Object.entries(gameState.heroes || {}).forEach(([heroId, heroState]) => {
+                if (heroState && heroState.inscribed) {
+                  const heroData = getHeroById(heroId);
+                  if (heroData) {
+                    const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
+                    if (stats.accuracy) heroAccuracy += stats.accuracy;
+                  }
+                }
+              });
+              const totalPlayerAccuracy = playerBaseAccuracy + inscriptionAccuracy + heroAccuracy;
+              // 백발백중 있으면 100% 명중
+              const hitChance = hasTrueHit
+                ? 100
+                : totalPlayerAccuracy >= bossStats.evasion
+                  ? 100
+                  : Math.max(10, (totalPlayerAccuracy / bossStats.evasion) * 100);
+
+              return (
+                <div className="flex flex-col gap-1 mt-2 text-xs">
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-400">👁️ 회피: <span className="text-yellow-400 font-bold">{formatNumber(bossStats.evasion)}</span></span>
+                    <span className="text-gray-400">🛡️ 방어: <span className="text-blue-400 font-bold">{formatNumber(bossStats.defense)}</span></span>
                   </div>
-                )}
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-400">🎯 내 명중: <span className="text-green-400 font-bold">{formatNumber(totalPlayerAccuracy)}</span></span>
+                    <span className={`font-bold ${hitChance >= 100 ? 'text-green-400' : hitChance >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                      ({hitChance.toFixed(0)}% 명중률){hasTrueHit && <span className="text-yellow-300 font-bold"> ✨백발백중</span>}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+            {/* 보스 패턴 상태 */}
+            {(bossPatternState.isRegenerating || bossPatternState.isInvincible || bossPatternState.destructionRageActive) && (
+              <div className="flex gap-2 mt-2 flex-wrap">
                 {bossPatternState.isRegenerating && (
                   <div className="bg-green-900/80 border border-green-500 rounded-lg px-2 py-1 text-xs text-green-300 font-bold">
                     ♻️ 재생 중
+                  </div>
+                )}
+                {bossPatternState.isInvincible && (
+                  <div className="bg-yellow-900/80 border border-yellow-400 rounded-lg px-2 py-1 text-xs text-yellow-300 font-bold animate-pulse">
+                    ✨ 무적 {Math.ceil(bossPatternState.invincibleRemaining / 1000)}s
+                  </div>
+                )}
+                {bossPatternState.destructionRageActive && (
+                  <div className="bg-red-900/80 border border-red-400 rounded-lg px-2 py-1 text-xs text-red-300 font-bold animate-pulse">
+                    💢 분노 {Math.ceil(bossPatternState.destructionRageRemaining / 1000)}s
                   </div>
                 )}
               </div>
@@ -875,8 +1288,56 @@ const SealedZone = () => {
           </div>
         </div>
 
-        {/* 좌하단: 장착 문양 - 더 크게 */}
-        <div className="absolute bottom-4 left-4 z-20">
+        {/* 좌하단: 장착 문양 + 장비 (베크타용) */}
+        <div className="absolute bottom-4 left-4 z-20 flex flex-col gap-2">
+          {/* 베크타 전용: 장비 슬롯 표시 */}
+          {selectedBoss === 'vecta' && (
+            <div className="bg-black/85 backdrop-blur-sm rounded-xl border-2 border-orange-500/60 p-3 shadow-lg">
+              <div className="text-xs text-orange-400 font-bold mb-2">⚔️ 장비 상태</div>
+              <div className="grid grid-cols-6 gap-1">
+                {EQUIPMENT_SLOT_KEYS.map(slot => {
+                  const item = equipment[slot];
+                  const isDestroyed = destroyedEquipments[slot] > 0;
+                  const remainingTime = destroyedEquipments[slot] || 0;
+                  const remainingSec = Math.ceil(remainingTime / 1000);
+
+                  return (
+                    <div
+                      key={slot}
+                      className={`relative w-10 h-10 rounded-lg border-2 flex flex-col items-center justify-center transition-all duration-300 ${
+                        isDestroyed
+                          ? 'bg-gray-900 border-red-500 animate-pulse'
+                          : item
+                          ? 'bg-gray-800 border-gray-500'
+                          : 'bg-gray-900/50 border-gray-700'
+                      }`}
+                      style={{
+                        filter: isDestroyed ? 'grayscale(100%) brightness(0.5)' : 'none'
+                      }}
+                    >
+                      <span className={`text-lg ${isDestroyed ? 'opacity-30' : ''}`}>
+                        {SLOT_ICONS[slot]}
+                      </span>
+                      <span className={`text-[7px] ${isDestroyed ? 'text-red-400' : 'text-gray-400'}`}>
+                        {EQUIPMENT_SLOT_NAMES[slot].substring(0, 2)}
+                      </span>
+                      {/* 파괴 오버레이 */}
+                      {isDestroyed && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-red-900/60 rounded-lg">
+                          <div className="text-center">
+                            <span className="text-red-400 text-xs font-bold">💥</span>
+                            <div className="text-red-300 text-[8px] font-bold">{remainingSec}s</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 장착 문양 */}
           <div className="bg-black/85 backdrop-blur-sm rounded-xl border-2 border-purple-500/60 p-3 shadow-lg">
             <div className="text-xs text-purple-400 font-bold mb-2">장착 문양</div>
             <div className="flex gap-1.5">
@@ -884,15 +1345,22 @@ const SealedZone = () => {
                 const inscription = ownedInscriptions.find(i => i.id === inscId);
                 if (!inscription) return null;
                 const inscData = INSCRIPTIONS[inscription.inscriptionId];
+                const inscStats = calculateInscriptionStats(inscription.inscriptionId, migrateGrade(inscription.grade));
+                const gradeData = INSCRIPTION_GRADES[migrateGrade(inscription.grade)];
                 return (
-                  <div key={inscId} className="w-12 h-12 bg-gray-900/80 rounded-lg border-2 border-purple-500/50 p-1 flex flex-col items-center justify-center">
+                  <div
+                    key={inscId}
+                    className="w-14 bg-gray-900/80 rounded-lg border-2 border-purple-500/50 p-1 flex flex-col items-center"
+                    title={`${inscData?.specialAbility?.name}: ${inscData?.specialAbility?.description}`}
+                  >
                     <img
                       src={getInscriptionImage(inscription.inscriptionId)}
                       alt=""
                       className="w-8 h-8 object-contain"
                       style={{ imageRendering: 'pixelated' }}
                     />
-                    <span className="text-[7px] text-gray-300 truncate w-full text-center">{inscData?.name.replace('의 문양', '')}</span>
+                    <span className={`text-[7px] font-bold ${gradeData?.color || 'text-gray-400'}`}>{gradeData?.name}</span>
+                    <span className="text-[6px] text-orange-400">+{inscStats?.finalDamagePercent?.toFixed(0)}%</span>
                   </div>
                 );
               })}
@@ -941,14 +1409,75 @@ const SealedZone = () => {
             right: '18%',
             filter: isMonsterHit
               ? 'brightness(2) saturate(0.5)'
+              : bossPatternState.isInvincible
+              ? 'drop-shadow(0 0 30px #FFD700) drop-shadow(0 0 60px #FFA500) brightness(1.3)'
+              : bossPatternState.destructionRageActive
+              ? 'drop-shadow(0 0 25px #FF4444) drop-shadow(0 0 50px #FF0000)'
               : 'drop-shadow(0 0 20px #8B5CF6) drop-shadow(0 0 40px #6D28D9)',
           }}
         >
+          {/* 무적 이펙트 - 육각형 쉴드 */}
+          {bossPatternState.isInvincible && (
+            <>
+              {/* 외곽 회전 링 */}
+              <div
+                className="absolute animate-spin"
+                style={{
+                  inset: '-30px',
+                  background: 'conic-gradient(from 0deg, transparent 0%, #FFD700 10%, transparent 20%, #FFA500 30%, transparent 40%, #FFD700 50%, transparent 60%, #FFA500 70%, transparent 80%, #FFD700 90%, transparent 100%)',
+                  opacity: 0.7,
+                  animationDuration: '3s',
+                  borderRadius: '50%',
+                }}
+              />
+              {/* 내부 펄스 */}
+              <div
+                className="absolute animate-pulse"
+                style={{
+                  inset: '-15px',
+                  background: 'radial-gradient(circle, rgba(255,215,0,0.4) 0%, rgba(255,165,0,0.2) 50%, transparent 70%)',
+                  borderRadius: '50%',
+                }}
+              />
+              {/* 무적 아이콘 떠다니기 */}
+              <div
+                className="absolute -top-8 left-1/2 -translate-x-1/2 text-2xl"
+                style={{
+                  animation: 'invincibleFloat 1.5s ease-in-out infinite',
+                  textShadow: '0 0 10px #FFD700, 0 0 20px #FFA500',
+                }}
+              >
+                ✨
+              </div>
+            </>
+          )}
+          {/* 파괴 분노 이펙트 */}
+          {bossPatternState.destructionRageActive && (
+            <>
+              <div
+                className="absolute animate-pulse"
+                style={{
+                  inset: '-20px',
+                  background: 'radial-gradient(circle, rgba(255,68,68,0.5) 0%, rgba(255,0,0,0.2) 50%, transparent 70%)',
+                  borderRadius: '50%',
+                }}
+              />
+              <div
+                className="absolute -top-8 left-1/2 -translate-x-1/2 text-2xl"
+                style={{
+                  animation: 'rageFloat 0.5s ease-in-out infinite',
+                  textShadow: '0 0 10px #FF4444, 0 0 20px #FF0000',
+                }}
+              >
+                💢
+              </div>
+            </>
+          )}
           <div className="flex items-end justify-center" style={{ width: '160px', height: '160px' }}>
             <img
               src={getBossImage(selectedBoss)}
               alt={bossData.name}
-              className="w-full h-full object-contain"
+              className={`w-full h-full object-contain ${bossPatternState.isInvincible ? 'animate-pulse' : ''}`}
               style={{ imageRendering: 'pixelated' }}
               onError={(e) => {
                 e.target.style.display = 'none';
@@ -967,18 +1496,26 @@ const SealedZone = () => {
             style={{
               right: `${22 + (Math.random() - 0.5) * 12}%`,
               top: `${28 + Math.random() * 18}%`,
-              textShadow: dmg.isCrit
+              textShadow: dmg.isInvincible
+                ? '0 0 15px #FFD700, 0 0 30px #FFA500, 3px 3px 6px rgba(0,0,0,1)'
+                : dmg.isCrit
                 ? '0 0 10px #ff0000, 0 0 20px #ff4444, 3px 3px 6px rgba(0,0,0,1)'
                 : dmg.isMiss
                 ? '2px 2px 4px rgba(0,0,0,0.9)'
                 : '3px 3px 6px rgba(0,0,0,0.9), -3px -3px 6px rgba(0,0,0,0.9)',
-              animation: dmg.isCrit ? 'critDamageFloat 1s ease-out forwards' : 'damageFloat 1s ease-out forwards',
-              fontSize: dmg.isCrit ? '2rem' : dmg.isMiss ? '1.25rem' : '1.5rem',
-              color: dmg.isMiss ? '#888888' : dmg.isCrit ? '#FFD700' : '#FFFFFF',
+              animation: dmg.isInvincible
+                ? 'invincibleDamageFloat 1s ease-out forwards'
+                : dmg.isCrit
+                ? 'critDamageFloat 1s ease-out forwards'
+                : 'damageFloat 1s ease-out forwards',
+              fontSize: dmg.isInvincible ? '1.5rem' : dmg.isCrit ? '2rem' : dmg.isMiss ? '1.25rem' : '1.5rem',
+              color: dmg.isInvincible ? '#FFD700' : dmg.isMiss ? '#888888' : dmg.isCrit ? '#FFD700' : '#FFFFFF',
               fontWeight: 700,
             }}
           >
-            {dmg.isMiss ? 'MISS' : (
+            {dmg.isInvincible ? (
+              <span>✨ 무적 ✨</span>
+            ) : dmg.isMiss ? 'MISS' : (
               <>
                 {dmg.isCrit && <span style={{ color: '#FF4444' }}>★</span>}
                 {formatNumber(dmg.value)}
@@ -1018,6 +1555,20 @@ const SealedZone = () => {
             0% { opacity: 0; }
             30% { opacity: 1; }
             100% { opacity: 0; }
+          }
+          @keyframes invincibleFloat {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-8px); }
+          }
+          @keyframes rageFloat {
+            0%, 100% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.3); }
+          }
+          @keyframes invincibleDamageFloat {
+            0% { opacity: 1; transform: translateY(0) scale(1.2); }
+            30% { transform: translateY(-20px) scale(1.5); }
+            50% { opacity: 1; transform: translateY(-35px) scale(1.3); }
+            100% { opacity: 0; transform: translateY(-60px) scale(0.8); }
           }
         `}</style>
       </div>
@@ -1273,10 +1824,25 @@ const SealedZone = () => {
                                 </span>
                                 <span className="text-[9px] text-gray-100 truncate">{inscriptionData.name}</span>
                               </div>
-                              {/* 스탯 표시 - 공격력 + 특수능력 */}
+                              {/* 스탯 표시 - 최종뎀% + 특수능력 */}
                               <div className="flex items-center gap-2 text-[8px]">
-                                <span className="text-orange-300">⚔️ {formatNumber(inscriptionData.attack)}</span>
-                                <span className="text-cyan-400">{inscriptionBase?.specialAbility?.name}</span>
+                                <span className="text-orange-300">🔥 +{inscriptionData.finalDamagePercent?.toFixed(1)}%</span>
+                                <span className="text-yellow-300 font-bold">{(() => {
+                                  const abilityIcons = {
+                                    destruction_rage: '💢',      // 파괴 분노
+                                    true_hit: '💫',              // 백발백중
+                                    accuracy_boost: '🎯',        // 명중 특화
+                                    shield_double_damage: '🛡️',  // 보호막 분쇄
+                                    invincible_destroy: '⛏️',    // 무적 파괴
+                                    shield_bypass_damage: '🗡️',  // 방어막 관통
+                                    hp_regen: '❤️',              // 생명력 흡수
+                                    heal_reduction: '🚫',        // 치유 감소
+                                    pure_damage_boost: '💠',     // 순수 데미지
+                                    extra_hit: '🔱'              // 추가 타격
+                                  };
+                                  const icon = abilityIcons[inscriptionBase?.specialAbility?.type] || '✨';
+                                  return `${icon} ${inscriptionBase?.specialAbility?.name}`;
+                                })()}</span>
                               </div>
                             </div>
                           </div>
@@ -1319,7 +1885,7 @@ const SealedZone = () => {
             <h3 className="text-sm font-bold text-gray-200 mb-2">
               문양 선택
             </h3>
-            <div className="grid grid-cols-10 gap-2 p-2 bg-gray-800/30 rounded-lg border border-gray-700">
+            <div className="grid grid-cols-5 gap-2 p-3 bg-gray-800/30 rounded-lg border border-gray-700">
               {(() => {
                 // 각 문양별 최고 등급 문양만 추출
                 const GRADE_ORDER = ['common', 'uncommon', 'rare', 'epic', 'unique', 'legendary', 'mythic', 'dark'];
@@ -1338,33 +1904,21 @@ const SealedZone = () => {
                   }
                 });
 
-                // 핵심 특성 짧은 이름
+                // 핵심 특성 짧은 이름 (새 시스템 반영)
                 const coreTraits = {
-                  rage: { trait: '깡공', icon: '⚔️' },
-                  precision: { trait: '치확', icon: '🎯' },
-                  shadow: { trait: '명중', icon: '👁️' },
-                  destruction: { trait: '장비보호', icon: '🛡️' },
-                  crush: { trait: '관통', icon: '💥' },
-                  void: { trait: '방무', icon: '🗡️' },
-                  thirst: { trait: 'HP%뎀', icon: '💀' },
-                  decay: { trait: '힐감', icon: '🚫' },
-                  chaos: { trait: '치뎀', icon: '💢' },
-                  eternity: { trait: '처형', icon: '⚡' }
+                  rage: { trait: '파괴분노', icon: '💢', desc: '장비파괴 +50%' },
+                  precision: { trait: '백발백중', icon: '💫', desc: '회피무시' },
+                  shadow: { trait: '명중', icon: '🎯', desc: '+1500명중' },
+                  destruction: { trait: '쉴드뎀', icon: '🛡️', desc: '+100%쉴드뎀' },
+                  crush: { trait: '무적파괴', icon: '⛏️', desc: '무적해제' },
+                  void: { trait: '관통', icon: '🗡️', desc: '30%관통' },
+                  thirst: { trait: '회복', icon: '❤️', desc: '12초/HP1' },
+                  decay: { trait: '치유감소', icon: '🚫', desc: '보스힐-30%' },
+                  chaos: { trait: '순수뎀', icon: '💠', desc: '+12%뎀' },
+                  eternity: { trait: '타수', icon: '🔱', desc: '+1타' }
                 };
 
-                // 등급별 글로우 색상
-                const glowColors = {
-                  common: '',
-                  uncommon: 'shadow-[0_0_10px_rgba(74,222,128,0.7)]',
-                  rare: 'shadow-[0_0_12px_rgba(59,130,246,0.8)]',
-                  epic: 'shadow-[0_0_14px_rgba(168,85,247,0.8)]',
-                  unique: 'shadow-[0_0_16px_rgba(234,179,8,0.8)]',
-                  legendary: 'shadow-[0_0_18px_rgba(249,115,22,0.9)]',
-                  mythic: 'shadow-[0_0_20px_rgba(239,68,68,0.9)]',
-                  dark: 'shadow-[0_0_22px_rgba(217,70,239,1)]'
-                };
-
-                // 모든 문양 순서대로 표시
+                // 모든 문양 순서대로 표시 - 색상 단순화
                 return Object.entries(INSCRIPTIONS).map(([inscriptionId, inscriptionBase]) => {
                   const owned = highestByType[inscriptionId];
                   const isOwned = !!owned;
@@ -1374,49 +1928,56 @@ const SealedZone = () => {
                   const slotIndex = owned ? activeInscriptions.indexOf(owned.id) : -1;
                   const trait = coreTraits[inscriptionId];
 
+                  // 등급 반영된 실제 스탯 계산
+                  const actualStats = isOwned ? calculateInscriptionStats(inscriptionId, grade) : null;
+
                   return (
                     <button
                       key={inscriptionId}
                       onClick={() => isOwned && toggleInscriptionSelection(owned.id)}
                       disabled={!isOwned}
-                      className={`p-1.5 rounded-lg border-2 relative transition-all ${
+                      className={`p-2 rounded-lg border relative transition-all ${
                         isSelected
-                          ? 'bg-blue-900/80 border-blue-400 ring-2 ring-blue-400 scale-105 z-10'
+                          ? 'bg-gray-800 border-blue-500 border-2 ring-1 ring-blue-400'
                           : isOwned
-                          ? `bg-gray-900 border-gray-600 hover:scale-105 hover:z-10 ${glowColors[grade]}`
-                          : 'bg-gray-900/30 border-gray-800 opacity-40 cursor-not-allowed'
+                          ? 'bg-gray-800/80 border-gray-600 hover:border-gray-500 hover:bg-gray-700/80'
+                          : 'bg-gray-900/30 border-gray-800 opacity-30 cursor-not-allowed'
                       }`}
                     >
                       {isSelected && (
-                        <div className="absolute -top-1.5 -right-1.5 bg-blue-500 text-white text-[9px] w-[18px] h-[18px] rounded-full flex items-center justify-center font-bold shadow-md border border-blue-300 z-20">
+                        <div className="absolute -top-1.5 -right-1.5 bg-blue-600 text-white text-[9px] w-[18px] h-[18px] rounded-full flex items-center justify-center font-bold z-20">
                           {slotIndex + 1}
                         </div>
                       )}
                       {/* 문양 이미지 */}
-                      <div className={`flex justify-center mb-1 ${!isOwned ? 'grayscale' : ''}`}>
+                      <div className={`flex justify-center mb-1 ${!isOwned ? 'grayscale opacity-50' : ''}`}>
                         <img
                           src={getInscriptionImage(inscriptionId)}
                           alt={inscriptionBase.name}
-                          className="w-9 h-9 object-contain"
+                          className="w-12 h-12 object-contain"
                           style={{ imageRendering: 'pixelated' }}
                           onError={(e) => {
                             e.target.style.display = 'none';
                             e.target.nextSibling.style.display = 'block';
                           }}
                         />
-                        <span className="text-xl hidden">📿</span>
+                        <span className="text-2xl hidden">📿</span>
                       </div>
-                      {/* 등급 */}
-                      <div className={`text-[9px] font-bold ${isOwned ? gradeData.color : 'text-gray-600'}`}>
+                      {/* 등급 뱃지 - 작게 */}
+                      <div className={`text-[9px] font-medium ${isOwned ? gradeData.color : 'text-gray-600'}`}>
                         {isOwned ? gradeData.name : '미보유'}
                       </div>
                       {/* 문양 이름 */}
-                      <div className={`text-[8px] ${isOwned ? 'text-gray-200' : 'text-gray-600'} truncate`}>
+                      <div className={`text-[10px] font-medium ${isOwned ? 'text-gray-200' : 'text-gray-600'} truncate`}>
                         {inscriptionBase.name.replace('의 문양', '')}
                       </div>
-                      {/* 핵심 특성 */}
-                      <div className={`text-[8px] mt-0.5 ${isOwned ? 'text-cyan-400' : 'text-gray-700'}`}>
+                      {/* 핵심 특성 - 회색 통일 */}
+                      <div className={`text-[9px] mt-0.5 ${isOwned ? 'text-gray-400' : 'text-gray-700'}`} title={trait.desc}>
                         {trait.icon} {trait.trait}
+                      </div>
+                      {/* 최종뎀% - 회색 통일 */}
+                      <div className={`text-[9px] ${isOwned ? 'text-gray-400' : 'text-gray-700'}`}>
+                        +{actualStats ? actualStats.finalDamagePercent.toFixed(1) : inscriptionBase.baseStats.finalDamagePercent}%
                       </div>
                     </button>
                   );
@@ -1534,81 +2095,67 @@ const SealedZone = () => {
                 }
               });
 
-            // 합성 함수 (5개 -> 1개 상위 등급)
+            // 합성 함수 (5개 -> 1개 상위 등급) - GameEngine 사용
             const fuseInscriptions = (fromGrade) => {
-              const gradeIndex = GRADE_ORDER.indexOf(fromGrade);
-              if (gradeIndex >= GRADE_ORDER.length - 1) return; // 신화는 합성 불가
+              const result = engine.fuseInscriptions(selectedInscriptionDetail, fromGrade);
 
-              const toGrade = GRADE_ORDER[gradeIndex + 1];
-              const items = ownedByGrade[fromGrade];
-
-              if (items.length < 5) {
-                showNotification('합성 실패', `${INSCRIPTION_GRADES[fromGrade].name} 등급 문양이 5개 필요합니다.`, 'warning');
-                return;
-              }
-
-              // 5개 제거하고 1개 상위 등급 추가
-              const itemsToRemove = items.slice(0, 5).map(i => i.id);
-
-              setGameState(prev => {
-                const newInscriptions = prev.sealedZone.ownedInscriptions.filter(
-                  i => !itemsToRemove.includes(i.id)
-                );
-
-                // 새 상위 등급 문양 추가
-                const newInscription = {
-                  id: `${selectedInscriptionDetail}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                  inscriptionId: selectedInscriptionDetail,
-                  grade: toGrade
-                };
-
-                return {
+              if (result.success) {
+                // GameEngine state를 React state에 반영
+                setGameState(prev => ({
                   ...prev,
-                  sealedZone: {
-                    ...prev.sealedZone,
-                    ownedInscriptions: [...newInscriptions, newInscription]
-                  }
-                };
-              });
+                  sealedZone: { ...engine.state.sealedZone }
+                }));
 
-              showNotification(
-                '✨ 합성 성공!',
-                `${INSCRIPTION_GRADES[fromGrade].name} 5개 → ${INSCRIPTION_GRADES[toGrade].name} 1개`,
-                'success'
-              );
+                const toGradeName = INSCRIPTION_GRADES[result.newGrade]?.name || result.newGrade;
+                const fromGradeName = INSCRIPTION_GRADES[fromGrade]?.name || fromGrade;
+                showNotification(
+                  '✨ 합성 성공!',
+                  `${fromGradeName} 5개 → ${toGradeName} 1개`,
+                  'success'
+                );
+              } else {
+                showNotification('합성 실패', result.message, 'warning');
+              }
             };
 
             return (
               <div className="bg-gray-800 border border-purple-500/50 rounded-lg p-2">
                 {/* 가로 레이아웃: 왼쪽 25% 정보 + 오른쪽 75% 등급별 보유 */}
                 <div className="flex gap-2 items-stretch">
-                  {/* 왼쪽: 문양 정보 (25%) */}
-                  <div className="w-[25%] flex-shrink-0 flex flex-col justify-between bg-gray-900 rounded p-2">
+                  {/* 왼쪽: 문양 정보 (30%) */}
+                  <div className="w-[30%] flex-shrink-0 flex flex-col bg-gray-900 rounded p-3">
                     {/* 헤더 */}
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-3 mb-3">
                       <img
                         src={getInscriptionImage(selectedInscriptionDetail)}
                         alt={inscriptionBase.name}
-                        className="w-10 h-10 object-contain"
+                        className="w-14 h-14 object-contain"
                         style={{ imageRendering: 'pixelated' }}
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />
                       <div>
-                        <h3 className="text-xs font-bold text-purple-300">{inscriptionBase.name}</h3>
-                        <p className="text-[9px] text-gray-400">{inscriptionBase.description}</p>
+                        <h3 className="text-sm font-bold text-purple-300">{inscriptionBase.name}</h3>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{inscriptionBase.description}</p>
                       </div>
                     </div>
 
-                    {/* 특수 능력 + 보스 대응 능력 (한 줄) */}
-                    <div className="flex items-center gap-2 text-[9px]">
-                      <span className="text-cyan-400 whitespace-nowrap">✨ {inscriptionBase.specialAbility.name}</span>
-                      <span className="text-gray-600">|</span>
-                      {inscriptionBase.abilities.map(abilityId => {
-                        const ability = INSCRIPTION_ABILITIES[abilityId];
-                        return (
-                          <span key={abilityId} className="text-purple-400 whitespace-nowrap">{ability.icon} {ability.name}</span>
-                        );
-                      })}
+                    {/* 특수 능력 박스 */}
+                    <div className="bg-gray-800/80 rounded-lg p-2 mb-2 border border-yellow-500/30">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-yellow-400 text-xs">✨</span>
+                        <span className="text-yellow-300 text-xs font-bold">{inscriptionBase.specialAbility.name}</span>
+                      </div>
+                      <p className="text-[10px] text-gray-300 leading-relaxed">
+                        {inscriptionBase.specialAbility.description}
+                      </p>
+                    </div>
+
+                    {/* 기본 스탯 */}
+                    <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                      <span className="text-orange-400">🔥 최종뎀 +{inscriptionBase.baseStats.finalDamagePercent}%</span>
+                      {inscriptionBase.baseStats.accuracy && (
+                        <span className="text-blue-400">🎯 명중 +{inscriptionBase.baseStats.accuracy}</span>
+                      )}
                     </div>
                   </div>
 
@@ -1661,26 +2208,32 @@ const SealedZone = () => {
                               {gradeData.name}
                             </div>
 
-                            {/* 스탯 표시 - 공격력 */}
+                            {/* 스탯 표시 - 최종 데미지% */}
                             <div className={`text-sm font-bold ${count > 0 ? 'text-orange-300' : 'text-gray-600'}`}>
-                              ⚔️ {formatNumber(stats.attack)}
+                              🔥 {stats.finalDamagePercent?.toFixed(1) || 0}%
                             </div>
 
-                            {/* 치명타 확률 */}
-                            <div className={`text-xs ${count > 0 ? 'text-yellow-400' : 'text-gray-600'}`}>
-                              🎯 {stats.critChance.toFixed(1)}%
-                            </div>
+                            {/* 명중 (있으면) */}
+                            {inscriptionBase.baseStats.accuracy > 0 && (
+                              <div className={`text-xs ${count > 0 ? 'text-blue-400' : 'text-gray-600'}`}>
+                                🎯 +{Math.floor(stats.accuracy || 0)}
+                              </div>
+                            )}
 
                             {/* 보유 수량 + 합성 */}
                             <div className="mt-auto w-full pt-2">
                               {idx < GRADE_ORDER.length - 1 ? (
                                 <button
-                                  onClick={() => fuseInscriptions(grade)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    console.log('합성 버튼 클릭:', grade, 'canFuse:', canFuse, 'count:', count);
+                                    fuseInscriptions(grade);
+                                  }}
                                   disabled={!canFuse}
                                   className={`w-full py-1 rounded text-xs font-bold transition-all ${
                                     canFuse
-                                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white'
-                                      : count > 0 ? 'bg-gray-700 text-gray-400' : 'bg-gray-800 text-gray-600'
+                                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white cursor-pointer'
+                                      : count > 0 ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-gray-800 text-gray-600 cursor-not-allowed'
                                   }`}
                                   title={canFuse ? `5개 합성 → ${nextGradeData?.name} 1개` : '5개 필요'}
                                 >

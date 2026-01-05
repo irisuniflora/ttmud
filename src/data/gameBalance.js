@@ -123,16 +123,13 @@ export const HERO_CONFIG = {
   critDmgDealerBaseStar: 3, // 별당 +3%
   critDmgDealerStarPerGrade: 2, // 등급당 별 보너스 증가
 
-  // 체력 퍼센트 데미지 딜러 (다크 리퍼)
-  hpPercentDmgDealerBase: 10, // 기본 확률 10%
-  hpPercentDmgDealerPerGrade: 0, // 등급당 확률 증가 없음
-  hpPercentDmgDealerBaseStar: 2, // 별당 확률 +2%
-  hpPercentDmgValue: 10, // 기본 데미지: 최대HP의 10%
-  hpPercentDmgValuePerGrade: 5, // 등급당 +5% (15%, 20%, 25%...)
+  // 추가타격 딜러 (다크 리퍼) - 등급별 고정 수치
+  // [일반, 희귀, 레어, 에픽, 유니크, 레전드, 신화, 다크]
+  extraHitChanceByGrade: [10, 14, 18, 22, 26, 30, 34, 42],
 
-  // 도트 데미지 딜러 (아크메이지)
-  dotDmgDealerBase: 20, // 기본 틱당 공격력의 20%
-  dotDmgDealerPerGrade: 15, // 등급당 +15%
+  // 명중률 딜러 (아크메이지) - 등급별 고정 수치
+  // [일반, 희귀, 레어, 에픽, 유니크, 레전드, 신화, 다크]
+  accuracyByGrade: [100, 200, 350, 550, 800, 1100, 1500, 2000],
 
   // 스테이지 스킵 버퍼
   stageSkipBufferBase: 2,
@@ -415,7 +412,8 @@ export const CLASS_CONFIG = {
         attackPercent: 0,
         critChance: 0,
         critDamage: 0,
-        goldPercent: 0
+        goldPercent: 0,
+        finalDamagePercent: 0 // 최종 데미지% (곱연산)
       },
       skills: [] // 해금 스킬
     },
@@ -427,7 +425,8 @@ export const CLASS_CONFIG = {
         attackPercent: 50,
         critChance: 5,
         critDamage: 20,
-        goldPercent: 30
+        goldPercent: 30,
+        finalDamagePercent: 10 // 최종 데미지 +10%
       },
       skills: ['class1_skill1', 'class1_skill2']
     },
@@ -439,7 +438,8 @@ export const CLASS_CONFIG = {
         attackPercent: 150,
         critChance: 10,
         critDamage: 50,
-        goldPercent: 80
+        goldPercent: 80,
+        finalDamagePercent: 25 // 최종 데미지 +25%
       },
       skills: ['class2_skill1', 'class2_skill2']
     },
@@ -451,7 +451,8 @@ export const CLASS_CONFIG = {
         attackPercent: 400,
         critChance: 20,
         critDamage: 100,
-        goldPercent: 200
+        goldPercent: 200,
+        finalDamagePercent: 50 // 최종 데미지 +50%
       },
       skills: ['class3_skill1', 'class3_skill2']
     }

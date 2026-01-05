@@ -294,7 +294,7 @@ const HeroList = () => {
                   {stats.stageSkipChance && <div className="text-cyan-400">⏭️ {stats.stageSkipChance.toFixed(1)}%</div>}
                   {stats.dropRate && <div className="text-green-400">🍀 {Math.floor(stats.dropRate)}%</div>}
                   {stats.goldBonus && <div className="text-yellow-300">💰 {Math.floor(stats.goldBonus)}%</div>}
-                  {stats.expBonus && <div className="text-purple-300">📚 {Math.floor(stats.expBonus)}%</div>}
+                  {stats.expBonus && <div className="text-purple-300">📈 {Math.floor(stats.expBonus)}%</div>}
                 </div>
 
                 {/* 버튼들 - 고정 높이 */}

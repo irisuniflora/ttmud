@@ -152,7 +152,7 @@ export const ACHIEVEMENTS = {
     description: '몬스터 도감 10종 등록',
     condition: (state) => Object.keys(state.collection || {}).length >= 10,
     reward: { type: 'gold', amount: 3000 },
-    icon: '📚'
+    icon: '📖'
   },
   collection_30: {
     id: 'collection_30',

@@ -202,10 +202,15 @@ const BattleField = ({ fullHeight = false }) => {
       }, 100);
 
       // 데미지 숫자 파싱 및 표시 (몬스터 머리 위)
-      // "💥 치명타! 123,456 데미지" 또는 "⚔️ 123,456 데미지" 형식
-      const damageMatch = logMessage.match(/([\d,]+)\s*데미지/);
+      // K/M/B 포맷 지원: "712.8M 데미지", "1.5B 데미지", "500K 데미지", "1,234 데미지"
+      const damageMatch = logMessage.match(/([\d,.]+)([KMB])?\s*데미지/i);
       if (damageMatch) {
-        const damageValue = parseInt(damageMatch[1].replace(/,/g, ''), 10) || 0;
+        let damageValue = parseFloat(damageMatch[1].replace(/,/g, '')) || 0;
+        const suffix = damageMatch[2]?.toUpperCase();
+        if (suffix === 'K') damageValue *= 1000;
+        else if (suffix === 'M') damageValue *= 1000000;
+        else if (suffix === 'B') damageValue *= 1000000000;
+        damageValue = Math.floor(damageValue);
 
         damageIdRef.current += 1;
         const newDamage = {
@@ -360,7 +365,7 @@ const BattleField = ({ fullHeight = false }) => {
           className="absolute pointer-events-none"
           style={{
             right: '10%',
-            top: `${28 + dmg.y}%`,
+            bottom: `${50 + dmg.y}%`,
             transform: 'translateX(50%)',
             textShadow: dmg.isCrit
               ? '0 0 8px #ff0000, 0 0 16px #ff4444, 2px 2px 4px rgba(0,0,0,1)'

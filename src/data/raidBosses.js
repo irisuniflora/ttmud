@@ -30,6 +30,7 @@ export const RAID_BOSSES = {
     icon: '🎭',
     description: '장비 파괴',
     unlockFloor: 1, // 해금 조건: 1층부터 가능
+    dropSlot: 'ring', // 반지 드랍
     pattern: {
       type: 'equipment_destroy',
       interval: 5000, // 5초마다
@@ -38,7 +39,8 @@ export const RAID_BOSSES = {
     },
     baseStats: {
       hp: 500000,
-      defense: 100
+      defense: 100,
+      evasion: 300 // 기본 회피 300 (레벨당 +10% 단리)
     },
     rewards: {
       gold: 1000,
@@ -48,18 +50,22 @@ export const RAID_BOSSES = {
   nepheron: {
     id: 'nepheron',
     name: '결계 사령 네페론',
-    icon: '🛡️',
+    icon: '🔰',
     description: '보호막 30% 체력',
     unlockFloor: 50, // 해금 조건: 50층 이상
+    dropSlot: 'weapon', // 무기 드랍
     pattern: {
       type: 'shield',
       shieldPercent: 30, // 체력의 30%
+      shieldRegenRate: 30, // 30% 확률로 보호막 재생성
       interval: 10000, // 10초마다
-      description: '체력의 30%만큼 강력한 보호막을 주기적으로 생성. 보호막 유지 중 무적'
+      description: '체력의 30%만큼 강력한 보호막을 주기적으로 생성. 보호막이 있으면 체력 피해 불가',
+      hasInitialShield: true // 전투 시작 시 방어막 보유
     },
     baseStats: {
       hp: 600000,
-      defense: 150
+      defense: 150,
+      evasion: 400 // 기본 회피 400 (레벨당 +10% 단리)
     },
     rewards: {
       gold: 1200,
@@ -69,18 +75,20 @@ export const RAID_BOSSES = {
   rothar: {
     id: 'rothar',
     name: '부패군주 로타르',
-    icon: '💀',
+    icon: '☠️',
     description: '보스 체력 자동 재생',
     unlockFloor: 100, // 해금 조건: 100층 이상
+    dropSlot: 'necklace', // 목걸이 드랍
     pattern: {
       type: 'regeneration',
-      regenPercent: 5, // 매초 5% 회복
+      regenPercent: 3, // 매초 3% 회복
       interval: 1000, // 1초마다
-      description: '매초 보스 체력 5% 회복'
+      description: '매초 보스 체력 3% 회복 (치유 감소 문양 필수!)'
     },
     baseStats: {
       hp: 400000,
-      defense: 80
+      defense: 80,
+      evasion: 500 // 기본 회피 500 (레벨당 +10% 단리)
     },
     rewards: {
       gold: 1500,
@@ -90,24 +98,20 @@ export const RAID_BOSSES = {
   esmode: {
     id: 'esmode',
     name: '혼돈의 점술가 에스모드',
-    icon: '🔮',
-    description: '랜덤 약화',
+    icon: '🃏',
+    description: '주기적 무적',
     unlockFloor: 150, // 해금 조건: 150층 이상
+    dropSlot: 'boots', // 신발 드랍
     pattern: {
-      type: 'debuff',
-      interval: 3000, // 3초마다
-      debuffs: [
-        { id: 'atk_down', name: '공격력 감소', value: 30 },
-        { id: 'aspd_down', name: '공격속도 감소', value: 30 },
-        { id: 'crit_down', name: '치명타율 감소', value: 30 },
-        { id: 'cooldown_up', name: '스킬 쿨타임 증가', value: 50 },
-        { id: 'dot', name: '지속 피해', value: 1000 }
-      ],
-      description: '3초마다 문양에게 5종 랜덤 디버프 중 하나 적용'
+      type: 'invincible',
+      interval: 10000, // 10초마다
+      duration: 5000, // 5초간 무적
+      description: '10초마다 5초간 무적 상태 돌입 (무적 해제 문양 필요!)'
     },
     baseStats: {
       hp: 450000,
-      defense: 90
+      defense: 90,
+      evasion: 600 // 기본 회피 600 (레벨당 +10% 단리)
     },
     rewards: {
       gold: 1300,
@@ -118,16 +122,17 @@ export const RAID_BOSSES = {
     id: 'silen',
     name: '밤추적자 실렌',
     icon: '🌙',
-    description: '회피 60%',
+    description: '회피 3000',
     unlockFloor: 200, // 해금 조건: 200층 이상
+    dropSlot: 'armor', // 갑옷 드랍
     pattern: {
       type: 'evasion',
-      evasionRate: 60, // 60% 회피
-      description: '보스 기본 회피율 60%'
+      description: '회피 3000 - 명중 특화 문양 필요'
     },
     baseStats: {
       hp: 350000,
-      defense: 70
+      defense: 70,
+      evasion: 3000 // 회피 특화 보스 (레벨당 +10% 단리)
     },
     rewards: {
       gold: 1400,
@@ -137,9 +142,10 @@ export const RAID_BOSSES = {
   gorath: {
     id: 'gorath',
     name: '강철심장 고라스',
-    icon: '⚙️',
+    icon: '🔩',
     description: '치명타 무효',
     unlockFloor: 250, // 해금 조건: 250층 이상
+    dropSlot: 'gloves', // 장갑 드랍
     pattern: {
       type: 'crit_immunity',
       critReduction: 100, // 치명타 데미지 100% 감소 (일반 데미지로 변환)
@@ -147,7 +153,8 @@ export const RAID_BOSSES = {
     },
     baseStats: {
       hp: 750000,
-      defense: 200
+      defense: 200,
+      evasion: 700 // 기본 회피 700 (레벨당 +10% 단리)
     },
     rewards: {
       gold: 1600,
@@ -177,6 +184,8 @@ export const calculateRaidBossStats = (bossId, difficultyLevel) => {
   if (!boss) return null;
 
   const difficultyMultiplier = getDifficultyMultiplier(difficultyLevel);
+  // 회피는 단리로 레벨당 +10% (레벨 1 = 100%, 레벨 2 = 110%, 레벨 11 = 200%)
+  const evasionMultiplier = 1 + (difficultyLevel - 1) * 0.1;
 
   return {
     ...boss,
@@ -186,6 +195,7 @@ export const calculateRaidBossStats = (bossId, difficultyLevel) => {
     hp: Math.floor(boss.baseStats.hp * difficultyMultiplier),
     maxHp: Math.floor(boss.baseStats.hp * difficultyMultiplier),
     defense: Math.floor(boss.baseStats.defense * difficultyMultiplier),
+    evasion: Math.floor((boss.baseStats.evasion || 500) * evasionMultiplier),
     rewards: {
       gold: Math.floor(boss.rewards.gold * difficultyMultiplier),
       exp: Math.floor(boss.rewards.exp * difficultyMultiplier),

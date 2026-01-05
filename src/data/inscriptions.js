@@ -25,21 +25,7 @@ export const INSCRIPTION_UPGRADE_CONFIG = {
 
 // 문양 특수 능력
 export const INSCRIPTION_ABILITIES = {
-  // 베크타 대응 (장비 파괴)
-  equipment_immunity: {
-    id: 'equipment_immunity',
-    name: '장비 파괴 면역',
-    description: '장비 파괴 효과를 받지 않음',
-    icon: '🛡️',
-    counters: ['vecta']
-  },
-  equipment_restore: {
-    id: 'equipment_restore',
-    name: '장비 복원',
-    description: '파괴된 장비를 3초 뒤 자동 복원',
-    icon: '♻️',
-    counters: ['vecta']
-  },
+  // 베크타 대응 (장비 파괴) - equipment_immunity 삭제 (오밸)
   destruction_rage: {
     id: 'destruction_rage',
     name: '파괴 분노',
@@ -53,7 +39,7 @@ export const INSCRIPTION_ABILITIES = {
     id: 'shield_break',
     name: '보호막 파괴',
     description: '보호막에 추가 피해 +50%',
-    icon: '💥',
+    icon: '🛡️',
     counters: ['nepheron']
   },
   shield_penetration: {
@@ -67,7 +53,7 @@ export const INSCRIPTION_ABILITIES = {
     id: 'shield_rage',
     name: '보호막 분노',
     description: '보스에게 보호막이 있을 때 공격 속도 +50%',
-    icon: '⚡',
+    icon: '💨',
     counters: ['nepheron']
   },
 
@@ -78,43 +64,6 @@ export const INSCRIPTION_ABILITIES = {
     description: '보스의 치유량 -70%',
     icon: '🚫',
     counters: ['rothar']
-  },
-  true_damage: {
-    id: 'true_damage',
-    name: '고정 피해',
-    description: '보스 최대 체력의 3%만큼 고정 피해',
-    icon: '💢',
-    counters: ['rothar']
-  },
-  heal_counter: {
-    id: 'heal_counter',
-    name: '회복 역습',
-    description: '보스가 회복할 때마다 반응 공격',
-    icon: '⚔️',
-    counters: ['rothar']
-  },
-
-  // 에스모드 대응 (디버프)
-  debuff_duration_reduce: {
-    id: 'debuff_duration_reduce',
-    name: '디버프 저항',
-    description: '디버프 지속시간 -70%',
-    icon: '🛡️',
-    counters: ['esmode']
-  },
-  debuff_cleanse: {
-    id: 'debuff_cleanse',
-    name: '디버프 정화',
-    description: '디버프 자동 해제',
-    icon: '✨',
-    counters: ['esmode']
-  },
-  debuff_power: {
-    id: 'debuff_power',
-    name: '디버프 역전',
-    description: '디버프 걸릴 때마다 공격력 +10%',
-    icon: '💪',
-    counters: ['esmode']
   },
 
   // 실렌 대응 (회피)
@@ -127,222 +76,144 @@ export const INSCRIPTION_ABILITIES = {
   },
   true_hit: {
     id: 'true_hit',
-    name: '필중',
+    name: '백발백중',
     description: '회피 무시 효과 (모든 공격 명중)',
-    icon: '✨',
+    icon: '💫',
     counters: ['silen']
   },
   miss_power: {
     id: 'miss_power',
     name: '회피 분노',
     description: '미스 날 때마다 다음 공격 데미지 +30%',
-    icon: '💥',
+    icon: '😤',
     counters: ['silen']
   }
 };
 
-// 문양 정의 (10가지)
+// 문양 정의 (10가지) - 최종 데미지% (곱연산)
 export const INSCRIPTIONS = {
   rage: {
     id: 'rage',
     name: '분노의 문양',
-    // image path handled by getInscriptionImage function in components
-    description: '분노가 폭발하는 문양',
-    abilities: ['destruction_rage', 'miss_power'],
-    baseStats: {
-      attack: 150,        // 깡 공격력
-      critChance: 2,      // 치명타 확률
-      accuracy: 3,        // 명중률
-      attackPercent: 0,   // 공격력 %
-      critDamage: 0,      // 치명타 데미지
-      penetration: 0      // 관통
-    },
+    description: '장비 파괴 시 분노 폭발 (베크타 특화)',
+    abilities: ['destruction_rage'],
+    baseStats: { finalDamagePercent: 5 },
     specialAbility: {
-      type: 'attack_boost',
-      name: '깡 공격력 증가',
-      description: '추가 공격력 +150'
+      type: 'destruction_rage',
+      name: '파괴 분노',
+      description: '장비 파괴 시 최종 데미지 +50% (5초)'
     }
   },
   precision: {
     id: 'precision',
     name: '정밀의 문양',
-    // image path handled by getInscriptionImage function in components
-    description: '정확한 일격을 가하는 문양',
-    abilities: ['accuracy_up', 'true_hit'],
-    baseStats: {
-      attack: 95,
-      critChance: 8,      // 치명타 확률 증가
-      accuracy: 20,
-      attackPercent: 10,
-      critDamage: 40,
-      penetration: 10
-    },
+    description: '모든 공격이 명중 (실렌 특화)',
+    abilities: ['true_hit'],
+    baseStats: { finalDamagePercent: 3 },
     specialAbility: {
-      type: 'crit_chance',
-      name: '치명타 확률 증가',
-      description: '치명타 확률 +8%'
+      type: 'true_hit',
+      name: '백발백중',
+      description: '회피 무시 (모든 공격 명중)'
     }
   },
   shadow: {
     id: 'shadow',
     name: '그림자의 문양',
-    // image path handled by getInscriptionImage function in components
-    description: '회피를 무력화하는 문양',
-    abilities: ['true_hit', 'accuracy_up'],
-    baseStats: {
-      attack: 100,
-      critChance: 5,
-      accuracy: 15,       // 명중률 증가
-      attackPercent: 10,
-      critDamage: 30,
-      penetration: 8
-    },
+    description: '명중 대폭 증가 (실렌 특화)',
+    abilities: ['accuracy_up'],
+    baseStats: { finalDamagePercent: 5, accuracy: 1500 },
     specialAbility: {
       type: 'accuracy_boost',
-      name: '명중률 증가',
-      description: '명중률 +15%'
+      name: '명중 특화',
+      description: '명중 +1500'
     }
   },
   destruction: {
     id: 'destruction',
     name: '파괴의 문양',
-    // image path handled by getInscriptionImage function in components
-    description: '장비 파괴를 극복하는 문양',
-    abilities: ['equipment_immunity', 'destruction_rage'],
-    baseStats: {
-      attack: 100,
-      critChance: 3,
-      accuracy: 5,
-      attackPercent: 10,
-      critDamage: 20,
-      penetration: 8
-    },
+    description: '보호막에 추가 피해 (네페론 특화)',
+    abilities: ['shield_break'],
+    baseStats: { finalDamagePercent: 5 },
     specialAbility: {
-      type: 'guaranteed_crit_on_miss',
-      name: '공격 실패시 무조건 치명타',
-      description: '공격이 실패하면 다음 공격은 100% 치명타'
+      type: 'shield_double_damage',
+      name: '보호막 분쇄',
+      description: '보호막에 +100% 피해'
     }
   },
   crush: {
     id: 'crush',
     name: '분쇄의 문양',
-    // image path handled by getInscriptionImage function in components
-    description: '보호막을 파괴하는 문양',
-    abilities: ['shield_break', 'shield_penetration'],
-    baseStats: {
-      attack: 120,
-      critChance: 4,
-      accuracy: 6,
-      attackPercent: 12,
-      critDamage: 25,
-      penetration: 15     // 관통 (보호막 추가 피해)
-    },
+    description: '무적 즉시 해제 (에스모드 특화)',
+    abilities: [],
+    baseStats: { finalDamagePercent: 5 },
     specialAbility: {
-      type: 'penetration',
-      name: '관통 증가',
-      description: '방어력 무시 +15%'
+      type: 'invincible_destroy',
+      name: '무적 파괴',
+      description: '보스의 무적 상태를 즉시 해제'
     }
   },
   void: {
     id: 'void',
     name: '공허의 문양',
-    // image path handled by getInscriptionImage function in components
-    description: '모든 것을 관통하는 문양',
-    abilities: ['shield_penetration', 'equipment_immunity'],
-    baseStats: {
-      attack: 105,
-      critChance: 3,
-      accuracy: 7,
-      attackPercent: 11,
-      critDamage: 25,
-      penetration: 25     // 관통 (방어 무시)
-    },
+    description: '방어막 관통 피해 (네페론 특화)',
+    abilities: ['shield_penetration'],
+    baseStats: { finalDamagePercent: 5 },
     specialAbility: {
-      type: 'penetration_boost',
-      name: '관통 강화',
-      description: '방어력 무시 +25%'
+      type: 'shield_bypass_damage',
+      name: '방어막 관통',
+      value: 30,
+      description: '데미지의 30%가 방어막을 무시하고 실제 체력에 추가 피해'
     }
   },
   thirst: {
     id: 'thirst',
     name: '갈증의 문양',
-    // image path handled by getInscriptionImage function in components
-    description: '체력을 갉아먹는 문양',
-    abilities: ['true_damage'],
-    baseStats: {
-      attack: 80,
-      critChance: 2,
-      accuracy: 4,
-      attackPercent: 8,
-      critDamage: 15,
-      penetration: 6
-    },
+    description: '생존력 증가',
+    abilities: [],
+    baseStats: { finalDamagePercent: 5 },
     specialAbility: {
-      type: 'hp_percent_damage',
-      name: '체력 비례 데미지',
-      value: 5,
-      description: '보스 최대 체력의 5% 추가 피해'
+      type: 'hp_regen',
+      name: '생명력 흡수',
+      value: 12,
+      description: '12초마다 플레이어 체력 1 회복'
     }
   },
   decay: {
     id: 'decay',
     name: '부패의 문양',
-    // image path handled by getInscriptionImage function in components
-    description: '재생을 무력화하는 문양',
-    abilities: ['heal_reduction', 'true_damage'],
-    baseStats: {
-      attack: 90,
-      critChance: 3,
-      accuracy: 5,
-      attackPercent: 9,
-      critDamage: 18,
-      penetration: 7
-    },
+    description: '보스 치유 감소 (로타르 특화)',
+    abilities: ['heal_reduction'],
+    baseStats: { finalDamagePercent: 5 },
     specialAbility: {
       type: 'heal_reduction',
-      name: '치료 효과 감소',
-      value: 70,
-      description: '적의 치유 효과 -70%'
+      name: '치유 감소',
+      value: 30,
+      description: '보스 치유 효과 -30% (등급별 증가)'
     }
   },
   chaos: {
     id: 'chaos',
     name: '혼돈의 문양',
-    // image path handled by getInscriptionImage function in components
-    description: '치명적인 일격을 가하는 문양',
-    abilities: ['debuff_cleanse', 'debuff_power'],
-    baseStats: {
-      attack: 110,
-      critChance: 3,
-      accuracy: 5,
-      attackPercent: 11,
-      critDamage: 50,     // 치명타 데미지 증가
-      penetration: 9
-    },
+    description: '최종 데미지 특화 (고라스 특화)',
+    abilities: [],
+    baseStats: { finalDamagePercent: 12 },
     specialAbility: {
-      type: 'crit_damage_boost',
-      name: '치명타 데미지 증가',
-      description: '치명타 데미지 +50%'
+      type: 'pure_damage_boost',
+      name: '순수 데미지',
+      description: '최종 데미지 +12% (치명타 무효 보스 특화)'
     }
   },
   eternity: {
     id: 'eternity',
     name: '영원의 문양',
-    // image path handled by getInscriptionImage function in components
-    description: '불굴의 의지를 담은 문양',
-    abilities: ['equipment_restore', 'debuff_cleanse'],
-    baseStats: {
-      attack: 130,
-      critChance: 4,
-      accuracy: 8,
-      attackPercent: 13,
-      critDamage: 28,
-      penetration: 12
-    },
+    description: '공격 타수 증가',
+    abilities: [],
+    baseStats: { finalDamagePercent: 3 },
     specialAbility: {
-      type: 'hp_execute',
-      name: '적 HP 20% 이하 시 데미지 2배',
-      description: '적의 HP가 20% 이하일 때 데미지 2배'
+      type: 'extra_hit',
+      name: '추가 타격',
+      value: 1,
+      description: '공격 시 타수 +1'
     }
   }
 };
@@ -366,12 +237,8 @@ export const calculateInscriptionStats = (inscriptionId, grade) => {
       name: '알 수 없는 문양',
       gradeName: '알 수 없음',
       gradeColor: 'text-gray-400',
-      attack: 0,
-      critChance: 0,
-      accuracy: 0,
-      attackPercent: 0,
-      critDamage: 0,
-      penetration: 0
+      finalDamagePercent: 0,
+      accuracy: 0
     };
   }
 
@@ -379,15 +246,12 @@ export const calculateInscriptionStats = (inscriptionId, grade) => {
 
   return {
     ...inscription,
+    abilities: inscription.abilities || [],
     grade: migratedGrade,
     gradeName: gradeData.name,
     gradeColor: gradeData.color,
-    attack: Math.floor(inscription.baseStats.attack * multiplier),
-    critChance: inscription.baseStats.critChance * multiplier,
-    accuracy: inscription.baseStats.accuracy * multiplier,
-    attackPercent: inscription.baseStats.attackPercent * multiplier,
-    critDamage: inscription.baseStats.critDamage * multiplier,
-    penetration: inscription.baseStats.penetration * multiplier
+    finalDamagePercent: (inscription.baseStats.finalDamagePercent || 0) * multiplier,
+    accuracy: (inscription.baseStats.accuracy || 0) * multiplier
   };
 };
 

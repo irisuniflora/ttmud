@@ -9,6 +9,7 @@ import SkillTree from './components/SkillTree/SkillTree';
 import Collection from './components/Collection/Collection';
 import SealedZone from './components/SealedZone/SealedZone';
 import Shop from './components/Shop/Shop';
+import Chat from './components/Chat/Chat';
 // import WorldBoss from './components/WorldBoss/WorldBoss'; // 월드보스 시스템 비활성화
 import PrestigeRelics from './components/Prestige/PrestigeRelics';
 import DevPanel from './components/DevTools/DevPanel';
@@ -306,6 +307,16 @@ const GameContent = () => {
                 🏆 업적
               </button>
               <button
+                onClick={() => setActiveTab('chat')}
+                className={`px-4 py-2 rounded font-bold transition-all ${
+                  activeTab === 'chat'
+                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
+                }`}
+              >
+                💬 채팅
+              </button>
+              <button
                 onClick={() => setActiveTab('devtools')}
                 className={`px-4 py-2 rounded font-bold transition-all ${
                   activeTab === 'devtools'
@@ -328,6 +339,7 @@ const GameContent = () => {
               {activeTab === 'shop' && <Shop />}
               {/* {activeTab === 'worldBoss' && <WorldBoss />} */}
               {activeTab === 'prestige' && <PrestigeRelics />}
+              {activeTab === 'chat' && <Chat />}
               {activeTab === 'devtools' && <DevPanel />}
             </div>
           </div>

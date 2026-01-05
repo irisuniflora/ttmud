@@ -43,7 +43,7 @@ const getContrastTextColor = (hexColor) => {
 };
 
 const NewEquipment = () => {
-  const { gameState, equipNewItem, unequipNewItem, disassembleNewItem, disassembleAllNormal, disassembleAllSet, toggleItemLock, upgradeEquipmentLevel, awakenEquipment, enhanceEquipment, useSetSelector, updateSettings, useOrb, useSealStone } = useGame();
+  const { gameState, equipNewItem, unequipNewItem, disassembleNewItem, disassembleAllNormal, disassembleAllSet, toggleItemLock, upgradeEquipmentLevel, awakenEquipment, enhanceEquipment, useSetSelector, updateSettings, useOrb, useSealStone, upgradeInventoryItem, awakenInventoryItem, enhanceInventoryItem, useOrbOnInventoryItem, useSealStoneOnInventoryItem } = useGame();
   const { equipment, newInventory = [], equipmentFragments = 0, settings = {}, setSelectors = {}, orbs = 0 } = gameState;
 
   const [showSets, setShowSets] = useState(false);
@@ -407,8 +407,8 @@ const NewEquipment = () => {
               </div>
             </div>
 
-            {/* 장비 그리드 (2x3) */}
-            <div className="grid grid-cols-2 gap-2 justify-items-center">
+            {/* 장비 그리드 (3x2) */}
+            <div className="grid grid-cols-3 gap-2 justify-items-center">
               {EQUIPMENT_SLOTS.map(slot => {
                 const item = equipment[slot];
                 const setData = item?.setId ? EQUIPMENT_SETS[item.setId] : null;
@@ -581,7 +581,7 @@ const NewEquipment = () => {
                 className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-300 cursor-help"
                 title="장비 파편 - 장비 제련에 사용"
               >
-                ⚡ {formatNumber(equipmentFragments)}
+                🔧 {formatNumber(equipmentFragments)}
               </span>
               <span
                 className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-300 cursor-help"
@@ -663,7 +663,7 @@ const NewEquipment = () => {
                             )}
                           </div>
                           {enhanceBonusPercent > 0 && (
-                            <div className="text-[8px] text-amber-400">강화 +{currentEnhance} → +{enhanceBonusPercent}%</div>
+                            <div className="text-[8px] text-amber-400">강화 +{currentEnhance} : +{enhanceBonusPercent}%</div>
                           )}
                         </div>
                       )}
@@ -687,8 +687,8 @@ const NewEquipment = () => {
                                 : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                             }`}
                           >
-                            <span>🔥 제련</span>
-                            <span className="text-[10px] opacity-80">⚡ {formatNumber(upgradeCost)}</span>
+                            <span>⚔️ 제련</span>
+                            <span className="text-[10px] opacity-80">🔧 {formatNumber(upgradeCost)}</span>
                           </button>
                         ) : (
                           <button
@@ -891,6 +891,200 @@ const NewEquipment = () => {
                       >
                         ⚔️ 장착
                       </button>
+
+                      {/* 인벤토리 아이템 제련/각성 */}
+                      {(() => {
+                        const invUpgradesLeft = selectedItemData.upgradesLeft ?? 10;
+                        const invUpgradeCost = getUpgradeCost(selectedItemData);
+                        const canInvUpgrade = equipmentFragments >= invUpgradeCost && invUpgradesLeft > 0;
+                        const canInvAwaken = invUpgradesLeft === 0 && awakenStones > 0;
+
+                        return (
+                          <div className="flex gap-1">
+                            {invUpgradesLeft > 0 ? (
+                              <button
+                                onClick={() => upgradeInventoryItem(selectedItemData.id)}
+                                disabled={!canInvUpgrade}
+                                className={`flex-1 px-2 py-2 rounded text-xs font-bold flex items-center justify-center gap-2 ${
+                                  canInvUpgrade
+                                    ? 'bg-gray-600 hover:bg-gray-500 text-white'
+                                    : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                                }`}
+                              >
+                                <span>⚔️ 제련</span>
+                                <span className="text-[10px] opacity-80">🔧 {formatNumber(invUpgradeCost)}</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => awakenInventoryItem(selectedItemData.id)}
+                                disabled={!canInvAwaken}
+                                className={`flex-1 px-2 py-2 rounded text-xs font-bold flex items-center justify-center gap-2 ${
+                                  canInvAwaken
+                                    ? 'bg-gray-600 hover:bg-gray-500 text-white'
+                                    : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                                }`}
+                              >
+                                <span>💎 각성</span>
+                                <span className="text-[10px] opacity-80">💎 1</span>
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* 인벤토리 아이템 강화 */}
+                      {(() => {
+                        const enhanceCost = getEnhanceCost(selectedItemData);
+                        const successRate = getEnhanceSuccessRate(selectedItemData);
+                        const downgradeAmount = getDowngradeAmount(selectedItemData);
+                        const currentEnhance = selectedItemData.enhanceLevel || 0;
+                        const playerGold = gameState.player?.gold || 0;
+                        const downgradeProtection = gameState.downgradeProtection || 0;
+                        const protectionRequired = getProtectionRequired(currentEnhance);
+                        const canEnhance = playerGold >= enhanceCost && currentEnhance < ENHANCE_CONFIG.maxEnhance;
+                        const canUseProtection = downgradeProtection >= protectionRequired && protectionRequired > 0;
+
+                        if (currentEnhance >= ENHANCE_CONFIG.maxEnhance) {
+                          return (
+                            <div className="bg-gradient-to-r from-amber-900/50 to-yellow-900/50 border border-amber-500/50 rounded p-2 text-center">
+                              <div className="text-sm font-black text-amber-400">✨ 풀강 완료! ✨</div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between bg-gray-800/70 rounded px-2 py-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[9px] text-gray-400">성공</span>
+                                <span className={`text-[10px] font-bold ${
+                                  successRate >= 80 ? 'text-green-400' :
+                                  successRate >= 50 ? 'text-yellow-400' :
+                                  successRate >= 30 ? 'text-orange-400' : 'text-red-400'
+                                }`}>{successRate}%</span>
+                                {downgradeAmount > 0 && (
+                                  <span className="text-[9px] text-red-400">📉-{downgradeAmount}</span>
+                                )}
+                              </div>
+                              <span className="text-[9px] text-yellow-400">💰{formatNumber(enhanceCost)}</span>
+                            </div>
+                            <div className="flex gap-1">
+                              <button
+                                type="button"
+                                onClick={() => enhanceInventoryItem(selectedItemData.id, false)}
+                                disabled={!canEnhance}
+                                className={`flex-1 px-2 py-1.5 rounded text-xs font-bold ${
+                                  canEnhance
+                                    ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                                    : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                                }`}
+                              >
+                                🔨 강화 +{currentEnhance}
+                              </button>
+                              {downgradeAmount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => enhanceInventoryItem(selectedItemData.id, true)}
+                                  disabled={!canEnhance || !canUseProtection}
+                                  className={`flex-1 px-2 py-1.5 rounded text-xs font-bold ${
+                                    canEnhance && canUseProtection
+                                      ? 'bg-orange-600 hover:bg-orange-500 text-white'
+                                      : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                                  }`}
+                                >
+                                  🛡️ 방지 {protectionRequired}개
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* 인벤토리 아이템 잠재옵션 + 재굴림 */}
+                      {selectedItemData.stats && (() => {
+                        const mainStat = selectedItemData.stats.find(stat => stat.isMain);
+                        const subStats = selectedItemData.stats
+                          .map((stat, idx) => ({ ...stat, index: idx }))
+                          .filter(stat => !stat.isMain);
+                        const currentEnhance = selectedItemData.enhanceLevel || 0;
+                        const enhanceBonusPercent = getEnhanceBonus(currentEnhance);
+                        const lockedCount = subStats.filter(s => s.locked).length;
+                        const canReroll = orbs >= 1 && (lockedCount === 0 || sealStones >= lockedCount);
+
+                        return (
+                          <div className="bg-gray-800/50 rounded p-2 space-y-2">
+                            {/* 기본옵션 */}
+                            {mainStat && (
+                              <div className="flex items-center justify-between text-xs border-b border-gray-700 pb-1.5">
+                                <span className="text-gray-400">{mainStat.name}</span>
+                                <span className="text-white font-bold">
+                                  {formatStatValue(mainStat.value, mainStat.suffix)}{mainStat.suffix || ''}
+                                  {enhanceBonusPercent > 0 && (
+                                    <span className="text-amber-400 ml-1">
+                                      +{formatStatValue(mainStat.value * enhanceBonusPercent / 100, mainStat.suffix)}{mainStat.suffix || ''}
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                            )}
+                            {/* 잠재옵션 헤더 + 재굴림 */}
+                            {subStats.length > 0 && (
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <div className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                                    <span>⚙️ 잠재옵션</span>
+                                    {selectedItemData.isAncient && <span className="text-amber-400">(고대 4옵)</span>}
+                                    <span className="text-gray-500">🔒{lockedCount}</span>
+                                  </div>
+                                  <button
+                                    onClick={() => useOrbOnInventoryItem(selectedItemData.id)}
+                                    disabled={!canReroll}
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 ${
+                                      canReroll
+                                        ? 'bg-purple-600 hover:bg-purple-500 text-white'
+                                        : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                                    }`}
+                                  >
+                                    <span>🔮 재굴림</span>
+                                    {lockedCount > 0 && <span className="text-cyan-300">🔒{lockedCount}</span>}
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-1">
+                                  {subStats.map((stat, subIdx) => {
+                                    const gradeLabel = stat.optionGrade === OPTION_GRADES.LOW ? '하' :
+                                                      stat.optionGrade === OPTION_GRADES.MID ? '중' : '극';
+                                    const isHigh = stat.optionGrade === OPTION_GRADES.HIGH;
+                                    const isMid = stat.optionGrade === OPTION_GRADES.MID;
+                                    const gradeColor = isHigh ? '#F59E0B' : '#FFFFFF';
+                                    const statValue = `+${formatStatValue(stat.value, stat.suffix)}${stat.suffix || ''}`;
+                                    const isLocked = stat.locked;
+                                    return (
+                                      <div
+                                        key={stat.index}
+                                        className={`flex items-center justify-between text-[9px] px-1.5 py-1 rounded ${isLocked ? 'bg-gray-600/50' : 'bg-gray-700/50'}`}
+                                      >
+                                        <button
+                                          onClick={() => useSealStoneOnInventoryItem(selectedItemData.id, subIdx)}
+                                          className="mr-1 text-sm transition-transform hover:scale-110 cursor-pointer"
+                                          title={isLocked ? '잠금 해제' : '잠금 (재굴림 시 봉인석 소모)'}
+                                        >
+                                          {isLocked ? '🔒' : '🔓'}
+                                        </button>
+                                        <div className="flex items-center gap-0.5 min-w-0 flex-1">
+                                          <span style={{ color: gradeColor }} className={`truncate ${isMid || isHigh ? 'font-bold' : ''}`}>{stat.name}</span>
+                                          <span className="text-gray-600">({gradeLabel})</span>
+                                        </div>
+                                        <span style={{ color: gradeColor }} className={`ml-1 ${isMid || isHigh ? 'font-bold' : ''}`}>{statValue}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* 잠금/분해 버튼 */}
                       <div className="flex gap-1">
                         <button

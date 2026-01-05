@@ -8,8 +8,8 @@ export const GRADE_ORDER = HERO_CONFIG.gradeOrder;
 export const HERO_TYPES = {
   CRIT_CHANCE: 'crit_chance',
   CRIT_DMG: 'crit_dmg',
-  HP_PERCENT_DMG: 'hp_percent_dmg',
-  DOT_DMG: 'dot_dmg',
+  EXTRA_HIT: 'extra_hit',
+  ACCURACY: 'accuracy',
   STAGE_SKIP: 'stage_skip',
   DROP_RATE: 'drop_rate',
   GOLD_BONUS: 'gold_bonus',
@@ -54,35 +54,33 @@ export const HEROES = [
   {
     id: 'dark_reaper',
     name: '다크 리퍼',
-    type: HERO_TYPES.HP_PERCENT_DMG,
+    type: HERO_TYPES.EXTRA_HIT,
     category: 'dealer',
-    description: '죽음의 낫으로 적의 생명력을 갉아먹는다.',
+    description: '죽음의 낫으로 추가 일격을 가한다.',
     image: '/images/heroes/dark_reaper.png',
     baseStats: {
       attack: HERO_CONFIG.heroBaseAttack,
-      hpPercentDmgChance: HERO_CONFIG.hpPercentDmgDealerBase,
-      hpPercentDmgValue: HERO_CONFIG.hpPercentDmgValue,
+      extraHitChance: HERO_CONFIG.extraHitChanceBase,
     },
     gradeStats: {
       attack: HERO_CONFIG.heroAttackPerGrade,
-      hpPercentDmgChance: HERO_CONFIG.hpPercentDmgDealerPerGrade,
-      hpPercentDmgValue: HERO_CONFIG.hpPercentDmgValuePerGrade,
+      extraHitChance: HERO_CONFIG.extraHitChancePerGrade,
     }
   },
   {
     id: 'archmage',
     name: '아크메이지',
-    type: HERO_TYPES.DOT_DMG,
+    type: HERO_TYPES.ACCURACY,
     category: 'dealer',
-    description: '저주의 마법으로 적을 서서히 태운다.',
+    description: '정밀한 마법으로 적중률을 높인다.',
     image: '/images/heroes/archmage.png',
     baseStats: {
       attack: HERO_CONFIG.heroBaseAttack,
-      dotDmgPercent: HERO_CONFIG.dotDmgDealerBase,
+      accuracy: HERO_CONFIG.accuracyBase,
     },
     gradeStats: {
       attack: HERO_CONFIG.heroAttackPerGrade,
-      dotDmgPercent: HERO_CONFIG.dotDmgDealerPerGrade,
+      accuracy: HERO_CONFIG.accuracyPerGrade,
     }
   },
 
@@ -190,11 +188,12 @@ export const getHeroStats = (hero, gradeId, stars) => {
       }
       const currentStarBonus = HERO_CONFIG.critChanceDealerBaseStar + (gradeIndex * HERO_CONFIG.critChanceDealerStarPerGrade);
       stats.critChance = baseForGrade + (currentStarBonus * stars);
-    } else if (statKey === 'hpPercentDmgChance') {
-      // 체력 퍼센트 데미지 확률: 기본값 + (별당 증가 * 별개수)
-      const baseChance = HERO_CONFIG.hpPercentDmgDealerBase;
-      const starBonus = HERO_CONFIG.hpPercentDmgDealerBaseStar * stars;
-      stats.hpPercentDmgChance = baseChance + starBonus;
+    } else if (statKey === 'extraHitChance') {
+      // 추가타격 확률: 등급별 고정 수치 (별 보너스 없음)
+      stats.extraHitChance = HERO_CONFIG.extraHitChanceByGrade[gradeIndex] || 10;
+    } else if (statKey === 'accuracy') {
+      // 명중: 등급별 고정 수치 (별 보너스 없음)
+      stats.accuracy = HERO_CONFIG.accuracyByGrade[gradeIndex] || 100;
     } else if (statKey === 'critDmg') {
       // 크리데미지: 이전 등급 5별 수치 + 등급업 보너스 + (현재 별 * 현재 등급 별당 증가)
       let baseForGrade = HERO_CONFIG.critDmgDealerBase;

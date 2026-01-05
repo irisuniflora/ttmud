@@ -5,7 +5,6 @@ export const CONSUMABLE_TYPES = {
   SEALED_ZONE_TICKET: 'sealed_zone_ticket',
   MONSTER_SELECTION_TICKET: 'monster_selection_ticket',
   GEAR_ORB: 'gear_orb',
-  STAT_MAX_ITEM: 'stat_max_item',
   RARE_TOKEN: 'rare_token',
   LEGENDARY_TOKEN: 'legendary_token'
 };
@@ -38,15 +37,6 @@ export const CONSUMABLES = {
     maxStack: 999,
     usable: true,
     rarity: 'epic'
-  },
-  [CONSUMABLE_TYPES.STAT_MAX_ITEM]: {
-    id: CONSUMABLE_TYPES.STAT_MAX_ITEM,
-    name: '완벽의 정수',
-    description: '장비의 현재 옵션을 최대치로 고정시키는 아이템',
-    icon: '⚙️',
-    maxStack: 99,
-    usable: true,
-    rarity: 'mythic'
   },
   [CONSUMABLE_TYPES.RARE_TOKEN]: {
     id: CONSUMABLE_TYPES.RARE_TOKEN,
@@ -103,13 +93,6 @@ export const CONSUMABLE_SOURCES = {
     }
   },
 
-  // 완벽의 정수
-  STAT_MAX_ITEM: {
-    // 보스 코인 상점에서 구매
-    bossShop: {
-      cost: 2000 // 보스 코인 2000개
-    }
-  }
 };
 
 // 레어리티 색상
@@ -146,10 +129,6 @@ export const useConsumable = (consumableId, gameState, targetData = null) => {
     case CONSUMABLE_TYPES.GEAR_ORB:
       // 카르마 오브 사용 로직 (별도 UI에서 처리)
       return { success: true, message: '재굴림할 장비를 선택해주세요.', requiresUI: true };
-
-    case CONSUMABLE_TYPES.STAT_MAX_ITEM:
-      // 완벽의 정수 사용 로직 (별도 UI에서 처리)
-      return { success: true, message: '옵션을 최대치로 고정할 장비를 선택해주세요.', requiresUI: true };
 
     default:
       return { success: false, message: '알 수 없는 아이템입니다.' };

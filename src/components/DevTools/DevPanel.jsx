@@ -329,30 +329,6 @@ const DevPanel = () => {
             </div>
           </div>
 
-          {/* 완벽의 정수 */}
-          <div className="bg-gray-900 rounded p-2">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs">⚙️ 완벽의 정수</span>
-              <span className="text-red-400 text-xs font-bold">{gameState.consumables?.stat_max_item || 0}</span>
-            </div>
-            <div className="flex gap-1">
-              <button
-                onClick={() => modifyState(s => {
-                  if (!s.consumables) s.consumables = {};
-                  s.consumables.stat_max_item = (s.consumables.stat_max_item || 0) + 5;
-                })}
-                className="flex-1 px-1 py-0.5 bg-red-600 hover:bg-red-500 text-[10px] rounded"
-              >+5</button>
-              <button
-                onClick={() => modifyState(s => {
-                  if (!s.consumables) s.consumables = {};
-                  s.consumables.stat_max_item = (s.consumables.stat_max_item || 0) + 20;
-                })}
-                className="flex-1 px-1 py-0.5 bg-red-600 hover:bg-red-500 text-[10px] rounded"
-              >+20</button>
-            </div>
-          </div>
-
           {/* 도감 선택권 */}
           <div className="bg-gray-900 rounded p-2">
             <div className="flex items-center justify-between mb-1">

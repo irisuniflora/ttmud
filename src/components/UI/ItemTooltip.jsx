@@ -217,10 +217,10 @@ const ItemTooltip = ({ item, children, equipment = {}, disabled = false }) => {
                   <div key={idx} className="flex justify-between items-center text-xs">
                     <span className="text-cyan-300">{stat.name}</span>
                     <span className="text-cyan-300 font-bold">
-                      {isReduction ? '-' : '+'}{formatStatValue(stat.value, suffix)}{suffix === '%' ? '' : suffix}
+                      {isReduction ? '-' : '+'}{formatStatValue(stat.value, suffix)}{suffix}
                       {enhanceLevel > 0 && bonusValue > 0 && (
                         <span className="text-yellow-400 ml-1">
-                          (+{formatStatValue(bonusValue, suffix)}{suffix === '%' ? '' : suffix})
+                          (+{formatStatValue(bonusValue, suffix)}{suffix})
                         </span>
                       )}
                     </span>
@@ -229,7 +229,7 @@ const ItemTooltip = ({ item, children, equipment = {}, disabled = false }) => {
               })}
               {enhanceLevel > 0 && (
                 <div className="text-[10px] text-yellow-400 mt-1">
-                  강화 +{enhanceLevel} → +{enhanceBonusPercent}%
+                  강화 +{enhanceLevel} : +{enhanceBonusPercent}%
                 </div>
               )}
             </div>

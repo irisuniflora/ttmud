@@ -304,7 +304,7 @@ const Collection = () => {
         <div className="space-y-3">
           {/* 세트 시스템 안내 */}
           <div className="bg-gradient-to-r from-cyan-900 to-blue-900 border border-cyan-500 rounded-lg p-3">
-            <h4 className="text-sm font-bold text-yellow-400 mb-2">📚 몬스터 세트 시스템</h4>
+            <h4 className="text-sm font-bold text-yellow-400 mb-2">📖 몬스터 세트 시스템</h4>
             <div className="text-xs text-gray-200 space-y-1">
               <p>• 몬스터를 <span className="text-cyan-400 font-bold">각인</span>하면 세트 진행도가 증가합니다</p>
               <p>• 각인된 몬스터는 도감에서 사라지지만 세트 효과에 기여합니다</p>
@@ -488,64 +488,92 @@ const Collection = () => {
           {/* 토큰 교환 버튼 */}
           <div className="grid grid-cols-2 gap-2">
             {/* 희귀 토큰 */}
-            <div className="flex items-center justify-between bg-gradient-to-r from-purple-900/50 to-blue-900/50 border border-purple-500 rounded-lg p-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">💎</span>
-                <div>
-                  <p className="text-xs font-bold text-purple-400">희귀 토큰</p>
-                  <p className="text-[10px] text-gray-400">10개로 랜덤 희귀 등록</p>
+            {(() => {
+              const rareTokenCount = consumables[CONSUMABLE_TYPES.RARE_TOKEN] || 0;
+              const maxRareExchange = Math.floor(rareTokenCount / 50);
+              return (
+                <div className="bg-gradient-to-r from-purple-900/50 to-blue-900/50 border border-purple-500 rounded-lg p-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">💎</span>
+                      <div>
+                        <p className="text-xs font-bold text-purple-400">희귀 토큰</p>
+                        <p className="text-[10px] text-gray-400">50개당 1마리 등록</p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-purple-300">{rareTokenCount}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {[1, 5, 10].map(num => (
+                      <button
+                        key={num}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (engine) {
+                            const result = engine.exchangeTokenForRandomMonster('rare', num);
+                            console.log('희귀 토큰 교환 결과:', result);
+                            setSelectionResult(result);
+                          } else {
+                            console.log('engine이 없음');
+                          }
+                        }}
+                        disabled={maxRareExchange < num}
+                        className={`flex-1 px-1 py-1 rounded font-bold text-xs ${
+                          maxRareExchange >= num
+                            ? 'bg-purple-600 hover:bg-purple-500 text-white cursor-pointer'
+                            : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {num}회
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-purple-300">{consumables[CONSUMABLE_TYPES.RARE_TOKEN] || 0}</span>
-                <button
-                  onClick={() => {
-                    if (engine) {
-                      const result = engine.exchangeTokenForRandomMonster('rare');
-                      setSelectionResult(result);
-                    }
-                  }}
-                  disabled={(consumables[CONSUMABLE_TYPES.RARE_TOKEN] || 0) < 10}
-                  className={`px-2 py-1 rounded font-bold text-xs ${
-                    (consumables[CONSUMABLE_TYPES.RARE_TOKEN] || 0) >= 10
-                      ? 'bg-purple-600 hover:bg-purple-500 text-white'
-                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                  }`}
-                >
-                  교환
-                </button>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* 전설 토큰 */}
-            <div className="flex items-center justify-between bg-gradient-to-r from-orange-900/50 to-red-900/50 border border-orange-500 rounded-lg p-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">👑</span>
-                <div>
-                  <p className="text-xs font-bold text-orange-400">전설 토큰</p>
-                  <p className="text-[10px] text-gray-400">10개로 랜덤 전설 등록</p>
+            {(() => {
+              const legendaryTokenCount = consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] || 0;
+              const maxLegendaryExchange = Math.floor(legendaryTokenCount / 50);
+              return (
+                <div className="bg-gradient-to-r from-orange-900/50 to-red-900/50 border border-orange-500 rounded-lg p-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">👑</span>
+                      <div>
+                        <p className="text-xs font-bold text-orange-400">전설 토큰</p>
+                        <p className="text-[10px] text-gray-400">50개당 1마리 등록</p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-orange-300">{legendaryTokenCount}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {[1, 5, 10].map(num => (
+                      <button
+                        key={num}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (engine) {
+                            const result = engine.exchangeTokenForRandomMonster('legendary', num);
+                            console.log('전설 토큰 교환 결과:', result);
+                            setSelectionResult(result);
+                          }
+                        }}
+                        disabled={maxLegendaryExchange < num}
+                        className={`flex-1 px-1 py-1 rounded font-bold text-xs ${
+                          maxLegendaryExchange >= num
+                            ? 'bg-orange-600 hover:bg-orange-500 text-white cursor-pointer'
+                            : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {num}회
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-orange-300">{consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] || 0}</span>
-                <button
-                  onClick={() => {
-                    if (engine) {
-                      const result = engine.exchangeTokenForRandomMonster('legendary');
-                      setSelectionResult(result);
-                    }
-                  }}
-                  disabled={(consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] || 0) < 10}
-                  className={`px-2 py-1 rounded font-bold text-xs ${
-                    (consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] || 0) >= 10
-                      ? 'bg-orange-600 hover:bg-orange-500 text-white'
-                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                  }`}
-                >
-                  교환
-                </button>
-              </div>
-            </div>
+              );
+            })()}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -644,12 +672,12 @@ const Collection = () => {
                           <div className={`w-4 h-4 rounded flex items-center justify-center text-[8px] ${
                             rareUnlocked ? 'bg-purple-600' : rareInscribed ? 'bg-cyan-600' : 'bg-gray-800'
                           }`}>
-                            {rareUnlocked ? '💎' : rareInscribed ? '📚' : '-'}
+                            {rareUnlocked ? '💎' : rareInscribed ? '📖' : '-'}
                           </div>
                           <div className={`w-4 h-4 rounded flex items-center justify-center text-[8px] ${
                             legendaryUnlocked ? 'bg-orange-600' : legendaryInscribed ? 'bg-cyan-600' : 'bg-gray-800'
                           }`}>
-                            {legendaryUnlocked ? '👑' : legendaryInscribed ? '📚' : '-'}
+                            {legendaryUnlocked ? '👑' : legendaryInscribed ? '📖' : '-'}
                           </div>
                         </div>
                       </div>
@@ -833,7 +861,7 @@ const Collection = () => {
       {inscribeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={() => setInscribeModal(null)}>
           <div className="bg-gray-800 border-2 border-cyan-500 rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-bold text-cyan-400 mb-4 text-center">📚 몬스터 각인</h3>
+            <h3 className="text-xl font-bold text-cyan-400 mb-4 text-center">📖 몬스터 각인</h3>
 
             <div className="bg-gray-900 rounded-lg p-4 mb-4 border border-gray-700">
               <div className="flex items-center justify-center gap-3 mb-3">
@@ -886,7 +914,7 @@ const Collection = () => {
                 onClick={confirmInscribe}
                 className="flex-1 py-2 rounded font-bold bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white transition-colors shadow-lg"
               >
-                📚 각인하기
+                📖 각인하기
               </button>
             </div>
           </div>
@@ -1035,16 +1063,36 @@ const Collection = () => {
               {selectionResult.success ? '🎉 등록 완료!' : '❌ 등록 실패'}
             </h3>
 
-            {selectionResult.success && (
+            {/* 단일 몬스터 (기존 방식) */}
+            {selectionResult.success && selectionResult.monster && !selectionResult.monsters && (
               <div className="flex justify-center mb-4">
                 <MonsterImage
-                  floorStart={selectionResult.floor}
-                  monsterIndex={selectionResult.monsterIndex}
+                  floorStart={selectionResult.monster.floor}
+                  monsterIndex={selectionResult.monster.index}
                   isUnlocked={true}
                   isRare={selectionResult.grade === 'rare'}
                   isLegendary={selectionResult.grade === 'legendary'}
                   size="lg"
                 />
+              </div>
+            )}
+
+            {/* 다중 몬스터 (토큰 교환) */}
+            {selectionResult.success && selectionResult.monsters && (
+              <div className="flex flex-wrap justify-center gap-2 mb-4 max-h-32 overflow-y-auto">
+                {selectionResult.monsters.map((monster, idx) => (
+                  <div key={idx} className="flex flex-col items-center">
+                    <MonsterImage
+                      floorStart={monster.floor}
+                      monsterIndex={monster.index}
+                      isUnlocked={true}
+                      isRare={monster.id?.startsWith('rare_')}
+                      isLegendary={monster.id?.startsWith('legendary_')}
+                      size="md"
+                    />
+                    <span className="text-[10px] text-gray-400 truncate max-w-[60px]">{monster.name}</span>
+                  </div>
+                ))}
               </div>
             )}
 

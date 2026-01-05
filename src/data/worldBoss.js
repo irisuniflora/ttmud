@@ -67,15 +67,6 @@ export const AUCTION_ITEMS = [
     quantity: 10
   },
   {
-    id: 'stat_max_item',
-    name: '완벽의 정수',
-    description: '장비의 현재 옵션을 최대치로 고정',
-    icon: '⚙️',
-    rarity: 'mythic',
-    minBid: 500,
-    quantity: 3
-  },
-  {
     id: 'monster_selection_ticket',
     name: '몬스터 도감 선택권',
     description: '원하는 몬스터를 선택하여 도감에 등록',

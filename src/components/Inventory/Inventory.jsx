@@ -6,7 +6,7 @@ import { formatNumber } from '../../utils/formatter';
 import NotificationModal from '../UI/NotificationModal';
 
 const Inventory = () => {
-  const { gameState, equipItem, unequipItem, autoEquipAll, enhanceSlot, autoSellItems, updateSettings, usePerfectEssence } = useGame();
+  const { gameState, equipItem, unequipItem, autoEquipAll, enhanceSlot, autoSellItems, updateSettings } = useGame();
   const { equipment, inventory, slotEnhancements = {}, player, settings = {}, consumables = {} } = gameState;
 
   // localStorage에서 마지막 선택한 레어리티 불러오기
@@ -56,21 +56,6 @@ const Inventory = () => {
       showNotification('판매 완료!', `${result.soldCount}개 아이템을 ${formatNumber(result.totalGold)} 골드에 판매했습니다!`, 'success');
     } else {
       showNotification('판매 실패', result.message, 'warning');
-    }
-  };
-
-  const handleUsePerfectEssence = (slot, statIndex) => {
-    const essenceCount = consumables.stat_max_item || 0;
-    if (essenceCount < 1) {
-      showNotification('완벽의 정수 부족', '완벽의 정수가 없습니다', 'warning');
-      return;
-    }
-
-    const result = usePerfectEssence(slot, statIndex);
-    if (result.success) {
-      showNotification('⚙️ 극옵화 성공!', result.message, 'success');
-    } else {
-      showNotification('극옵화 실패', result.message, 'error');
     }
   };
 
@@ -158,15 +143,6 @@ const Inventory = () => {
                           <span className="truncate flex-1 text-left">
                             {stat.name} +{stat.value}{stat.suffix}
                           </span>
-                          {(consumables.stat_max_item || 0) > 0 && (
-                            <button
-                              onClick={() => handleUsePerfectEssence(slot, idx)}
-                              className="bg-cyan-600 hover:bg-cyan-700 text-white text-[8px] px-1 rounded"
-                              title="완벽의 정수로 극옵화"
-                            >
-                              ⚙️
-                            </button>
-                          )}
                         </div>
                       ))}
                     </div>

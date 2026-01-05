@@ -16,6 +16,12 @@ const BossBattle = () => {
   const [heartLostIndex, setHeartLostIndex] = useState(-1); // 잃어버린 하트 인덱스 (애니메이션용)
   const attackTimerRef = useRef(null);
   const lastAttackRef = useRef(Date.now());
+  const forfeitBossBattleRef = useRef(forfeitBossBattle);
+
+  // forfeitBossBattle 함수 최신 참조 유지
+  useEffect(() => {
+    forfeitBossBattleRef.current = forfeitBossBattle;
+  }, [forfeitBossBattle]);
 
   const hpPercent = getHPPercent(currentMonster.hp, currentMonster.maxHp);
 
@@ -36,7 +42,7 @@ const BossBattle = () => {
         // 하트 0이 되면 패배
         if (newHearts <= 0) {
           setTimeout(() => {
-            forfeitBossBattle();
+            forfeitBossBattleRef.current();
           }, 500);
         }
 
@@ -59,7 +65,7 @@ const BossBattle = () => {
         clearInterval(attackTimerRef.current);
       }
     };
-  }, [player.floorState, forfeitBossBattle]);
+  }, [player.floorState]);
 
   // 하트 렌더링
   const renderHearts = () => {

@@ -23,7 +23,10 @@
       "Bash(cat:*)",
       "Bash(ls -la \"c:\\Users\\welch\\Desktop\\ttmud\\public\\images\\field\\characters\\base\"\" 2>/dev/null || dir \"c:UserswelchDesktopttmudpublicimagesfieldcharactersbase\" 2>nul || echo \"Directory not found \")",
       "Bash(npm run deploy:*)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(npx eslint:*)",
+      "Bash(tree:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []
