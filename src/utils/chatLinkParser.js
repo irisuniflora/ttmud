@@ -2,7 +2,7 @@
 
 import { EQUIPMENT_SETS, EQUIPMENT_SLOT_NAMES, NORMAL_GRADES, ANCIENT_CONFIG } from '../data/equipmentSets';
 import { INSCRIPTIONS, INSCRIPTION_GRADES, calculateInscriptionStats } from '../data/inscriptions';
-import { HEROES, HERO_GRADES, getHeroStats, getHeroById } from '../data/heroes';
+// 구 영웅 시스템 제거됨 - 영웅 링크 기능 비활성화
 
 // 링크 타입
 export const LINK_TYPES = {
@@ -124,24 +124,9 @@ export const createInscriptionLink = (inscription) => {
   return `[[inscription|${displayName}|${encoded}]]`;
 };
 
-// 동료 링크 생성
+// 동료 링크 생성 (구 영웅 시스템 제거됨 - 기능 비활성화)
 export const createHeroLink = (heroId, heroState) => {
-  const hero = getHeroById(heroId);
-
-  // 표시명 생성
-  let displayName = hero?.name || heroId;
-  if (heroState.stars > 0) {
-    displayName = `${displayName} ${'★'.repeat(heroState.stars)}`;
-  }
-
-  const metadata = {
-    heroId,
-    grade: heroState.grade || 'normal',
-    stars: heroState.stars || 0
-  };
-
-  const encoded = encodeBase64(JSON.stringify(metadata));
-  return `[[hero|${displayName}|${encoded}]]`;
+  return null; // 영웅 링크 비활성화
 };
 
 // ===== 링크 표시 정보 =====
@@ -264,20 +249,7 @@ const resolveInscriptionData = (metadata) => {
   };
 };
 
-// 동료 데이터 복원
+// 동료 데이터 복원 (구 영웅 시스템 제거됨 - 기능 비활성화)
 const resolveHeroData = (metadata) => {
-  const { heroId, grade, stars } = metadata;
-  const hero = getHeroById(heroId);
-
-  if (!hero) return null;
-
-  const heroStats = getHeroStats(hero, grade, stars);
-
-  return {
-    ...hero,
-    grade,
-    stars,
-    stats: heroStats,
-    inscribed: true
-  };
+  return null; // 영웅 데이터 복원 비활성화
 };

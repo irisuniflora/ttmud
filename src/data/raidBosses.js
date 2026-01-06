@@ -177,6 +177,14 @@ export const calculateBossCoinReward = (difficultyLevel) => {
   return Math.floor(10 * multiplier);
 };
 
+// 봉인구역 보스 방어율 계산 (20% + (레벨-1) × 2%)
+// Lv1: 20%, Lv10: 38%, Lv20: 58%, Lv40: 98%
+export const calculateBossDefenseRate = (difficultyLevel) => {
+  const baseDefense = 20;
+  const defensePerLevel = 2;
+  return Math.min(98, baseDefense + (difficultyLevel - 1) * defensePerLevel); // 최대 98%
+};
+
 // 난이도 레벨별 보스 스탯 계산 (플레이어 층수와 무관하게 난이도만으로 결정)
 export const calculateRaidBossStats = (bossId, difficultyLevel) => {
   const boss = RAID_BOSSES[bossId];
@@ -186,6 +194,8 @@ export const calculateRaidBossStats = (bossId, difficultyLevel) => {
   const difficultyMultiplier = getDifficultyMultiplier(difficultyLevel);
   // 회피는 단리로 레벨당 +10% (레벨 1 = 100%, 레벨 2 = 110%, 레벨 11 = 200%)
   const evasionMultiplier = 1 + (difficultyLevel - 1) * 0.1;
+  // 방어율 계산 (20% + (레벨-1) × 2%)
+  const defenseRate = calculateBossDefenseRate(difficultyLevel);
 
   return {
     ...boss,
@@ -195,6 +205,7 @@ export const calculateRaidBossStats = (bossId, difficultyLevel) => {
     hp: Math.floor(boss.baseStats.hp * difficultyMultiplier),
     maxHp: Math.floor(boss.baseStats.hp * difficultyMultiplier),
     defense: Math.floor(boss.baseStats.defense * difficultyMultiplier),
+    defenseRate, // 방어율 (%) - 방관 스탯으로 관통 필요
     evasion: Math.floor((boss.baseStats.evasion || 500) * evasionMultiplier),
     rewards: {
       gold: Math.floor(boss.rewards.gold * difficultyMultiplier),

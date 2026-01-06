@@ -1,11 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useGame } from '../../store/GameContext';
 import { formatNumber } from '../../utils/formatter';
+import { DEFENSE_FORMULAS } from '../../data/formulas';
 
 // GitHub Pages 배포용 BASE_URL
 const BASE_URL = import.meta.env.BASE_URL || '/';
 
 const DUMMY_TEST_DURATION = 30; // 30초
+
+// 요일 이름
+const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
 const TrainingDummy = () => {
   const { gameState, engine } = useGame();
@@ -16,11 +20,87 @@ const TrainingDummy = () => {
   const [totalDamage, setTotalDamage] = useState(0);
   const [hitCount, setHitCount] = useState(0);
   const [critCount, setCritCount] = useState(0);
+  const [missCount, setMissCount] = useState(0);
   const [damageNumbers, setDamageNumbers] = useState([]);
   const [bestDPS, setBestDPS] = useState(() => {
     const saved = localStorage.getItem('ttmud_bestDPS');
     return saved ? parseInt(saved, 10) : 0;
   });
+
+  // 현재 요일 특성
+  const dailyModifier = useMemo(() => {
+    return DEFENSE_FORMULAS.getDailyDummyModifier();
+  }, []);
+
+  const dayOfWeek = new Date().getDay();
+
+  // 플레이어 관통율 계산
+  const playerPenetration = useMemo(() => {
+    const penetrations = [];
+    // 전직별 기본 방관 (전직1: 10%, 전직2: 20%, 전직3: 30%, 전직4: 50%)
+    const classLevel = player?.classLevel || 1;
+    const basePenetration = classLevel === 1 ? 10 : classLevel === 2 ? 20 : classLevel === 3 ? 30 : 50;
+    penetrations.push(basePenetration);
+    // 문양에서 관통율 수집
+    const inscriptionStats = gameState.inscriptionStats || {};
+    if (inscriptionStats.defensePenetration) {
+      penetrations.push(inscriptionStats.defensePenetration);
+    }
+    // 장비에서 관통율 수집
+    Object.values(gameState.equipment || {}).forEach(item => {
+      if (item && item.stats) {
+        item.stats.forEach(stat => {
+          if (stat.id === 'defensePenetration' && stat.value > 0) {
+            penetrations.push(stat.value);
+          }
+        });
+      }
+    });
+    // 스킬에서 관통율 수집
+    const skillEffects = gameState.skillEffects || {};
+    if (skillEffects.defensePenetration) {
+      penetrations.push(skillEffects.defensePenetration);
+    }
+    // 유물에서 관통율 수집
+    const relicEffects = gameState.relicEffects || {};
+    if (relicEffects.defensePenetration) {
+      penetrations.push(relicEffects.defensePenetration);
+    }
+    return DEFENSE_FORMULAS.calculateTotalPenetration(penetrations);
+  }, [gameState.inscriptionStats, gameState.equipment, gameState.skillEffects, gameState.relicEffects]);
+
+  // 허수아비에게 적용되는 데미지 배율
+  const damageMultiplier = useMemo(() => {
+    if (dailyModifier.defenseRate <= 0) return 1;
+    const penetrations = [];
+    // 전직별 기본 방관 (전직1: 10%, 전직2: 20%, 전직3: 30%, 전직4: 50%)
+    const classLevel = player?.classLevel || 1;
+    const basePenetration = classLevel === 1 ? 10 : classLevel === 2 ? 20 : classLevel === 3 ? 30 : 50;
+    penetrations.push(basePenetration);
+    // 관통율 수집 (위와 동일)
+    const inscriptionStats = gameState.inscriptionStats || {};
+    if (inscriptionStats.defensePenetration) {
+      penetrations.push(inscriptionStats.defensePenetration);
+    }
+    Object.values(gameState.equipment || {}).forEach(item => {
+      if (item && item.stats) {
+        item.stats.forEach(stat => {
+          if (stat.id === 'defensePenetration' && stat.value > 0) {
+            penetrations.push(stat.value);
+          }
+        });
+      }
+    });
+    const skillEffects = gameState.skillEffects || {};
+    if (skillEffects.defensePenetration) {
+      penetrations.push(skillEffects.defensePenetration);
+    }
+    const relicEffects = gameState.relicEffects || {};
+    if (relicEffects.defensePenetration) {
+      penetrations.push(relicEffects.defensePenetration);
+    }
+    return DEFENSE_FORMULAS.calculateDamageMultiplier(dailyModifier.defenseRate, penetrations);
+  }, [dailyModifier.defenseRate, gameState.inscriptionStats, gameState.equipment, gameState.skillEffects, gameState.relicEffects]);
 
   const timerRef = useRef(null);
   const damageIdRef = useRef(0);
@@ -34,6 +114,7 @@ const TrainingDummy = () => {
     setTotalDamage(0);
     setHitCount(0);
     setCritCount(0);
+    setMissCount(0);
     setDamageNumbers([]);
     lastLogIdRef.current = combatLog.length > 0 ? combatLog[0]?.id : null;
     startTimeRef.current = Date.now();
@@ -72,7 +153,44 @@ const TrainingDummy = () => {
                         lastLog.type === 'damage' || lastLog.type === 'critical';
 
     if (isDamageLog) {
-      const isCrit = logMessage.includes('💥') || logMessage.includes('치명타') || lastLog.type === 'critical';
+      // 요일별 회피 체크 (명중 vs 회피치)
+      if (dailyModifier.evasionStat > 0) {
+        // 플레이어 명중 스탯 계산
+        const playerAccuracy = player?.stats?.accuracy || 100;
+        const dummyEvasion = dailyModifier.evasionStat;
+        // 명중률 = 플레이어 명중 / 허수아비 회피 * 100, 최소 10%, 최대 100%
+        const hitChance = Math.min(100, Math.max(10, (playerAccuracy / dummyEvasion) * 100));
+        const hitRoll = Math.random() * 100;
+
+        if (hitRoll > hitChance) {
+          // 회피됨 - MISS 표시
+          setMissCount(prev => prev + 1);
+          damageIdRef.current += 1;
+          const missDisplay = {
+            id: damageIdRef.current,
+            value: 0,
+            isMiss: true,
+            x: 40 + Math.random() * 20,
+            y: 30 + Math.random() * 20
+          };
+          setDamageNumbers(prev => [...prev.slice(-10), missDisplay]);
+          setTimeout(() => {
+            setDamageNumbers(prev => prev.filter(d => d.id !== missDisplay.id));
+          }, 1000);
+          return;
+        }
+      }
+
+      let isCrit = logMessage.includes('💥') || logMessage.includes('치명타') || lastLog.type === 'critical';
+
+      // 요일별 크리티컬 저항 체크
+      if (isCrit && dailyModifier.critResist > 0) {
+        const critResistRoll = Math.random() * 100;
+        if (critResistRoll < dailyModifier.critResist) {
+          isCrit = false; // 크리티컬이 일반 타격으로 변환
+        }
+      }
+
       // K/M/B 포맷 지원: "712.8M 데미지", "1.5B 데미지", "500K 데미지", "1,234 데미지"
       const damageMatch = logMessage.match(/([\d,.]+)([KMB])?\s*데미지/i);
 
@@ -83,6 +201,11 @@ const TrainingDummy = () => {
         else if (suffix === 'M') damageValue *= 1000000;
         else if (suffix === 'B') damageValue *= 1000000000;
         damageValue = Math.floor(damageValue);
+
+        // 요일별 방어율 적용
+        if (dailyModifier.defenseRate > 0) {
+          damageValue = Math.floor(damageValue * damageMultiplier);
+        }
 
         setTotalDamage(prev => prev + damageValue);
         setHitCount(prev => prev + 1);
@@ -104,7 +227,7 @@ const TrainingDummy = () => {
         }, 1000);
       }
     }
-  }, [combatLog, isTesting]);
+  }, [combatLog, isTesting, dailyModifier, damageMultiplier]);
 
   // 테스트 종료 시 결과 처리
   useEffect(() => {
@@ -136,12 +259,51 @@ const TrainingDummy = () => {
 
   return (
     <div className="bg-game-panel border border-game-border rounded-lg p-4 shadow-md">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           🥊 허수아비 훈련장
         </h3>
         <div className="text-xs text-gray-400">
           30초 DPS 측정
+        </div>
+      </div>
+
+      {/* 오늘의 특성 */}
+      <div className="bg-gradient-to-r from-purple-900/40 to-blue-900/40 border border-purple-500/30 rounded-lg p-2 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{dailyModifier.icon}</span>
+            <span className="text-sm font-bold text-purple-300">
+              {DAY_NAMES[dayOfWeek]}요일: {dailyModifier.name}
+            </span>
+          </div>
+        </div>
+        <div className="text-xs text-gray-400 mt-1">
+          {dailyModifier.description}
+        </div>
+        {/* 요일별 스탯 표시 */}
+        <div className="flex flex-col gap-1 mt-2 text-xs">
+          {dailyModifier.defenseRate > 0 && (
+            <div className="text-orange-400">
+              🛡️ 방어율: {dailyModifier.defenseRate}%
+              {playerPenetration > 0 && (
+                <span className="text-purple-400 ml-1">
+                  (관통: {playerPenetration.toFixed(1)}% → 데미지 {(damageMultiplier * 100).toFixed(1)}%)
+                </span>
+              )}
+            </div>
+          )}
+          {dailyModifier.evasionStat > 0 && (
+            <div className="text-yellow-400">
+              👻 회피치: {formatNumber(dailyModifier.evasionStat)}
+              <span className="text-gray-400 ml-1">
+                (내 명중: {formatNumber(player?.stats?.accuracy || 100)} → 명중률 {Math.min(100, Math.max(10, ((player?.stats?.accuracy || 100) / dailyModifier.evasionStat) * 100)).toFixed(1)}%)
+              </span>
+            </div>
+          )}
+          {dailyModifier.critResist > 0 && (
+            <div className="text-gray-300">🪨 크리저항: {dailyModifier.critResist}%</div>
+          )}
         </div>
       </div>
 
@@ -177,18 +339,26 @@ const TrainingDummy = () => {
             style={{
               left: `${dmg.x}%`,
               top: `${dmg.y}%`,
-              textShadow: dmg.isCrit
-                ? '0 0 8px #ff0000, 0 0 16px #ff4444, 2px 2px 4px rgba(0,0,0,1)'
-                : '2px 2px 4px rgba(0,0,0,0.9)',
-              animation: dmg.isCrit ? 'critDamageFloat 1s ease-out forwards' : 'damageFloat 1s ease-out forwards',
-              fontSize: dmg.isCrit ? '1.5rem' : '1.1rem',
-              color: dmg.isCrit ? '#FFD700' : '#FFFFFF',
+              textShadow: dmg.isMiss
+                ? '0 0 8px #666, 2px 2px 4px rgba(0,0,0,1)'
+                : dmg.isCrit
+                  ? '0 0 8px #ff0000, 0 0 16px #ff4444, 2px 2px 4px rgba(0,0,0,1)'
+                  : '2px 2px 4px rgba(0,0,0,0.9)',
+              animation: dmg.isMiss ? 'missFloat 1s ease-out forwards' : (dmg.isCrit ? 'critDamageFloat 1s ease-out forwards' : 'damageFloat 1s ease-out forwards'),
+              fontSize: dmg.isMiss ? '1rem' : (dmg.isCrit ? '1.5rem' : '1.1rem'),
+              color: dmg.isMiss ? '#888888' : (dmg.isCrit ? '#FFD700' : '#FFFFFF'),
               fontWeight: 700,
             }}
           >
-            {dmg.isCrit && <span style={{ color: '#FF4444' }}>★</span>}
-            {formatNumber(dmg.value)}
-            {dmg.isCrit && <span style={{ color: '#FF4444' }}>★</span>}
+            {dmg.isMiss ? (
+              <span style={{ fontStyle: 'italic' }}>MISS</span>
+            ) : (
+              <>
+                {dmg.isCrit && <span style={{ color: '#FF4444' }}>★</span>}
+                {formatNumber(dmg.value)}
+                {dmg.isCrit && <span style={{ color: '#FF4444' }}>★</span>}
+              </>
+            )}
           </div>
         ))}
 
@@ -214,11 +384,16 @@ const TrainingDummy = () => {
             50% { opacity: 1; transform: translateY(-25px) scale(1.6); }
             100% { opacity: 0; transform: translateY(-50px) scale(1); }
           }
+          @keyframes missFloat {
+            0% { opacity: 1; transform: translateY(0) scale(0.8); }
+            50% { opacity: 0.7; transform: translateY(-15px) scale(1); }
+            100% { opacity: 0; transform: translateY(-30px) scale(0.6); }
+          }
         `}</style>
       </div>
 
       {/* 통계 영역 */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className={`grid ${dailyModifier.evasionStat > 0 ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-4`}>
         <div className="bg-gray-800/50 rounded-lg p-3 text-center">
           <div className="text-xs text-gray-400 mb-1">총 데미지</div>
           <div className="text-lg font-bold text-cyan-400">{formatNumber(totalDamage)}</div>
@@ -235,6 +410,20 @@ const TrainingDummy = () => {
           <div className="text-xs text-gray-400 mb-1">치명타율</div>
           <div className="text-lg font-bold text-orange-400">{critRate}%</div>
         </div>
+        {dailyModifier.evasionStat > 0 && (
+          <div className="bg-gray-800/50 rounded-lg p-3 text-center">
+            <div className="text-xs text-gray-400 mb-1">회피됨</div>
+            <div className="text-lg font-bold text-gray-500">{missCount}회</div>
+          </div>
+        )}
+        {dailyModifier.evasionStat > 0 && (
+          <div className="bg-gray-800/50 rounded-lg p-3 text-center">
+            <div className="text-xs text-gray-400 mb-1">명중률</div>
+            <div className="text-lg font-bold text-green-400">
+              {hitCount + missCount > 0 ? ((hitCount / (hitCount + missCount)) * 100).toFixed(1) : 0}%
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 최고 DPS 기록 */}

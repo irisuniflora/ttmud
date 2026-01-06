@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGame } from '../../store/GameContext';
-import { RAID_BOSSES, calculateRaidBossStats, INSCRIPTION_SLOT_CONFIG, checkBossUnlock, getDifficultyName, getDifficultyColor } from '../../data/raidBosses';
+import { RAID_BOSSES, calculateRaidBossStats, INSCRIPTION_SLOT_CONFIG, checkBossUnlock, getDifficultyName, getDifficultyColor, calculateBossDefenseRate } from '../../data/raidBosses';
+import { DEFENSE_FORMULAS } from '../../data/formulas';
 import { INSCRIPTIONS, INSCRIPTION_GRADES, INSCRIPTION_ABILITIES, calculateInscriptionStats, migrateGrade } from '../../data/inscriptions';
 import { getTotalRelicEffects } from '../../data/prestigeRelics';
 import { generateSetItem, EQUIPMENT_SLOTS, getEnhanceBonus } from '../../data/equipmentSets';
 import { EQUIPMENT_CONFIG } from '../../data/gameBalance';
 import { formatNumber, formatPercent } from '../../utils/formatter';
 import { getTotalSkillEffects } from '../../data/skills';
-import { getHeroById, getHeroStats } from '../../data/heroes';
 import NotificationModal from '../UI/NotificationModal';
 
 // GitHub Pages 배포용 BASE_URL
@@ -147,22 +147,10 @@ const SealedZone = () => {
     const skillEffects = getTotalSkillEffects(skillLevels);
     const relicEffects = getTotalRelicEffects(relics);
 
+    // 구 영웅 시스템 제거됨 - 새 동료 시스템은 GameEngine에서 자동 적용
     let heroAttack = 0;
     let heroCritChance = 0;
     let heroCritDmg = 0;
-
-    Object.keys(heroes || {}).forEach(heroId => {
-      const heroState = heroes[heroId];
-      if (heroState && heroState.inscribed) {
-        const heroData = getHeroById(heroId);
-        if (heroData) {
-          const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
-          if (stats.attack) heroAttack += stats.attack;
-          if (stats.critChance) heroCritChance += stats.critChance;
-          if (stats.critDmg) heroCritDmg += stats.critDmg;
-        }
-      }
-    });
 
     let equipmentAttack = 0;
     let equipmentCritChance = 0;
@@ -253,17 +241,9 @@ const SealedZone = () => {
     // 보스 회피 (bossStats.evasion - calculateRaidBossStats에서 난이도 반영됨)
     const bossEvasion = bossStats.evasion || 500;
     // 동료 명중 계산
+    // 구 영웅 시스템 제거됨 - 명중률은 현재 게임에서 사용 안함
     let heroAccuracy = 0;
-    Object.entries(gameState.heroes || {}).forEach(([heroId, heroState]) => {
-      if (heroState && heroState.inscribed) {
-        const heroData = getHeroById(heroId);
-        if (heroData) {
-          const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
-          if (stats.accuracy) heroAccuracy += stats.accuracy;
-        }
-      }
-    });
-    // 플레이어 명중 = 캐릭터 기본 명중 + 문양 명중 + 동료 명중
+    // 플레이어 명중 = 캐릭터 기본 명중 + 문양 명중
     const playerAccuracy = (gameState.player?.stats?.accuracy || 0) + (inscriptionStats.accuracy || 0) + heroAccuracy;
 
     let hitChance = 100;
@@ -311,6 +291,45 @@ const SealedZone = () => {
     // 방어력 감소 최대 30%로 제한 (기존 공식이 너무 강했음)
     const defenseReduction = Math.min(0.3, effectiveDefense / (effectiveDefense + 500));
     baseDamage *= (1 - defenseReduction);
+
+    // 방어율 시스템 적용 (20% + 레벨×2%)
+    // defenseRate가 있으면 방관 스탯으로 관통해야 함
+    const bossDefenseRate = bossStats.defenseRate || 0;
+    if (bossDefenseRate > 0) {
+      // 방관 스탯 수집
+      const defensePenetrations = [];
+      // 전직별 기본 방관 (전직1: 10%, 전직2: 20%, 전직3: 30%, 전직4: 50%)
+      const classLevel = gameState.player?.classLevel || 1;
+      const basePenetration = classLevel === 1 ? 10 : classLevel === 2 ? 20 : classLevel === 3 ? 30 : 50;
+      defensePenetrations.push(basePenetration);
+      // 문양에서 방관 수집
+      if (inscriptionStats.defensePenetration > 0) {
+        defensePenetrations.push(inscriptionStats.defensePenetration);
+      }
+      // 장비에서 방관 수집
+      Object.values(gameState.equipment || {}).forEach(item => {
+        if (item && item.stats) {
+          item.stats.forEach(stat => {
+            if (stat.id === 'defensePenetration' && stat.value > 0) {
+              defensePenetrations.push(stat.value);
+            }
+          });
+        }
+      });
+      // 스킬에서 방관 수집
+      const skillEffects = getTotalSkillEffects(gameState.skillLevels || {});
+      if (skillEffects.defensePenetration > 0) {
+        defensePenetrations.push(skillEffects.defensePenetration);
+      }
+      // 유물에서 방관 수집
+      if (relicEffects.defensePenetration > 0) {
+        defensePenetrations.push(relicEffects.defensePenetration);
+      }
+
+      // 방어율 적용
+      const defenseMultiplier = DEFENSE_FORMULAS.calculateDamageMultiplier(bossDefenseRate, defensePenetrations);
+      baseDamage *= defenseMultiplier;
+    }
 
     // 보호막 관련 어빌리티
     let shieldDamage = 0;
@@ -1208,16 +1227,8 @@ const SealedZone = () => {
               }, 0);
               // 동료 명중 계산
               let heroAccuracy = 0;
-              Object.entries(gameState.heroes || {}).forEach(([heroId, heroState]) => {
-                if (heroState && heroState.inscribed) {
-                  const heroData = getHeroById(heroId);
-                  if (heroData) {
-                    const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
-                    if (stats.accuracy) heroAccuracy += stats.accuracy;
-                  }
-                }
-              });
-              const totalPlayerAccuracy = playerBaseAccuracy + inscriptionAccuracy + heroAccuracy;
+              // 구 영웅 시스템 제거됨
+              const totalPlayerAccuracy = playerBaseAccuracy + inscriptionAccuracy;
               // 백발백중 있으면 100% 명중
               const hitChance = hasTrueHit
                 ? 100
@@ -1225,11 +1236,47 @@ const SealedZone = () => {
                   ? 100
                   : Math.max(10, (totalPlayerAccuracy / bossStats.evasion) * 100);
 
+              // 플레이어 관통율 계산
+              const playerPenetrations = [];
+              // 전직별 기본 방관 (전직1: 10%, 전직2: 20%, 전직3: 30%, 전직4: 50%)
+              const classLevel = gameState.player?.classLevel || 1;
+              const basePenetration = classLevel === 1 ? 10 : classLevel === 2 ? 20 : classLevel === 3 ? 30 : 50;
+              playerPenetrations.push(basePenetration);
+              // 문양에서 관통율 수집
+              if (inscriptionStats.defensePenetration) {
+                playerPenetrations.push(inscriptionStats.defensePenetration);
+              }
+              // 장비에서 관통율 수집
+              Object.values(gameState.equipment || {}).forEach(item => {
+                if (item && item.stats) {
+                  item.stats.forEach(stat => {
+                    if (stat.id === 'defensePenetration' && stat.value > 0) {
+                      playerPenetrations.push(stat.value);
+                    }
+                  });
+                }
+              });
+              // 스킬에서 관통율 수집
+              const skillEffects = gameState.skillEffects || {};
+              if (skillEffects.defensePenetration) {
+                playerPenetrations.push(skillEffects.defensePenetration);
+              }
+              // 유물에서 관통율 수집
+              const relicEffects = gameState.relicEffects || {};
+              if (relicEffects.defensePenetration) {
+                playerPenetrations.push(relicEffects.defensePenetration);
+              }
+
+              const totalPenetration = DEFENSE_FORMULAS.calculateTotalPenetration(playerPenetrations);
+              const bossDefenseRate = bossStats.defenseRate || 0;
+              const damageMultiplier = DEFENSE_FORMULAS.calculateDamageMultiplier(bossDefenseRate, playerPenetrations);
+
               return (
                 <div className="flex flex-col gap-1 mt-2 text-xs">
                   <div className="flex items-center gap-3">
                     <span className="text-gray-400">👁️ 회피: <span className="text-yellow-400 font-bold">{formatNumber(bossStats.evasion)}</span></span>
                     <span className="text-gray-400">🛡️ 방어: <span className="text-blue-400 font-bold">{formatNumber(bossStats.defense)}</span></span>
+                    <span className="text-gray-400">🔰 방어율: <span className="text-orange-400 font-bold">{bossDefenseRate}%</span></span>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-gray-400">🎯 내 명중: <span className="text-green-400 font-bold">{formatNumber(totalPlayerAccuracy)}</span></span>
@@ -1237,6 +1284,14 @@ const SealedZone = () => {
                       ({hitChance.toFixed(0)}% 명중률){hasTrueHit && <span className="text-yellow-300 font-bold"> ✨백발백중</span>}
                     </span>
                   </div>
+                  {bossDefenseRate > 0 && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-400">⚔️ 내 관통: <span className="text-purple-400 font-bold">{totalPenetration.toFixed(1)}%</span></span>
+                      <span className={`font-bold ${damageMultiplier >= 0.9 ? 'text-green-400' : damageMultiplier >= 0.5 ? 'text-yellow-400' : 'text-red-400'}`}>
+                        (데미지 {(damageMultiplier * 100).toFixed(1)}%)
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })()}

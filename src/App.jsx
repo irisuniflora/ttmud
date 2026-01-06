@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { GameProvider, useGame } from './store/GameContext';
 import PlayerInfo from './components/Player/PlayerInfo';
 import StatsList from './components/Player/StatsList';
-import HeroList from './components/Heroes/HeroList';
 import NewEquipment from './components/Equipment/NewEquipment';
 import Achievements from './components/Achievements/Achievements';
 import SkillTree from './components/SkillTree/SkillTree';
@@ -16,6 +15,8 @@ import DevPanel from './components/DevTools/DevPanel';
 import PrestigeConfirmModal from './components/UI/PrestigeConfirmModal';
 import { getTotalRelicEffects } from './data/prestigeRelics';
 import { MONSTER_SETS, checkSetCompletion } from './data/monsterSets';
+// 새 동료 시스템
+import { CompanionList } from './components/Companions';
 
 const GameContent = () => {
   const { gameState, isRunning, togglePause, saveGame, resetGame, prestige } = useGame();
@@ -247,14 +248,14 @@ const GameContent = () => {
                 )}
               </button>
               <button
-                onClick={() => setActiveTab('heroes')}
+                onClick={() => setActiveTab('companions')}
                 className={`px-4 py-2 rounded font-bold transition-all ${
-                  activeTab === 'heroes'
-                    ? 'bg-blue-600 text-white shadow-md'
+                  activeTab === 'companions'
+                    ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-md'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
                 }`}
               >
-                👥 동료
+                🎴 동료 / 소환
               </button>
               <button
                 onClick={() => setActiveTab('skills')}
@@ -330,7 +331,7 @@ const GameContent = () => {
 
             {/* 탭 컨텐츠 - 이 영역만 스크롤 */}
             <div className="flex-1 overflow-y-auto">
-              {activeTab === 'heroes' && <HeroList />}
+              {activeTab === 'companions' && <CompanionList />}
               {activeTab === 'equipment' && <NewEquipment />}
               {activeTab === 'achievements' && <Achievements />}
               {activeTab === 'skills' && <SkillTree />}

@@ -81,6 +81,16 @@ const GOLD_SHOP_ITEMS = [
     cost: 200000,
     weeklyLimit: 3,
     rarity: 'epic'
+  },
+  {
+    id: 'gold_diamonds',
+    name: '다이아',
+    description: '프리미엄 재화',
+    icon: '💎',
+    cost: 10000000,  // 1천만 골드 = 1 다이아
+    weeklyLimit: 999,
+    rarity: 'legendary',
+    rewardAmount: 1
   }
 ];
 
@@ -108,7 +118,7 @@ const DIAMOND_SHOP_ITEMS = [
     id: 'diamond_exp_boost',
     name: '경험치 부스터',
     description: '1시간 경험치 2배',
-    icon: '✨',
+    icon: '📈',
     cost: 30,
     weeklyLimit: 14,
     rarity: 'rare'
@@ -121,15 +131,6 @@ const DIAMOND_SHOP_ITEMS = [
     cost: 200,
     weeklyLimit: 1,
     rarity: 'legendary'
-  },
-  {
-    id: 'diamond_premium_set',
-    name: '프리미엄 세트 상자',
-    description: '유니크 이상 세트템 보장',
-    icon: '🎁',
-    cost: 150,
-    weeklyLimit: 3,
-    rarity: 'mythic'
   }
 ];
 
@@ -142,9 +143,9 @@ const RARITY_COLORS = {
 };
 
 const SHOP_TABS = [
-  { id: 'coin', name: '코인 상점', icon: '🪙', currency: 'bossCoins', currencyName: '코인' },
+  { id: 'coin', name: '봉인구역 상점', icon: '🔒', currency: 'bossCoins', currencyName: '코인' },
   { id: 'gold', name: '골드 상점', icon: '💰', currency: 'gold', currencyName: '골드' },
-  { id: 'diamond', name: '다이아 상점', icon: '💎', currency: 'diamonds', currencyName: '다이아' }
+  { id: 'diamond', name: '다이아 상점', icon: '💠', currency: 'diamonds', currencyName: '다이아' }
 ];
 
 // 주간 리셋 체크 (월요일 00시 기준)
@@ -161,6 +162,7 @@ const Shop = () => {
   const { gameState, setGameState, engine } = useGame();
   const [activeShop, setActiveShop] = useState('coin');
   const [purchaseAmount, setPurchaseAmount] = useState({});
+  const [pullResult, setPullResult] = useState(null); // 뽑기 결과 모달
 
   const { sealedZone = {}, player = {} } = gameState;
   const bossCoins = sealedZone.bossCoins || 0;
@@ -273,6 +275,9 @@ const Shop = () => {
           if (!engine.state.sealedZone) engine.state.sealedZone = {};
           engine.state.sealedZone.tickets = (engine.state.sealedZone.tickets || 0) + amount;
           break;
+        case 'gold_diamonds':
+          engine.state.diamonds = (engine.state.diamonds || 0) + (item.rewardAmount * amount);
+          break;
         case 'random_set_item':
           if (!engine.state.newInventory) engine.state.newInventory = [];
           for (let i = 0; i < amount; i++) {
@@ -356,6 +361,9 @@ const Shop = () => {
             tickets: (prev.sealedZone?.tickets || 0) + amount
           };
           break;
+        case 'gold_diamonds':
+          newState.diamonds = (prev.diamonds || 0) + (item.rewardAmount * amount);
+          break;
       }
 
       return newState;
@@ -371,6 +379,7 @@ const Shop = () => {
     }
     setPurchaseAmount(prev => ({ ...prev, [item.id]: 1 }));
   };
+
 
   const currentTab = SHOP_TABS.find(t => t.id === activeShop);
   const currentCurrency = getCurrentCurrency();
@@ -491,6 +500,47 @@ const Shop = () => {
           <p className="text-gray-400 text-sm">
             💎 다이아몬드는 게임 내 특별 이벤트나 업적으로 획득할 수 있습니다
           </p>
+        </div>
+      )}
+
+      {/* 뽑기 결과 모달 */}
+      {pullResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={() => setPullResult(null)}>
+          <div className="bg-gray-800 border-2 border-purple-500 rounded-lg p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-2xl font-bold text-purple-400 mb-4 text-center">🎉 소환 결과!</h3>
+
+            {pullResult.bonusOrbs > 0 && (
+              <div className="bg-blue-900/30 border border-blue-500 rounded-lg p-2 mb-4 text-center">
+                <p className="text-sm text-blue-300">🔮 보너스 오브 +{pullResult.bonusOrbs}개 획득!</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+              {pullResult.companions.map((companion, idx) => {
+                const rarityColors = {
+                  common: 'border-gray-500 bg-gray-900/50',
+                  uncommon: 'border-green-500 bg-green-900/30',
+                  rare: 'border-blue-500 bg-blue-900/30',
+                  epic: 'border-purple-500 bg-purple-900/30',
+                  legendary: 'border-orange-500 bg-orange-900/30'
+                };
+                return (
+                  <div key={idx} className={`${rarityColors[companion.rarity]} border-2 rounded-lg p-3 text-center`}>
+                    <p className="text-3xl mb-2">{companion.icon}</p>
+                    <p className="text-xs font-bold truncate">{companion.name}</p>
+                    <p className="text-[10px] text-gray-400">{companion.rarity}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => setPullResult(null)}
+              className="w-full py-3 rounded-lg font-bold bg-purple-600 hover:bg-purple-700 text-white transition-colors"
+            >
+              확인
+            </button>
+          </div>
         </div>
       )}
     </div>

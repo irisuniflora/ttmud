@@ -447,6 +447,47 @@ export const GameProvider = ({ children }) => {
     setChatMessages([]);
   };
 
+  // ===== 새 동료 시스템 =====
+  const pullCompanionCards = (packageId) => {
+    const result = engineRef.current.pullCompanionCards(packageId);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const pullOrbs = (count) => {
+    const result = engineRef.current.pullOrbs(count);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const upgradeCompanionStar = (companionId) => {
+    const result = engineRef.current.upgradeCompanionStar(companionId);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const equipOrbToCompanion = (companionId, orbId, slotIndex) => {
+    const result = engineRef.current.equipOrbToCompanion(companionId, orbId, slotIndex);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const unequipOrbFromCompanion = (companionId, slotIndex) => {
+    const result = engineRef.current.unequipOrbFromCompanion(companionId, slotIndex);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
   // 보스 타이머 업데이트 (시간 기반 - 200ms마다 체크)
   useEffect(() => {
     const timerInterval = setInterval(() => {
@@ -534,6 +575,12 @@ export const GameProvider = ({ children }) => {
       chatMessages,
       addChatMessage,
       clearChatMessages,
+      // 새 동료 시스템
+      pullCompanionCards,
+      pullOrbs,
+      upgradeCompanionStar,
+      equipOrbToCompanion,
+      unequipOrbFromCompanion,
       engine: engineRef.current
     }}>
       {children}

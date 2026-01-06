@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useGame } from '../../store/GameContext';
 import { EQUIPMENT_SETS, EQUIPMENT_SLOT_NAMES, NORMAL_GRADES, ANCIENT_CONFIG } from '../../data/equipmentSets';
 import { INSCRIPTIONS, INSCRIPTION_GRADES } from '../../data/inscriptions';
-import { HEROES, HERO_GRADES, getHeroById } from '../../data/heroes';
+// 구 영웅 시스템 제거됨
 import { createEquipmentLink, createInscriptionLink, createHeroLink } from '../../utils/chatLinkParser';
 
 // 장비 아이템 카드
@@ -68,12 +68,9 @@ const InscriptionCard = ({ inscription, onClick }) => {
   );
 };
 
-// 동료 카드
+// 동료 카드 (구 영웅 시스템 제거됨 - 비활성화)
 const HeroCard = ({ heroId, heroState, onClick }) => {
-  const hero = getHeroById(heroId);
-  const gradeData = HERO_GRADES[heroState.grade];
-
-  if (!hero || !gradeData) return null;
+  return null; // 영웅 카드 비활성화
 
   const colorMap = {
     normal: '#9CA3AF',

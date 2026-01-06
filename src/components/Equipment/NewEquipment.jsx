@@ -214,7 +214,7 @@ const NewEquipment = () => {
   const handleUseOrb = (slot) => {
     const result = useOrb(slot);
     if (result.success) {
-      showNotification('재굴림 성공!', result.message, 'success');
+      showNotification('카르마 오브 사용!', result.message, 'success');
     } else {
       showNotification('실패', result.message, 'warning');
     }
@@ -591,13 +591,13 @@ const NewEquipment = () => {
               </span>
               <span
                 className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-300 cursor-help"
-                title="재굴림 오브 - 장비 옵션 재굴림 (잠긴 옵션 제외)"
+                title="카르마 오브 - 장비 옵션 재굴림 (잠긴 옵션 제외)"
               >
                 🔮 {orbs}
               </span>
               <span
                 className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-300 cursor-help"
-                title="봉인석 - 재굴림 시 옵션 잠금 (잠금 해제는 무료)"
+                title="봉인석 - 옵션 잠금 (잠금 해제는 무료)"
               >
                 🔒 {sealStones}
               </span>
@@ -824,9 +824,9 @@ const NewEquipment = () => {
                                     ? 'bg-purple-600 hover:bg-purple-500 text-white'
                                     : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                                 }`}
-                                title={lockedCount > 0 ? `재굴림 시 봉인석 ${lockedCount}개 소모` : '재굴림'}
+                                title={lockedCount > 0 ? `카르마 오브 사용 (봉인석 ${lockedCount}개 소모)` : '카르마 오브 사용'}
                               >
-                                <span>🔮 재굴림</span>
+                                <span>🔮 카르마</span>
                                 {lockedCount > 0 && <span className="text-cyan-300">🔒{lockedCount}</span>}
                               </button>
                             </div>
@@ -1045,7 +1045,7 @@ const NewEquipment = () => {
                                         : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                                     }`}
                                   >
-                                    <span>🔮 재굴림</span>
+                                    <span>🔮 카르마</span>
                                     {lockedCount > 0 && <span className="text-cyan-300">🔒{lockedCount}</span>}
                                   </button>
                                 </div>

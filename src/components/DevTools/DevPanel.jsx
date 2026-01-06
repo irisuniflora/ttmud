@@ -48,7 +48,7 @@ const DevPanel = () => {
           state.player.fragments = (state.player.fragments || 0) + amount;
           break;
         case 'orbs':
-          state.player.orbs = (state.player.orbs || 0) + amount;
+          state.orbs = (state.orbs || 0) + amount;
           break;
         case 'level':
           state.player.level = (state.player.level || 1) + amount;
@@ -87,7 +87,7 @@ const DevPanel = () => {
           state.player.fragments = amount;
           break;
         case 'orbs':
-          state.player.orbs = amount;
+          state.orbs = amount;
           break;
         case 'level':
           state.player.level = Math.max(1, amount);
@@ -116,7 +116,7 @@ const DevPanel = () => {
     { key: 'relicFragments', name: '고대 유물', icon: '🏺', current: gameState.relicFragments || 0 },
     { key: 'bossCoins', name: '보스 코인', icon: '🪙', current: gameState.sealedZone?.bossCoins || 0 },
     { key: 'fragments', name: '장비 조각', icon: '⚡', current: gameState.player?.fragments || 0 },
-    { key: 'orbs', name: '카르마 오브', icon: '🔮', current: gameState.player?.orbs || 0 },
+    { key: 'orbs', name: '카르마 오브', icon: '🔮', current: gameState.orbs || 0 },
     { key: 'level', name: '레벨', icon: '⭐', current: gameState.player?.level || 1 },
     { key: 'floor', name: '층수', icon: '🏢', current: gameState.player?.floor || 1 },
     { key: 'diamonds', name: '다이아', icon: '💎', current: gameState.diamonds || 0 },
@@ -145,7 +145,7 @@ const DevPanel = () => {
           state.player.fragments = (state.player.fragments || 0) + amount;
           break;
         case 'orbs':
-          state.player.orbs = (state.player.orbs || 0) + amount;
+          state.orbs = (state.orbs || 0) + amount;
           break;
         case 'level':
           state.player.level = (state.player.level || 1) + amount;

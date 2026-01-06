@@ -336,6 +336,155 @@ export const PRESTIGE_FORMULAS = {
 };
 
 // ============================================
+// 방어력/방어관통 계산 수식
+// ============================================
+
+export const DEFENSE_FORMULAS = {
+  // 방어력 적용 공식
+  // 실제 데미지 = 원래 데미지 × (1 - 남은 방어율)
+  // 남은 방어율 = 방어력 × (1 - 관통1) × (1 - 관통2) × ...
+
+  /**
+   * 방어력 관통 후 최종 데미지 배율 계산
+   * @param {number} defenseRate - 몬스터 방어율 (0~100, %)
+   * @param {number[]} penetrations - 방관 수치 배열 (각각 0~100, %)
+   * @returns {number} - 데미지 배율 (0~1)
+   */
+  calculateDamageMultiplier: (defenseRate, penetrations = []) => {
+    // 방어율이 0이면 100% 데미지
+    if (defenseRate <= 0) return 1;
+
+    // 방관 수치들을 곱연산으로 적용
+    let remainingDefense = defenseRate / 100; // 0~1 범위로 변환
+
+    for (const pen of penetrations) {
+      if (pen > 0) {
+        remainingDefense *= (1 - pen / 100);
+      }
+    }
+
+    // 남은 방어율만큼 데미지 감소
+    const damageMultiplier = 1 - remainingDefense;
+
+    // 최소 1% 데미지는 보장
+    return Math.max(0.01, damageMultiplier);
+  },
+
+  /**
+   * 총 관통률 계산 (합연산이 아닌 곱연산 결과)
+   * @param {number[]} penetrations - 방관 수치 배열 (각각 0~100, %)
+   * @returns {number} - 실제 관통률 (0~100, %)
+   */
+  calculateTotalPenetration: (penetrations = []) => {
+    if (penetrations.length === 0) return 0;
+
+    let remainingDefense = 1; // 100% 방어
+    for (const pen of penetrations) {
+      if (pen > 0) {
+        remainingDefense *= (1 - pen / 100);
+      }
+    }
+
+    // 관통된 비율 반환
+    return (1 - remainingDefense) * 100;
+  },
+
+  // 방어력 적용 대상
+  targets: {
+    normalMonster: {
+      name: '일반 몬스터',
+      defenseRate: 0, // 방어력 없음
+    },
+    sealedZoneBoss: {
+      name: '봉인구역 보스',
+      getDefenseRate: (level) => 20 + (level - 1) * 2, // Lv1: 20%, Lv10: 38%, Lv20: 58%
+      description: '20% + (레벨-1) × 2%',
+    },
+    dummyDefense: {
+      name: '허수아비 (월요일)',
+      defenseRate: 100, // 100% 방어 - 방관 필수
+      description: '방관 없으면 데미지 불가',
+    },
+  },
+
+  // 허수아비 요일별 특성
+  // 0: 일요일, 1: 월요일, 2: 화요일, 3: 수요일, 4: 목요일, 5: 금요일, 6: 토요일
+  dummyDailyModifiers: {
+    0: { // 일요일 - 일반
+      name: '자유 수련',
+      icon: '☀️',
+      description: '제약 없는 자유로운 훈련',
+      defenseRate: 0,
+      evasionStat: 0, // 회피치 (플레이어 명중과 비교)
+      critResist: 0,
+    },
+    1: { // 월요일 - 방어율 100%
+      name: '철벽 수련',
+      icon: '🛡️',
+      description: '허수아비가 100% 방어율을 가집니다. 방어 관통 스탯이 필요합니다!',
+      defenseRate: 100,
+      evasionStat: 0,
+      critResist: 0,
+    },
+    2: { // 화요일 - 방어율 100%
+      name: '철벽 수련',
+      icon: '🛡️',
+      description: '허수아비가 100% 방어율을 가집니다. 방어 관통 스탯이 필요합니다!',
+      defenseRate: 100,
+      evasionStat: 0,
+      critResist: 0,
+    },
+    3: { // 수요일 - 회피
+      name: '유령 수련',
+      icon: '👻',
+      description: '허수아비가 높은 회피치를 가집니다. 명중 스탯이 필요합니다!',
+      defenseRate: 0,
+      evasionStat: 5000, // 회피치 (플레이어 명중과 비교해서 명중률 계산)
+      critResist: 0,
+    },
+    4: { // 목요일 - 회피
+      name: '유령 수련',
+      icon: '👻',
+      description: '허수아비가 높은 회피치를 가집니다. 명중 스탯이 필요합니다!',
+      defenseRate: 0,
+      evasionStat: 5000,
+      critResist: 0,
+    },
+    5: { // 금요일 - 크리티컬 저항
+      name: '강철 수련',
+      icon: '🪨',
+      description: '허수아비에게 크리티컬이 50% 확률로만 적용됩니다.',
+      defenseRate: 0,
+      evasionStat: 0,
+      critResist: 50,
+    },
+    6: { // 토요일 - 크리티컬 저항
+      name: '강철 수련',
+      icon: '🪨',
+      description: '허수아비에게 크리티컬이 50% 확률로만 적용됩니다.',
+      defenseRate: 0,
+      evasionStat: 0,
+      critResist: 50,
+    },
+  },
+
+  // 현재 요일의 허수아비 특성 가져오기
+  getDailyDummyModifier: () => {
+    const dayOfWeek = new Date().getDay(); // 0~6
+    return DEFENSE_FORMULAS.dummyDailyModifiers[dayOfWeek];
+  },
+
+  // 방관 획득처 (예정)
+  penetrationSources: {
+    equipment: '장비 잠재옵션 (5~15%)',
+    setBonus: '세트 효과 (10~20%)',
+    inscription: '문양 (5~10%)',
+    skill: '스킬 트리 (5~15%)',
+    relic: '유물 (10~25%)',
+  },
+};
+
+// ============================================
 // 데미지 계산 종합 수식
 // ============================================
 

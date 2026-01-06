@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { resolveLinkData, LINK_TYPES } from '../../utils/chatLinkParser';
 import { EQUIPMENT_SETS, EQUIPMENT_SLOT_NAMES, OPTION_GRADES, ANCIENT_CONFIG, NORMAL_GRADES, getEnhanceBonus } from '../../data/equipmentSets';
 import { INSCRIPTIONS, INSCRIPTION_GRADES, INSCRIPTION_UPGRADE_CONFIG } from '../../data/inscriptions';
-import { HEROES, HERO_GRADES, getHeroById, getHeroStats } from '../../data/heroes';
+// 구 영웅 시스템 제거됨
 import { formatNumber, formatStatValue } from '../../utils/formatter';
 
 // 장비 미리보기 카드 (ItemTooltip과 완전 동일한 스타일)
@@ -302,12 +302,9 @@ const InscriptionPreviewCard = ({ inscription }) => {
   );
 };
 
-// 동료 미리보기 카드
+// 동료 미리보기 카드 (구 영웅 시스템 제거됨 - 비활성화)
 const HeroPreviewCard = ({ hero }) => {
-  const heroData = getHeroById(hero.id);
-  const gradeData = HERO_GRADES[hero.grade];
-
-  if (!heroData || !gradeData) return null;
+  return null; // 영웅 미리보기 비활성화
 
   const colorMap = {
     normal: '#9CA3AF',

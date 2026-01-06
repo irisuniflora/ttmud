@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useGame } from '../../store/GameContext';
 import { formatNumber, formatPercent } from '../../utils/formatter';
 import { getTotalSkillEffects } from '../../data/skills';
-import { getHeroById, getHeroStats } from '../../data/heroes';
 import { EQUIPMENT_CONFIG, CLASS_CONFIG, canAdvanceClass, getClassBonuses } from '../../data/gameBalance';
 import { getTotalRelicEffects } from '../../data/prestigeRelics';
 import { EQUIPMENT_SETS, EQUIPMENT_SLOT_NAMES, getEnhanceBonus } from '../../data/equipmentSets';
@@ -185,7 +184,7 @@ const StatDetailPopup = ({ stat, onClose, breakdown }) => {
 
 const StatsList = () => {
   const { gameState, engine, advanceClass } = useGame();
-  const { player, skillLevels, equipment, slotEnhancements = {}, heroes, prestigeRelics = {} } = gameState;
+  const { player, skillLevels, equipment, slotEnhancements = {}, prestigeRelics = {} } = gameState;
   const [selectedStat, setSelectedStat] = useState(null);
   const [showDummy, setShowDummy] = useState(false);
   const [classAdvanceModal, setClassAdvanceModal] = useState({ isOpen: false, className: '', classLevel: 0, bonuses: null });
@@ -203,40 +202,6 @@ const StatsList = () => {
   const totalDPS = engine.calculateTotalDPS();
   const skillEffects = getTotalSkillEffects(skillLevels);
   const relicEffects = getTotalRelicEffects(prestigeRelics);
-
-  // 영웅 버프 계산 (상세 정보 포함)
-  let heroBuffs = {
-    attack: 0,
-    critChance: 0,
-    critDmg: 0,
-    goldBonus: 0,
-    dropRate: 0,
-    expBonus: 0,
-    extraHitChance: 0,
-    accuracy: 0,
-    stageSkipChance: 0,
-  };
-  let heroDetails = []; // 어떤 영웅이 얼마나 기여하는지
-
-  Object.keys(heroes || {}).forEach(heroId => {
-    const heroState = heroes[heroId];
-    if (heroState && heroState.inscribed) {
-      const heroData = getHeroById(heroId);
-      if (heroData) {
-        const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
-        heroDetails.push({ name: heroData.name, stats });
-        if (stats.attack) heroBuffs.attack += stats.attack;
-        if (stats.critChance) heroBuffs.critChance += stats.critChance;
-        if (stats.critDmg) heroBuffs.critDmg += stats.critDmg;
-        if (stats.goldBonus) heroBuffs.goldBonus += stats.goldBonus;
-        if (stats.dropRate) heroBuffs.dropRate += stats.dropRate;
-        if (stats.expBonus) heroBuffs.expBonus += stats.expBonus;
-        if (stats.extraHitChance) heroBuffs.extraHitChance += stats.extraHitChance;
-        if (stats.accuracy) heroBuffs.accuracy += stats.accuracy;
-        if (stats.stageSkipChance) heroBuffs.stageSkipChance += stats.stageSkipChance;
-      }
-    }
-  });
 
   // 슬롯별 유물 보너스 매핑
   const slotRelicBonusMap = {
@@ -263,6 +228,19 @@ const StatsList = () => {
     skipChance: 0,
   };
   let equipmentDetails = []; // 어떤 장비가 얼마나 기여하는지
+
+  // 구 영웅 시스템 제거됨 - 빈 객체로 초기화 (새 동료 시스템은 GameEngine에서 자동 적용)
+  const heroBuffs = {
+    attack: 0,
+    critChance: 0,
+    critDmg: 0,
+    goldBonus: 0,
+    dropRate: 0,
+    expBonus: 0,
+    stageSkipChance: 0,
+    accuracy: 0
+  };
+  const heroDetails = [];
 
   Object.entries(equipment).forEach(([slot, item]) => {
     if (item) {

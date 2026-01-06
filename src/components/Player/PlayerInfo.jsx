@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
 import { formatNumber, formatNumberWithCommas, getHPPercent } from '../../utils/formatter';
 import { getTotalSkillEffects } from '../../data/skills';
-import { getHeroById, getHeroStats } from '../../data/heroes';
 import { EQUIPMENT_CONFIG, getMonstersPerFloor, FLOOR_CONFIG } from '../../data/gameBalance';
 import { getTotalRelicEffects } from '../../data/prestigeRelics';
 import { getEnhanceBonus } from '../../data/equipmentSets';
@@ -23,22 +22,10 @@ const PlayerInfo = () => {
     const skillEffects = getTotalSkillEffects(skillLevels);
     const relicEffects = getTotalRelicEffects(relics);
 
+    // 구 영웅 시스템 제거됨 - 새 동료 시스템은 GameEngine에서 자동 적용
     let heroAttack = 0;
     let heroCritChance = 0;
     let heroCritDmg = 0;
-
-    Object.keys(heroes || {}).forEach(heroId => {
-      const heroState = heroes[heroId];
-      if (heroState && heroState.inscribed) {
-        const heroData = getHeroById(heroId);
-        if (heroData) {
-          const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
-          if (stats.attack) heroAttack += stats.attack;
-          if (stats.critChance) heroCritChance += stats.critChance;
-          if (stats.critDmg) heroCritDmg += stats.critDmg;
-        }
-      }
-    });
 
     let equipmentAttack = 0;
     let equipmentCritChance = 0;

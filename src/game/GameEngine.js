@@ -1,7 +1,6 @@
 import { getMonsterForStage, getCollectionBonus, getBossCollectionBonus, RARE_MONSTER_CAPTURE_CHANCE, LEGENDARY_MONSTER_CAPTURE_CHANCE, FLOOR_RANGES } from '../data/monsters.js';
 import { formatNumber } from '../utils/formatter.js';
 import { CONSUMABLE_TYPES } from '../data/consumables.js';
-import { HEROES, getHeroById, getHeroStats, getNextGrade, getUpgradeCost, getStarUpgradeCost } from '../data/heroes.js';
 // import { generateItem } from '../data/items.js'; // 구 시스템 - 사용 안함
 import { getTotalSkillEffects, getSkillCost } from '../data/skills.js';
 import { getTotalRelicEffects, PRESTIGE_RELICS, getRelicGachaCost, getRelicUpgradeCost } from '../data/prestigeRelics.js';
@@ -50,6 +49,7 @@ import {
 } from '../data/equipmentSets.js';
 import { ACHIEVEMENTS, checkAchievements } from '../data/achievements.js';
 import { MONSTER_SETS, checkSetCompletion, calculateSetBonuses as calcMonsterSetBonuses } from '../data/monsterSets.js';
+import { DEFENSE_FORMULAS } from '../data/formulas.js';
 
 export class GameEngine {
   constructor(initialState) {
@@ -113,9 +113,6 @@ export class GameEngine {
         }
       },
       currentMonster: null, // 초기화 후에 생성됨
-      heroes: {
-        // heroId: { grade: 'normal', stars: 0, inscribed: false }
-      },
       equipment: {
         weapon: null,
         armor: null,
@@ -150,16 +147,7 @@ export class GameEngine {
         rareMonsters: {}, // 희귀 몬스터 도감
         rareBosses: {}, // 희귀 보스 도감
         legendaryMonsters: {}, // 전설 몬스터 도감
-        heroes: {},
         items: {},
-        heroCards: {
-          // 테스트용: 섀도우 어쌔신 500장
-          shadow_assassin: {
-            name: '섀도우 어쌔신',
-            count: 500,
-            totalObtained: 500
-          }
-        },
         // 방생 시스템 (레거시 - 유지)
         release: {
           releasedMonsters: {},
@@ -242,13 +230,13 @@ export class GameEngine {
       }
     }
 
-    const { damage, isCrit, extraHitChance } = this.calculateTotalDPS();
-    this.dealDamage(damage, isCrit);
+    const { damage, isCrit, extraHitChance, penetrations } = this.calculateTotalDPS();
+    this.dealDamage(damage, isCrit, penetrations);
 
     // 추가타격 체크 (다크 리퍼) - 몬스터가 아직 살아있으면
     if (this.state.currentMonster.hp > 0 && extraHitChance > 0 && Math.random() * 100 < extraHitChance) {
-      const { damage: extraDmg, isCrit: extraCrit } = this.calculateTotalDPS();
-      this.dealDamage(extraDmg, extraCrit);
+      const { damage: extraDmg, isCrit: extraCrit, penetrations: extraPen } = this.calculateTotalDPS();
+      this.dealDamage(extraDmg, extraCrit, extraPen);
       this.addCombatLog('⚡ 추가타격!', 'extra_hit');
     }
 
@@ -269,8 +257,9 @@ export class GameEngine {
 
   // 총 DPS 계산
   calculateTotalDPS() {
-    const { player, heroes, equipment, skillLevels } = this.state;
+    const { player, equipment, skillLevels } = this.state;
     const skillEffects = getTotalSkillEffects(skillLevels);
+    const companionBuffs = this.getNewCompanionBuffs();
 
     // 플레이어 기본 데미지
     let playerDmg = player.stats.baseAtk;
@@ -322,49 +311,14 @@ export class GameEngine {
     // 고정 공격력 먼저 추가 (공%는 나중에 최종 합계에 적용)
     playerDmg += equipmentAttackFlat;
 
-    // 영웅 버프 계산
-    let heroBuffs = {
-      attack: 0,
-      critChance: 0,
-      critDmg: 0,
-      goldBonus: 0,
-      dropRate: 0,
-      expBonus: 0,
-      extraHitChance: 0,
-      accuracy: 0,
-      stageSkipChance: 0
-    };
-
-    Object.entries(heroes).forEach(([heroId, heroState]) => {
-      if (heroState && heroState.inscribed) {
-        const heroData = getHeroById(heroId);
-        if (heroData) {
-          const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
-
-          // 영웅 스탯을 버프에 추가
-          Object.keys(stats).forEach(statKey => {
-            if (heroBuffs.hasOwnProperty(statKey)) {
-              heroBuffs[statKey] += stats[statKey];
-            }
-          });
-        }
-      }
-    });
+    // 동료 공격력 추가
+    playerDmg += companionBuffs.attack;
 
     // 도감 보너스 계산 (층별 5층 단위로)
     const collectionBonus = this.calculateCollectionBonus();
-    heroBuffs.attack += collectionBonus.attack;
-    heroBuffs.goldBonus += collectionBonus.goldBonus;
-    heroBuffs.expBonus += collectionBonus.expBonus;
 
-    // 영웅(동료) 공격력에 스킬 보너스 적용 (heroDmgPercent: 동료 강화 스킬)
-    let heroAttack = heroBuffs.attack;
-    if (skillEffects.heroDmgPercent > 0) {
-      heroAttack *= (1 + skillEffects.heroDmgPercent / 100);
-    }
-
-    // 기본 + 장비고정 + 동료 합산
-    let totalDmg = playerDmg + heroAttack;
+    // 기본 + 장비고정
+    let totalDmg = playerDmg;
 
     // 도감 세트 보너스 가져오기
     const setBonus = this.calculateSetBonuses();
@@ -460,9 +414,9 @@ export class GameEngine {
     // 유물: 보복자의 인장 (크리티컬 데미지 증가)
     const relicCritDmg = (relicEffects.critDmg || 0) * damageRelicMultiplier;
 
-    // 치명타 확률 합산 (장비 + 영웅 + 스킬 + 유물 + 전직 + 도감세트)
-    let critChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + heroBuffs.critChance + relicCritChance + (classBonuses.critChance || 0) + (setBonus.critChance || 0);
-    let critDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + heroBuffs.critDmg + relicCritDmg + (classBonuses.critDamage || 0) + (setBonus.critDmg || 0);
+    // 치명타 확률 합산 (장비 + 동료 + 스킬 + 유물 + 전직 + 도감세트)
+    let critChance = player.stats.critChance + equipmentCritChance + (skillEffects.critChance || 0) + companionBuffs.critChance + relicCritChance + (classBonuses.critChance || 0) + (setBonus.critChance || 0);
+    let critDmg = player.stats.critDmg + equipmentCritDmg + (skillEffects.critDmg || 0) + companionBuffs.critDamage + relicCritDmg + (classBonuses.critDamage || 0) + (setBonus.critDmg || 0);
 
     // 치명타 확률 100% 캡 - 초과분은 치명타 데미지로 전환
     // 100~200%: 초과 1%당 치뎀 3%
@@ -503,18 +457,75 @@ export class GameEngine {
     const isCrit = Math.random() * 100 < critChance;
     const finalDamage = isCrit ? Math.floor(finalDmg * (critDmg / 100)) : Math.floor(finalDmg);
 
-    return { damage: finalDamage, isCrit, extraHitChance: heroBuffs.extraHitChance };
+    // 방관 스탯 수집 (장비, 스킬, 유물 등에서)
+    const penetrations = this.collectPenetrationStats();
+
+    return { damage: finalDamage, isCrit, extraHitChance: companionBuffs.extraHit, penetrations };
+  }
+
+  // 방어관통 스탯 수집
+  collectPenetrationStats() {
+    const penetrations = [];
+    const { equipment, skillLevels, player } = this.state;
+    const skillEffects = getTotalSkillEffects(skillLevels);
+    const relicEffects = this.getRelicEffects();
+
+    // 0. 전직별 기본 방관 (전직1: 10%, 전직2: 20%, 전직3: 30%, 전직4: 50%)
+    const classLevel = player?.classLevel || 1;
+    const basePenetration = classLevel === 1 ? 10 : classLevel === 2 ? 20 : classLevel === 3 ? 30 : 50;
+    penetrations.push(basePenetration);
+
+    // 1. 장비에서 방관 수집
+    Object.values(equipment).forEach(item => {
+      if (item && item.stats) {
+        item.stats.forEach(stat => {
+          if (stat.id === 'defensePenetration' && stat.value > 0) {
+            penetrations.push(stat.value);
+          }
+        });
+      }
+    });
+
+    // 2. 스킬에서 방관 수집
+    if (skillEffects.defensePenetration > 0) {
+      penetrations.push(skillEffects.defensePenetration);
+    }
+
+    // 3. 유물에서 방관 수집
+    if (relicEffects.defensePenetration > 0) {
+      penetrations.push(relicEffects.defensePenetration);
+    }
+
+    // 4. 세트 효과에서 방관 수집
+    const setBonus = this.calculateSetBonuses();
+    if (setBonus.defensePenetration > 0) {
+      penetrations.push(setBonus.defensePenetration);
+    }
+
+    return penetrations;
   }
 
   // 데미지 적용
-  dealDamage(damage, isCrit = false) {
+  dealDamage(damage, isCrit = false, penetrations = []) {
     const { currentMonster, statistics } = this.state;
 
-    currentMonster.hp -= damage;
-    statistics.totalDamageDealt += damage;
+    // 몬스터 방어력 적용
+    let finalDamage = damage;
+    const monsterDefense = currentMonster.defenseRate || 0;
+
+    if (monsterDefense > 0) {
+      const damageMultiplier = DEFENSE_FORMULAS.calculateDamageMultiplier(monsterDefense, penetrations);
+      finalDamage = Math.floor(damage * damageMultiplier);
+
+      // 방어력 감소된 데미지 로그 (디버그용, 필요시 주석 해제)
+      // console.log(`방어력 ${monsterDefense}%, 방관 [${penetrations.join(', ')}]%, 데미지 ${damage} → ${finalDamage} (${Math.round(damageMultiplier * 100)}%)`);
+    }
+
+    currentMonster.hp -= finalDamage;
+    statistics.totalDamageDealt += finalDamage;
 
     // 매 틱마다 데미지 로그 추가 (BattleField 애니메이션용)
-    const formattedDamage = formatNumber(damage);
+    const formattedDamage = formatNumber(finalDamage);
     if (isCrit) {
       this.addCombatLog(`💥 치명타! ${formattedDamage} 데미지`, 'critical');
     } else {
@@ -530,30 +541,8 @@ export class GameEngine {
 
   // 몬스터 처치
   killMonster() {
-    const { currentMonster, player, statistics, collection, skillLevels, heroes } = this.state;
+    const { currentMonster, player, statistics, collection, skillLevels } = this.state;
     const skillEffects = getTotalSkillEffects(skillLevels);
-
-    // 영웅 버프 계산
-    let heroBuffs = {
-      goldBonus: 0,
-      dropRate: 0,
-      expBonus: 0,
-      stageSkipChance: 0
-    };
-
-    Object.entries(heroes).forEach(([heroId, heroState]) => {
-      if (heroState && heroState.inscribed) {
-        const heroData = getHeroById(heroId);
-        if (heroData) {
-          const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
-          Object.keys(stats).forEach(statKey => {
-            if (heroBuffs.hasOwnProperty(statKey)) {
-              heroBuffs[statKey] += stats[statKey];
-            }
-          });
-        }
-      }
-    });
 
     // 장비 보조 스탯 계산 (골드, 경험치, 스킵 등)
     let equipmentGoldBonus = 0;
@@ -607,7 +596,8 @@ export class GameEngine {
 
     // 기본 골드 보너스 (전직 보너스 포함)
     const classBonusesForGold = this.getClassBonuses();
-    let totalGoldBonus = player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus + (classBonusesForGold.goldPercent || 0);
+    const companionBuffsForGold = this.getNewCompanionBuffs();
+    let totalGoldBonus = player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + (classBonusesForGold.goldPercent || 0) + companionBuffsForGold.goldBonus;
 
     // 유물: 황금의 예언서 (모든 골드 획득량 증가)
     // goldRelicBonus(부의 보물상자)로 골드 유물 효과 증폭
@@ -647,8 +637,8 @@ export class GameEngine {
       this.tryDropRaidTicket();
     }
 
-    // 경험치 획득 (장비 + 영웅 버프 포함)
-    const expGained = Math.floor(EXP_CONFIG.baseExpPerKill * (1 + ((skillEffects.expPercent || 0) + equipmentExpBonus + heroBuffs.expBonus) / 100));
+    // 경험치 획득 (장비 버프 포함)
+    const expGained = Math.floor(EXP_CONFIG.baseExpPerKill * (1 + ((skillEffects.expPercent || 0) + equipmentExpBonus) / 100));
     this.gainExp(expGained);
     
     // 아이템 드랍 (기존 시스템)
@@ -656,9 +646,6 @@ export class GameEngine {
 
     // 새 장비 드랍 (새 시스템)
     this.tryDropNewItem(currentMonster.isBoss);
-
-    // 영웅 카드 드랍
-    this.tryDropHeroCard();
 
     // 등급업 코인 드랍
     this.tryDropUpgradeCoin();
@@ -823,9 +810,10 @@ export class GameEngine {
     const baseMonstersPerFloor = getMonstersPerFloor(player.floor);
     const actualMonstersPerFloor = Math.max(5, baseMonstersPerFloor - equipmentMonsterReduction - collectionBonus.monsterReduction - relicMonsterReduction);
 
-    // 스테이지 스킵 확률 체크 (일반 몬스터만, 보스는 제외) - 장비 + 영웅 버프
+    // 스테이지 스킵 확률 체크 (일반 몬스터만, 보스는 제외) - 장비 + 동료 버프
     let skipCount = 0;
-    const totalSkipChance = equipmentSkipChance + heroBuffs.stageSkipChance;
+    const companionBuffsForSkip = this.getNewCompanionBuffs();
+    const totalSkipChance = equipmentSkipChance + companionBuffsForSkip.stageSkip;
     if (player.floorState !== 'boss_battle' && totalSkipChance > 0) {
       while (Math.random() * 100 < totalSkipChance) {
         player.monstersKilledInFloor++;
@@ -910,20 +898,8 @@ export class GameEngine {
 
   // 아이템 드랍 시도
   tryDropItem() {
-    const { player, inventory, statistics, collection, skillLevels, heroes } = this.state;
+    const { player, inventory, statistics, collection, skillLevels } = this.state;
     const skillEffects = getTotalSkillEffects(skillLevels);
-
-    // 영웅 드랍율 버프 계산
-    let heroDropRateBonus = 0;
-    Object.entries(heroes).forEach(([heroId, heroState]) => {
-      if (heroState && heroState.inscribed) {
-        const heroData = getHeroById(heroId);
-        if (heroData) {
-          const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
-          heroDropRateBonus += stats.dropRate || 0;
-        }
-      }
-    });
 
     // 장비 드랍율 보너스 계산
     let equipmentDropRate = 0;
@@ -950,7 +926,8 @@ export class GameEngine {
       }
     });
 
-    let dropChance = player.stats.dropRate + equipmentDropRate + (skillEffects.dropRate || 0) + heroDropRateBonus;
+    const companionBuffsForDrop = this.getNewCompanionBuffs();
+    let dropChance = player.stats.dropRate + equipmentDropRate + (skillEffects.dropRate || 0) + companionBuffsForDrop.dropRate;
 
     // 방생 보너스 곱연산 적용 (101층 이상은 1-100층으로 매핑)
     const baseFloorForDrop = player.floor > 100 ? ((player.floor - 1) % 100) + 1 : player.floor;
@@ -982,141 +959,6 @@ export class GameEngine {
     }
   }
 
-  // 영웅 카드 드랍 시도
-  tryDropHeroCard() {
-    const { player, statistics, collection } = this.state;
-
-    // 드랍 확률 계산
-    const dropChance = calculateHeroCardDropChance(player.floor);
-
-    if (Math.random() * 100 < dropChance) {
-      // 랜덤 영웅 선택 (모든 영웅 균등 확률)
-      const randomHero = HEROES[Math.floor(Math.random() * HEROES.length)];
-
-      console.log(`[드랍] 영웅 카드 획득: ${randomHero.name} (확률: ${dropChance}%)`);
-
-      statistics.totalHeroCardsFound++;
-
-      // 영웅 카드 컬렉션 초기화
-      if (!collection.heroCards) {
-        collection.heroCards = {};
-      }
-
-      // 해당 영웅 카드가 없으면 초기화
-      if (!collection.heroCards[randomHero.id]) {
-        collection.heroCards[randomHero.id] = {
-          name: randomHero.name,
-          count: 0,
-          totalObtained: 0
-        };
-      }
-
-      // 카드 1장 추가
-      collection.heroCards[randomHero.id].count++;
-      collection.heroCards[randomHero.id].totalObtained++;
-
-      // 로그 추가
-      this.addCombatLog(`🎴 영웅 카드 획득! ${randomHero.name} (보유: ${collection.heroCards[randomHero.id].count}장)`, 'hero_card');
-
-      return { type: 'hero_card', hero: randomHero, count: collection.heroCards[randomHero.id].count };
-    }
-
-    return null;
-  }
-
-  // 영웅 각인 (도감에서 영웅을 활성화)
-  inscribeHero(heroId) {
-    const { heroes, collection } = this.state;
-
-    const heroData = getHeroById(heroId);
-    if (!heroData) return false;
-
-    // 영웅 카드가 있고, 아직 각인되지 않은 경우
-    if (collection.heroCards && collection.heroCards[heroId] && collection.heroCards[heroId].count > 0) {
-      // 이미 각인된 경우 false 반환
-      if (heroes[heroId] && heroes[heroId].inscribed) {
-        return false;
-      }
-
-      // 카드 1장 소모
-      collection.heroCards[heroId].count -= 1;
-
-      // 영웅 각인
-      heroes[heroId] = {
-        grade: 'normal', // 기본 등급
-        stars: 0, // 별 0개
-        inscribed: true
-      };
-
-      return true;
-    }
-
-    return false;
-  }
-
-  // 영웅 카드로 별 올리기 (각인된 영웅에 카드 사용)
-  upgradeHeroStar(heroId) {
-    const { heroes, collection } = this.state;
-
-    const heroData = getHeroById(heroId);
-    if (!heroData) return false;
-
-    // 각인되지 않은 영웅은 별 업그레이드 불가
-    if (!heroes[heroId] || !heroes[heroId].inscribed) {
-      return false;
-    }
-
-    // 카드가 있는지 확인
-    if (!collection.heroCards || !collection.heroCards[heroId]) {
-      return false;
-    }
-
-    // 이미 별 5개인 경우 더 올릴 수 없음
-    if (heroes[heroId].stars >= 5) {
-      return false;
-    }
-
-    // 필요한 카드 수 확인 (등급별 피보나치 수열)
-    const currentGrade = heroes[heroId].grade;
-    const requiredCards = getStarUpgradeCost(currentGrade);
-
-    if (collection.heroCards[heroId].count < requiredCards) {
-      return false;
-    }
-
-    // 카드 소모하고 별 1개 증가
-    collection.heroCards[heroId].count -= requiredCards;
-    heroes[heroId].stars += 1;
-
-    return true;
-  }
-
-  // 영웅 등급업 (별 5개 + 코인 소모)
-  upgradeHeroGrade(heroId) {
-    const { heroes } = this.state;
-
-    if (!heroes[heroId]) return false;
-
-    const heroData = heroes[heroId];
-
-    // 별이 5개이고, 다음 등급이 존재하는 경우
-    if (heroData.stars === 5) {
-      const nextGrade = getNextGrade(heroData.grade);
-      if (!nextGrade) return false; // 이미 최고 등급
-
-      const cost = getUpgradeCost(heroData.grade);
-
-      if (this.state.upgradeCoins >= cost) {
-        this.state.upgradeCoins -= cost;
-        heroData.grade = nextGrade;
-        heroData.stars = 0; // 별 초기화
-
-        return true;
-      }
-    }
-
-    return false;
-  }
 
   // 영웅의 서 드랍 시도 (100층마다 1.2배 복리, 고정 1개)
   tryDropUpgradeCoin() {
@@ -1414,58 +1256,6 @@ export class GameEngine {
     }
   }
 
-  // 일괄 별 업그레이드
-  bulkUpgradeHeroStars() {
-    const { heroes, collection } = this.state;
-    let upgradedCount = 0;
-
-    Object.keys(heroes).forEach(heroId => {
-      const heroData = heroes[heroId];
-      if (!heroData || !heroData.inscribed) return;
-
-      // 별이 5개 미만인 영웅만
-      while (heroData.stars < 5) {
-        const cost = getStarUpgradeCost(heroData.grade);
-        const cardData = collection.heroCards?.[heroId];
-
-        if (!cardData || cardData.count < cost) break;
-
-        // 별 업그레이드 실행
-        cardData.count -= cost;
-        heroData.stars++;
-        upgradedCount++;
-      }
-    });
-
-    return { success: true, upgradedCount };
-  }
-
-  // 일괄 등급 업그레이드
-  bulkUpgradeHeroGrades() {
-    const { heroes } = this.state;
-    let upgradedCount = 0;
-
-    Object.keys(heroes).forEach(heroId => {
-      const heroData = heroes[heroId];
-      if (!heroData || !heroData.inscribed) return;
-
-      // 별이 5개이고 다음 등급이 존재하는 경우
-      if (heroData.stars === 5) {
-        const nextGrade = getNextGrade(heroData.grade);
-        if (!nextGrade) return;
-
-        const cost = getUpgradeCost(heroData.grade);
-        if (this.state.upgradeCoins >= cost) {
-          this.state.upgradeCoins -= cost;
-          heroData.grade = nextGrade;
-          heroData.stars = 0;
-          upgradedCount++;
-        }
-      }
-    });
-
-    return { success: true, upgradedCount };
-  }
 
   // 장비 장착
   equipItem(item) {
@@ -1795,7 +1585,7 @@ export class GameEngine {
 
   // 보스 스킵 (차원의 문 유물 효과)
   skipBoss() {
-    const { player, statistics, collection, skillLevels, heroes } = this.state;
+    const { player, statistics, collection, skillLevels } = this.state;
 
     // 보스 몬스터 생성 (보상 계산용)
     const bossMonster = this.spawnMonster(player.floor, true, false, false, collection);
@@ -1807,23 +1597,6 @@ export class GameEngine {
     // 골드 획득 계산
     const skillEffects = getTotalSkillEffects(skillLevels);
     const relicEffects = this.getRelicEffects();
-
-    // 영웅 버프 계산
-    let heroBuffs = {
-      goldBonus: 0,
-      expBonus: 0
-    };
-
-    Object.entries(heroes).forEach(([heroId, heroState]) => {
-      if (heroState && heroState.inscribed) {
-        const heroData = getHeroById(heroId);
-        if (heroData) {
-          const stats = getHeroStats(heroData, heroState.grade, heroState.stars);
-          heroBuffs.goldBonus += stats.goldBonus || 0;
-          heroBuffs.expBonus += stats.expBonus || 0;
-        }
-      }
-    });
 
     // 장비 보조 스탯 계산
     let equipmentGoldBonus = 0;
@@ -1866,7 +1639,8 @@ export class GameEngine {
 
     // 기본 골드 보너스 (전직 보너스 포함)
     const classBonusesForBossGold = this.getClassBonuses();
-    let totalGoldBonus = player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + heroBuffs.goldBonus + (classBonusesForBossGold.goldPercent || 0);
+    const companionBuffsForBossGold = this.getNewCompanionBuffs();
+    let totalGoldBonus = player.stats.goldBonus + equipmentGoldBonus + (skillEffects.goldPercent || 0) + (skillEffects.permanentGoldPercent || 0) + (classBonusesForBossGold.goldPercent || 0) + companionBuffsForBossGold.goldBonus;
 
     // 유물: 황금의 예언서 (모든 골드 획득량 증가)
     // goldRelicBonus(부의 보물상자)로 골드 유물 효과 증폭
@@ -1887,7 +1661,7 @@ export class GameEngine {
     statistics.totalGoldEarned += goldGained;
 
     // 경험치 획득
-    const expGained = Math.floor(EXP_CONFIG.baseExpPerKill * (1 + ((skillEffects.expPercent || 0) + equipmentExpBonus + heroBuffs.expBonus) / 100));
+    const expGained = Math.floor(EXP_CONFIG.baseExpPerKill * (1 + ((skillEffects.expPercent || 0) + equipmentExpBonus) / 100));
     this.gainExp(expGained);
 
     // 보스 아이템 드랍 (문양, 봉인구역 도전권)
@@ -4023,5 +3797,491 @@ export class GameEngine {
     this.addCombatLog(`🎁 업적 보상 수령: ${achievement.name}`, 'reward');
 
     return { success: true, message: `${achievement.name} 보상을 수령했습니다!` };
+  }
+
+  // ===== 새 동료(Companion) 시스템 =====
+
+  // 골드 → 다이아 환전
+  exchangeGoldToCrystals(optionId, customAmount = 0) {
+    const EXCHANGE_OPTIONS = {
+      exchange_10: { diamonds: 10, goldCost: 10000000 },
+      exchange_50: { diamonds: 55, goldCost: 45000000 },
+      exchange_100: { diamonds: 115, goldCost: 85000000 },
+      exchange_500: { diamonds: 600, goldCost: 400000000 },
+    };
+
+    let diamondsToAdd, goldCost;
+
+    if (optionId === 'custom') {
+      diamondsToAdd = customAmount;
+      goldCost = customAmount * 1000000; // 100만 골드 = 1 다이아
+    } else {
+      const option = EXCHANGE_OPTIONS[optionId];
+      if (!option) return { success: false, message: '잘못된 환전 옵션입니다.' };
+      diamondsToAdd = option.diamonds;
+      goldCost = option.goldCost;
+    }
+
+    if (this.state.player.gold < goldCost) {
+      return { success: false, message: '골드가 부족합니다.' };
+    }
+
+    this.state.player.gold -= goldCost;
+    this.state.diamonds = (this.state.diamonds || 0) + diamondsToAdd;
+
+    return {
+      success: true,
+      message: `${diamondsToAdd} 다이아를 획득했습니다!`,
+      diamonds: diamondsToAdd
+    };
+  }
+
+  // 동료 카드 뽑기
+  pullCompanionCards(packageId) {
+    const PACKAGES = {
+      single: { cost: 10, count: 1, bonusOrb: false },
+      multi_10: { cost: 100, count: 10, bonusOrb: true }
+    };
+
+    const pkg = PACKAGES[packageId];
+    if (!pkg) return { success: false, message: '잘못된 패키지입니다.' };
+
+    const diamonds = this.state.diamonds || 0;
+    if (diamonds < pkg.cost) {
+      return { success: false, message: '다이아가 부족합니다.' };
+    }
+
+    // 다이아 소모
+    this.state.diamonds -= pkg.cost;
+
+    // 뽑기 횟수 증가 (천장 시스템용)
+    if (!this.state.companionPullCount) this.state.companionPullCount = 0;
+    this.state.companionPullCount += pkg.count;
+
+    // 동료 데이터 import (동적)
+    const GRADE_RATES = {
+      normal: 60,
+      uncommon: 30,
+      rare: 8,
+      epic: 1.9,
+      legendary: 0.1
+    };
+
+    const GRADE_ORDER = ['normal', 'uncommon', 'rare', 'epic', 'legendary'];
+
+    // 계열별 동료 ID
+    const COMPANION_BY_GRADE = {
+      normal: ['shadow', 'fighter', 'striker', 'archer', 'novice', 'scout', 'trader', 'scholar'],
+      uncommon: ['assassin', 'warrior', 'duelist', 'sniper', 'mage', 'tracker', 'merchant', 'sage'],
+      rare: ['nightblade', 'berserker', 'bladedancer', 'ranger', 'chronocer', 'treasurehunter', 'banker', 'master'],
+      epic: ['reaper', 'slayer', 'swordmaster', 'hawkeye', 'timewalker', 'fortuneseeker', 'goldbaron', 'grandmaster'],
+      legendary: ['deathlord', 'titan', 'bladesoul', 'eagleeye', 'dimensionlord', 'lucklord', 'kingofgold', 'enlightened']
+    };
+
+    const rollGrade = (pullNumber) => {
+      // 천장 체크
+      const pityEpic = 30;
+      const pityLegendary = 100;
+
+      if (this.state.companionPullCount % pityLegendary === 0) {
+        return 'legendary';
+      }
+      if (this.state.companionPullCount % pityEpic === 0) {
+        return 'epic';
+      }
+
+      const roll = Math.random() * 100;
+      let cumulative = 0;
+      for (const gradeId of GRADE_ORDER) {
+        cumulative += GRADE_RATES[gradeId];
+        if (roll < cumulative) return gradeId;
+      }
+      return 'normal';
+    };
+
+    const cards = [];
+    if (!this.state.companions) this.state.companions = {};
+    if (!this.state.companionCards) this.state.companionCards = {};
+
+    for (let i = 0; i < pkg.count; i++) {
+      const grade = rollGrade(i);
+      const companionsOfGrade = COMPANION_BY_GRADE[grade];
+      const companionId = companionsOfGrade[Math.floor(Math.random() * companionsOfGrade.length)];
+
+      // 카드 수량 증가
+      this.state.companionCards[companionId] = (this.state.companionCards[companionId] || 0) + 1;
+
+      // 새 동료인지 체크
+      const isNew = !this.state.companions[companionId]?.owned;
+
+      // 자동 획득 (처음 얻은 동료)
+      if (isNew) {
+        this.state.companions[companionId] = {
+          owned: true,
+          stars: 0,
+          equippedOrbs: []
+        };
+        this.state.companionCards[companionId] -= 1; // 획득에 1장 소모
+      }
+
+      cards.push({
+        type: 'companion',
+        companion: { id: companionId, grade: grade },
+        isNew: isNew
+      });
+    }
+
+    // 보너스 오브
+    if (pkg.bonusOrb) {
+      const orbGrade = this.rollOrbGrade();
+      const orbTypes = ['shadow_orb', 'fury_orb', 'gale_orb', 'focus_orb', 'time_orb', 'luck_orb', 'gold_orb', 'wisdom_orb', 'power_orb'];
+      const orbType = orbTypes[Math.floor(Math.random() * orbTypes.length)];
+
+      if (!this.state.companionOrbs) this.state.companionOrbs = [];
+      const newOrb = {
+        id: `${orbType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        orbType: orbType,
+        grade: orbGrade,
+        equippedTo: null
+      };
+      this.state.companionOrbs.push(newOrb);
+
+      cards.push({
+        type: 'orb',
+        orbName: orbType.replace('_orb', '').replace('_', ' ') + ' 오브',
+        companion: { grade: orbGrade }
+      });
+    }
+
+    return { success: true, cards: cards };
+  }
+
+  // 오브 등급 롤
+  rollOrbGrade() {
+    const ORB_RATES = {
+      normal: 55,
+      uncommon: 30,
+      rare: 12,
+      epic: 2.8,
+      legendary: 0.2
+    };
+    const roll = Math.random() * 100;
+    let cumulative = 0;
+    for (const [gradeId, rate] of Object.entries(ORB_RATES)) {
+      cumulative += rate;
+      if (roll < cumulative) return gradeId;
+    }
+    return 'normal';
+  }
+
+  // 오브 뽑기
+  pullOrbs(count) {
+    const costPerOrb = 10;
+    const totalCost = costPerOrb * count;
+
+    const diamonds = this.state.diamonds || 0;
+    if (diamonds < totalCost) {
+      return { success: false, message: '다이아가 부족합니다.' };
+    }
+
+    // 다이아 소모
+    this.state.diamonds -= totalCost;
+
+    if (!this.state.companionOrbs) this.state.companionOrbs = [];
+
+    const orbTypes = ['shadow_orb', 'fury_orb', 'gale_orb', 'focus_orb', 'time_orb', 'luck_orb', 'gold_orb', 'wisdom_orb', 'power_orb'];
+    const pulledOrbs = [];
+
+    for (let i = 0; i < count; i++) {
+      const orbGrade = this.rollOrbGrade();
+      const orbType = orbTypes[Math.floor(Math.random() * orbTypes.length)];
+
+      const newOrb = {
+        id: `${orbType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        orbType: orbType,
+        grade: orbGrade,
+        equippedTo: null
+      };
+      this.state.companionOrbs.push(newOrb);
+      pulledOrbs.push(newOrb);
+    }
+
+    return {
+      success: true,
+      orbs: pulledOrbs,
+      message: `오브 ${count}개를 획득했습니다!`
+    };
+  }
+
+  // 동료 별 업그레이드
+  upgradeCompanionStar(companionId) {
+    if (!this.state.companions?.[companionId]?.owned) {
+      return { success: false, message: '보유하지 않은 동료입니다.' };
+    }
+
+    const companion = this.state.companions[companionId];
+    if (companion.stars >= 5) {
+      return { success: false, message: '이미 최대 별입니다.' };
+    }
+
+    // 등급별 필요 카드 수
+    const GRADE_ORDER = ['normal', 'uncommon', 'rare', 'epic', 'legendary'];
+    const CARD_COSTS = { normal: 3, uncommon: 5, rare: 10, epic: 20, legendary: 50 };
+
+    // 동료 등급 찾기 (companionId로 매핑)
+    const COMPANION_GRADES = {
+      shadow: 'normal', fighter: 'normal', striker: 'normal', archer: 'normal',
+      novice: 'normal', scout: 'normal', trader: 'normal', scholar: 'normal',
+      assassin: 'uncommon', warrior: 'uncommon', duelist: 'uncommon', sniper: 'uncommon',
+      mage: 'uncommon', tracker: 'uncommon', merchant: 'uncommon', sage: 'uncommon',
+      nightblade: 'rare', berserker: 'rare', bladedancer: 'rare', ranger: 'rare',
+      chronocer: 'rare', treasurehunter: 'rare', banker: 'rare', master: 'rare',
+      reaper: 'epic', slayer: 'epic', swordmaster: 'epic', hawkeye: 'epic',
+      timewalker: 'epic', fortuneseeker: 'epic', goldbaron: 'epic', grandmaster: 'epic',
+      deathlord: 'legendary', titan: 'legendary', bladesoul: 'legendary', eagleeye: 'legendary',
+      dimensionlord: 'legendary', lucklord: 'legendary', kingofgold: 'legendary', enlightened: 'legendary'
+    };
+
+    const grade = COMPANION_GRADES[companionId] || 'normal';
+    const cost = CARD_COSTS[grade];
+
+    const cardCount = this.state.companionCards?.[companionId] || 0;
+    if (cardCount < cost) {
+      return { success: false, message: `카드가 부족합니다. (필요: ${cost}장, 보유: ${cardCount}장)` };
+    }
+
+    // 카드 소모 & 별 증가
+    this.state.companionCards[companionId] -= cost;
+    companion.stars += 1;
+
+    return { success: true, companionName: companionId, newStars: companion.stars };
+  }
+
+  // 오브 장착
+  equipOrbToCompanion(companionId, orbId, slotIndex) {
+    if (!this.state.companions?.[companionId]?.owned) {
+      return { success: false, message: '보유하지 않은 동료입니다.' };
+    }
+
+    const orbs = this.state.companionOrbs || [];
+    const orbIndex = orbs.findIndex(o => o.id === orbId);
+    if (orbIndex === -1) {
+      return { success: false, message: '오브를 찾을 수 없습니다.' };
+    }
+
+    const orb = orbs[orbIndex];
+    if (orb.equippedTo) {
+      return { success: false, message: '이미 장착된 오브입니다.' };
+    }
+
+    // 슬롯 수 체크
+    const GRADE_SLOTS = { normal: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 };
+    const COMPANION_GRADES = {
+      shadow: 'normal', fighter: 'normal', striker: 'normal', archer: 'normal',
+      novice: 'normal', scout: 'normal', trader: 'normal', scholar: 'normal',
+      assassin: 'uncommon', warrior: 'uncommon', duelist: 'uncommon', sniper: 'uncommon',
+      mage: 'uncommon', tracker: 'uncommon', merchant: 'uncommon', sage: 'uncommon',
+      nightblade: 'rare', berserker: 'rare', bladedancer: 'rare', ranger: 'rare',
+      chronocer: 'rare', treasurehunter: 'rare', banker: 'rare', master: 'rare',
+      reaper: 'epic', slayer: 'epic', swordmaster: 'epic', hawkeye: 'epic',
+      timewalker: 'epic', fortuneseeker: 'epic', goldbaron: 'epic', grandmaster: 'epic',
+      deathlord: 'legendary', titan: 'legendary', bladesoul: 'legendary', eagleeye: 'legendary',
+      dimensionlord: 'legendary', lucklord: 'legendary', kingofgold: 'legendary', enlightened: 'legendary'
+    };
+
+    const companionGrade = COMPANION_GRADES[companionId] || 'normal';
+    const maxSlots = GRADE_SLOTS[companionGrade];
+
+    if (slotIndex >= maxSlots) {
+      return { success: false, message: '슬롯이 잠겨있습니다.' };
+    }
+
+    // 기존 슬롯에 오브가 있으면 해제
+    const companion = this.state.companions[companionId];
+    if (!companion.equippedOrbs) companion.equippedOrbs = [];
+
+    if (companion.equippedOrbs[slotIndex]) {
+      const oldOrb = orbs.find(o => o.id === companion.equippedOrbs[slotIndex].id);
+      if (oldOrb) oldOrb.equippedTo = null;
+    }
+
+    // 장착
+    orb.equippedTo = companionId;
+    companion.equippedOrbs[slotIndex] = { id: orb.id, orbType: orb.orbType, grade: orb.grade };
+
+    return { success: true };
+  }
+
+  // 오브 해제
+  unequipOrbFromCompanion(companionId, slotIndex) {
+    if (!this.state.companions?.[companionId]) {
+      return { success: false, message: '동료를 찾을 수 없습니다.' };
+    }
+
+    const companion = this.state.companions[companionId];
+    const orbData = companion.equippedOrbs?.[slotIndex];
+    if (!orbData) {
+      return { success: false, message: '해당 슬롯에 오브가 없습니다.' };
+    }
+
+    // 오브 해제
+    const orbs = this.state.companionOrbs || [];
+    const orb = orbs.find(o => o.id === orbData.id);
+    if (orb) orb.equippedTo = null;
+
+    companion.equippedOrbs[slotIndex] = null;
+
+    return { success: true };
+  }
+
+  // 새 동료 시스템 능력치 계산
+  getNewCompanionBuffs() {
+    const buffs = {
+      attack: 0,
+      critChance: 0,
+      critDamage: 0,
+      extraHit: 0,
+      accuracy: 0,
+      stageSkip: 0,
+      dropRate: 0,
+      goldBonus: 0,
+      expBonus: 0
+    };
+
+    const companions = this.state.companions || {};
+    const companionOrbs = this.state.companionOrbs || [];
+
+    // 동료 기본 스탯 정의 (간략화)
+    const COMPANION_BASE_STATS = {
+      // 암살 계열
+      shadow: { attack: 80, critChance: 3 },
+      assassin: { attack: 120, critChance: 5, critDamage: 5 },
+      nightblade: { attack: 180, critChance: 8, critDamage: 10, extraHit: 3 },
+      reaper: { attack: 280, critChance: 12, critDamage: 20, extraHit: 5 },
+      deathlord: { attack: 500, critChance: 18, critDamage: 35, extraHit: 8 },
+      // 광전 계열
+      fighter: { attack: 100, critDamage: 15 },
+      warrior: { attack: 150, critDamage: 25, critChance: 2 },
+      berserker: { attack: 270, critDamage: 40, critChance: 4 },
+      slayer: { attack: 450, critDamage: 60, critChance: 6 },
+      titan: { attack: 800, critDamage: 100, critChance: 10 },
+      // 연격 계열
+      striker: { attack: 70, extraHit: 5 },
+      duelist: { attack: 100, extraHit: 8, critChance: 2 },
+      bladedancer: { attack: 150, extraHit: 12, critChance: 4, critDamage: 10 },
+      swordmaster: { attack: 240, extraHit: 18, critChance: 6, critDamage: 20 },
+      bladesoul: { attack: 400, extraHit: 28, critChance: 10, critDamage: 35 },
+      // 정밀 계열
+      archer: { attack: 75, accuracy: 50 },
+      sniper: { attack: 110, accuracy: 100, critChance: 3 },
+      ranger: { attack: 160, accuracy: 180, critChance: 5, critDamage: 15 },
+      hawkeye: { attack: 250, accuracy: 300, critChance: 8, critDamage: 25 },
+      eagleeye: { attack: 420, accuracy: 500, critChance: 12, critDamage: 40 },
+      // 시공 계열
+      novice: { attack: 60, stageSkip: 2 },
+      mage: { attack: 90, stageSkip: 4, expBonus: 5 },
+      chronocer: { attack: 130, stageSkip: 7, expBonus: 10, goldBonus: 5 },
+      timewalker: { attack: 200, stageSkip: 11, expBonus: 20, goldBonus: 10 },
+      dimensionlord: { attack: 350, stageSkip: 18, expBonus: 35, goldBonus: 20 },
+      // 행운 계열
+      scout: { attack: 65, dropRate: 3 },
+      tracker: { attack: 95, dropRate: 6, goldBonus: 5 },
+      treasurehunter: { attack: 140, dropRate: 10, goldBonus: 10, expBonus: 5 },
+      fortuneseeker: { attack: 210, dropRate: 16, goldBonus: 20, expBonus: 10 },
+      lucklord: { attack: 360, dropRate: 25, goldBonus: 35, expBonus: 20 },
+      // 재물 계열
+      trader: { attack: 60, goldBonus: 5 },
+      merchant: { attack: 85, goldBonus: 10, dropRate: 3 },
+      banker: { attack: 120, goldBonus: 18, dropRate: 6, expBonus: 5 },
+      goldbaron: { attack: 180, goldBonus: 30, dropRate: 10, expBonus: 10 },
+      kingofgold: { attack: 300, goldBonus: 50, dropRate: 18, expBonus: 20 },
+      // 지혜 계열
+      scholar: { attack: 55, expBonus: 5 },
+      sage: { attack: 80, expBonus: 10, goldBonus: 5 },
+      master: { attack: 115, expBonus: 18, goldBonus: 8, dropRate: 5 },
+      grandmaster: { attack: 170, expBonus: 30, goldBonus: 15, dropRate: 8 },
+      enlightened: { attack: 280, expBonus: 50, goldBonus: 25, dropRate: 15 }
+    };
+
+    // 동료별 계열 (오브 시너지용)
+    const COMPANION_CATEGORY = {
+      shadow: 'assassination', assassin: 'assassination', nightblade: 'assassination', reaper: 'assassination', deathlord: 'assassination',
+      fighter: 'berserker', warrior: 'berserker', berserker: 'berserker', slayer: 'berserker', titan: 'berserker',
+      striker: 'striker', duelist: 'striker', bladedancer: 'striker', swordmaster: 'striker', bladesoul: 'striker',
+      archer: 'precision', sniper: 'precision', ranger: 'precision', hawkeye: 'precision', eagleeye: 'precision',
+      novice: 'temporal', mage: 'temporal', chronocer: 'temporal', timewalker: 'temporal', dimensionlord: 'temporal',
+      scout: 'fortune', tracker: 'fortune', treasurehunter: 'fortune', fortuneseeker: 'fortune', lucklord: 'fortune',
+      trader: 'wealth', merchant: 'wealth', banker: 'wealth', goldbaron: 'wealth', kingofgold: 'wealth',
+      scholar: 'wisdom', sage: 'wisdom', master: 'wisdom', grandmaster: 'wisdom', enlightened: 'wisdom'
+    };
+
+    // 오브 타입별 계열
+    const ORB_CATEGORY = {
+      shadow_orb: 'assassination',
+      fury_orb: 'berserker',
+      gale_orb: 'striker',
+      focus_orb: 'precision',
+      time_orb: 'temporal',
+      luck_orb: 'fortune',
+      gold_orb: 'wealth',
+      wisdom_orb: 'wisdom',
+      power_orb: null
+    };
+
+    // 오브 효과
+    const ORB_EFFECTS = {
+      shadow_orb: { critChance: { normal: 2, uncommon: 4, rare: 7, epic: 10, legendary: 15 } },
+      fury_orb: { critDamage: { normal: 10, uncommon: 20, rare: 35, epic: 50, legendary: 80 } },
+      gale_orb: { extraHit: { normal: 3, uncommon: 6, rare: 10, epic: 15, legendary: 25 } },
+      focus_orb: { accuracy: { normal: 50, uncommon: 100, rare: 200, epic: 350, legendary: 500 } },
+      time_orb: { stageSkip: { normal: 1, uncommon: 2, rare: 4, epic: 6, legendary: 10 } },
+      luck_orb: { dropRate: { normal: 3, uncommon: 6, rare: 10, epic: 15, legendary: 25 } },
+      gold_orb: { goldBonus: { normal: 5, uncommon: 10, rare: 20, epic: 35, legendary: 50 } },
+      wisdom_orb: { expBonus: { normal: 5, uncommon: 10, rare: 20, epic: 35, legendary: 50 } },
+      power_orb: { attack: { normal: 30, uncommon: 70, rare: 150, epic: 300, legendary: 600 } }
+    };
+
+    Object.entries(companions).forEach(([companionId, companionState]) => {
+      if (!companionState.owned) return;
+
+      const baseStats = COMPANION_BASE_STATS[companionId];
+      if (!baseStats) return;
+
+      // 별 보너스 (별당 10%)
+      const starMultiplier = 1 + (companionState.stars || 0) * 0.1;
+
+      // 기본 스탯 적용
+      Object.entries(baseStats).forEach(([statKey, value]) => {
+        if (buffs.hasOwnProperty(statKey)) {
+          buffs[statKey] += value * starMultiplier;
+        }
+      });
+
+      // 오브 효과 적용
+      const equippedOrbs = companionState.equippedOrbs || [];
+      const companionCategory = COMPANION_CATEGORY[companionId];
+
+      equippedOrbs.forEach(orbData => {
+        if (!orbData) return;
+        const orbEffect = ORB_EFFECTS[orbData.orbType];
+        if (!orbEffect) return;
+
+        Object.entries(orbEffect).forEach(([statKey, gradeValues]) => {
+          let value = gradeValues[orbData.grade] || 0;
+
+          // 시너지 보너스 (1.5배)
+          const orbCategory = ORB_CATEGORY[orbData.orbType];
+          if (orbCategory && orbCategory === companionCategory) {
+            value *= 1.5;
+          }
+
+          if (buffs.hasOwnProperty(statKey)) {
+            buffs[statKey] += value;
+          }
+        });
+      });
+    });
+
+    return buffs;
   }
 }
