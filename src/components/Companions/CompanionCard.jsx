@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { COMPANION_CATEGORIES, COMPANION_GRADES, STAR_CONFIG, getCompanionStats } from '../../data/companions';
 import { ORB_GRADES, getOrbById, getOrbDisplayInfo } from '../../data/orbs';
 import { formatNumber } from '../../utils/formatter';
 
 const BASE_URL = import.meta.env.BASE_URL || '/';
 
-const CompanionCard = ({
+const CompanionCard = memo(({
   companion,
   owned = false,
   stars = 0,
@@ -14,7 +14,9 @@ const CompanionCard = ({
   onEquip,
   onUpgradeStar,
   onManageOrbs,
-  compact = false
+  compact = false,
+  isEquipped = false,
+  onClick
 }) => {
   const category = COMPANION_CATEGORIES[companion.category];
   const grade = COMPANION_GRADES[companion.grade];
@@ -84,8 +86,18 @@ const CompanionCard = ({
 
   return (
     <div
-      className={`border-2 ${getBorderStyle()} ${getGlowStyle()} bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-2 transition-all hover:scale-[1.02]`}
+      className={`border-2 ${getBorderStyle()} ${getGlowStyle()} bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-2 transition-all hover:scale-[1.02] cursor-pointer ${
+        isEquipped ? 'ring-4 ring-cyan-400 shadow-lg shadow-cyan-400/50' : ''
+      }`}
+      onClick={() => onClick?.(companion.id, companion.category)}
     >
+      {/* 장착 표시 */}
+      {isEquipped && (
+        <div className="absolute -top-2 -right-2 bg-cyan-400 text-gray-900 px-2 py-0.5 rounded-full text-xs font-bold z-10 shadow-lg">
+          장착중
+        </div>
+      )}
+
       {/* 카드 이미지 */}
       <div
         className={`relative aspect-[3/4] rounded-lg overflow-hidden mb-2 border-2 ${getBorderStyle()}`}
@@ -164,7 +176,7 @@ const CompanionCard = ({
         )}
         {stats.critDamage && (
           <div className="flex justify-between" style={{ color: category.color }}>
-            <span>🎯 크리뎀</span>
+            <span>🔺 크리뎀</span>
             <span className="font-bold">{stats.critDamage.toFixed(0)}%</span>
           </div>
         )}
@@ -266,6 +278,8 @@ const CompanionCard = ({
       </div>
     </div>
   );
-};
+});
+
+CompanionCard.displayName = 'CompanionCard';
 
 export default CompanionCard;

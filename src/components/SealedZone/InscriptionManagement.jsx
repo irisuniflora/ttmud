@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
+import { useToast } from '../UI/ToastContainer';
 import { INSCRIPTIONS, INSCRIPTION_GRADES, INSCRIPTION_ABILITIES, INSCRIPTION_UPGRADE_CONFIG, calculateInscriptionStats, INSCRIPTION_DROP_TABLE, migrateGrade } from '../../data/inscriptions';
 import { formatNumber } from '../../utils/formatter';
 
 const InscriptionManagement = () => {
   const { gameState, setGameState } = useGame();
+  const toast = useToast();
   const { player, sealedZone = {} } = gameState;
 
   const [selectedInscription, setSelectedInscription] = useState(null);
@@ -54,7 +56,7 @@ const InscriptionManagement = () => {
     });
 
     if (toSell.length === 0) {
-      alert('판매할 문양이 없습니다!');
+      toast.warning('판매 불가', '판매할 문양이 없습니다!');
       return;
     }
 
@@ -100,13 +102,13 @@ const InscriptionManagement = () => {
 
     const currentLevel = inscription.level || 1;
     if (currentLevel >= INSCRIPTION_UPGRADE_CONFIG.maxLevel) {
-      alert('최대 레벨입니다!');
+      toast.warning('최대 레벨', '최대 레벨입니다!');
       return;
     }
 
     const cost = INSCRIPTION_UPGRADE_CONFIG.getCost(currentLevel);
     if (inscriptionDust < cost) {
-      alert(`문양가루가 부족합니다! (필요: ${cost}개)`);
+      toast.warning('재료 부족', `문양가루가 부족합니다! (필요: ${cost}개)`);
       return;
     }
 
@@ -132,9 +134,9 @@ const InscriptionManagement = () => {
     });
 
     if (isSuccess) {
-      alert(`강화 성공! Lv.${currentLevel + 1}`);
+      toast.success('강화 성공', `Lv.${currentLevel + 1}`);
     } else {
-      alert(`강화 실패... (확률: ${successRate}%)`);
+      toast.error('강화 실패', `강화 실패... (확률: ${successRate}%)`);
     }
   };
 

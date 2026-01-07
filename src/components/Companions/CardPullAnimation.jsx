@@ -176,7 +176,7 @@ const PullCard = ({ result, index, onFlip, isFlipped, isRevealing }) => {
 };
 
 // 메인 애니메이션 컴포넌트
-const CardPullAnimation = ({ results, onComplete }) => {
+const CardPullAnimation = ({ results, onComplete, companionCards = {}, localCardCounts = {} }) => {
   const [flippedCards, setFlippedCards] = useState(new Set());
   const [isRevealing, setIsRevealing] = useState(false);
   const [showSkip, setShowSkip] = useState(true);
@@ -285,8 +285,8 @@ const CardPullAnimation = ({ results, onComplete }) => {
 
       {/* 획득 요약 */}
       {flippedCards.size === results.length && (
-        <div className="mt-4 bg-black/50 rounded-lg p-4 max-w-md">
-          <p className="text-sm text-gray-400 text-center">
+        <div className="mt-4 bg-black/50 rounded-lg p-4 max-w-md w-full mx-4">
+          <p className="text-sm text-gray-400 text-center mb-3">
             {results.filter(r => r.isNew).length > 0 && (
               <span className="text-green-400">
                 🆕 새로운 동료 {results.filter(r => r.isNew).length}명!{' '}
@@ -294,6 +294,28 @@ const CardPullAnimation = ({ results, onComplete }) => {
             )}
             총 {results.length}장 획득
           </p>
+
+          {/* 카드 개수 변화 표시 */}
+          <div className="space-y-1 max-h-32 overflow-y-auto">
+            {Object.entries(localCardCounts).map(([companionId, increase]) => {
+              const companion = getCompanionById(companionId);
+              const currentCount = companionCards[companionId] || 0;
+              const newCount = currentCount + increase;
+              const grade = COMPANION_GRADES[companion?.grade];
+
+              return (
+                <div key={companionId} className="flex items-center justify-between text-xs bg-gray-800/50 rounded px-2 py-1">
+                  <span className="text-white truncate flex-1" style={{ color: grade?.color }}>
+                    {companion?.name}
+                  </span>
+                  <span className="text-gray-400 ml-2">
+                    {currentCount} → <span className="text-green-400 font-bold">{newCount}</span>
+                    <span className="text-green-400 ml-1">(+{increase})</span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

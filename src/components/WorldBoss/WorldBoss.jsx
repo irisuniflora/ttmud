@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../../store/GameContext';
+import { useToast } from '../UI/ToastContainer';
 import { formatNumber } from '../../utils/formatter';
 import {
   WORLD_BOSS_INFO,
@@ -15,6 +16,7 @@ import {
 const WorldBoss = () => {
   const [activeSubTab, setActiveSubTab] = useState('boss'); // 'boss' 또는 'auction'
   const { gameState, startWorldBossBattle, placeBid, engine } = useGame();
+  const toast = useToast();
   const { worldBoss = {}, player, sealedZone = {} } = gameState;
   const {
     isActive = false,
@@ -76,18 +78,18 @@ const WorldBoss = () => {
   // 전투 시작
   const handleStartBattle = () => {
     if (!bossActive) {
-      alert('월드보스가 활성화되지 않았습니다!');
+      toast.warning('비활성화', '월드보스가 활성화되지 않았습니다!');
       return;
     }
 
     if (battleSession && sessionTimeLeft > 0) {
-      alert('이미 전투 중입니다!');
+      toast.warning('전투 중', '이미 전투 중입니다!');
       return;
     }
 
     const result = startWorldBossBattle();
     if (!result.success) {
-      alert(result.message || '전투 시작에 실패했습니다!');
+      toast.error('전투 실패', result.message || '전투 시작에 실패했습니다!');
     }
   };
 
@@ -98,28 +100,28 @@ const WorldBoss = () => {
   // 입찰하기
   const handlePlaceBid = (itemId) => {
     if (bidAmount <= 0) {
-      alert('입찰 금액을 입력해주세요!');
+      toast.warning('입찰 금액 필요', '입찰 금액을 입력해주세요!');
       return;
     }
 
     const currentBid = auction.items[itemId]?.currentBid || 0;
     if (bidAmount <= currentBid) {
-      alert(`현재 최고 입찰가(${formatNumber(currentBid)})보다 높은 금액을 입력해주세요!`);
+      toast.warning('입찰 금액 부족', `현재 최고 입찰가(${formatNumber(currentBid)})보다 높은 금액을 입력해주세요!`);
       return;
     }
 
     if (bidAmount > bossCoins) {
-      alert('보스 코인이 부족합니다!');
+      toast.warning('재화 부족', '보스 코인이 부족합니다!');
       return;
     }
 
     const result = placeBid(itemId, bidAmount, player.id, player.name || `플레이어 ${player.id}`);
     if (result.success) {
-      alert('입찰에 성공했습니다!');
+      toast.success('입찰 성공', '입찰에 성공했습니다!');
       setSelectedItem(null);
       setBidAmount(0);
     } else {
-      alert(result.message);
+      toast.error('입찰 실패', result.message);
     }
   };
 

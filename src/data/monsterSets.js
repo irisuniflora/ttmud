@@ -14,7 +14,7 @@ export const SET_EFFECT_TYPES = {
   attack: { name: '공격력', suffix: '', icon: '⚔️' },
   attackPercent: { name: '공격력', suffix: '%', icon: '⚔️' },
   critChance: { name: '치명타 확률', suffix: '%', icon: '💥' },
-  critDmg: { name: '치명타 데미지', suffix: '%', icon: '🎯' },
+  critDmg: { name: '치명타 데미지', suffix: '%', icon: '🔺' },
   goldBonus: { name: '골드 획득량', suffix: '%', icon: '💰' },
   dropRate: { name: '드랍율', suffix: '%', icon: '🍀' },
   expBonus: { name: '경험치', suffix: '%', icon: '📈' },

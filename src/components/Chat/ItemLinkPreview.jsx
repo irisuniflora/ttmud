@@ -364,7 +364,7 @@ const HeroPreviewCard = ({ hero }) => {
         )}
         {stats.critDmg && (
           <div className="flex justify-between items-center text-xs mt-1">
-            <span className="text-red-400">🎯 치명타 데미지</span>
+            <span className="text-red-400">🔺 치명타 데미지</span>
             <span className="text-red-400 font-bold">{Math.floor(stats.critDmg)}%</span>
           </div>
         )}

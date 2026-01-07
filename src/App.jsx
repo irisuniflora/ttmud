@@ -17,9 +17,12 @@ import { getTotalRelicEffects } from './data/prestigeRelics';
 import { MONSTER_SETS, checkSetCompletion } from './data/monsterSets';
 // 새 동료 시스템
 import { CompanionList } from './components/Companions';
+// 토스트 알림 시스템
+import { ToastProvider, useToast } from './components/UI/ToastContainer';
 
 const GameContent = () => {
   const { gameState, isRunning, togglePause, saveGame, resetGame, prestige } = useGame();
+  const toast = useToast();
 
   // 각인만 하면 완성 가능한 세트가 있는지 확인
   const hasCompletableSet = () => {
@@ -141,7 +144,7 @@ const GameContent = () => {
 
   const handlePrestige = () => {
     if (gameState.player.floor < 50) {
-      alert('귀환하려면 50층 이상 도달해야 합니다!');
+      toast.warning('귀환 불가', '귀환하려면 50층 이상 도달해야 합니다!');
       return;
     }
 
@@ -367,7 +370,9 @@ const GameContent = () => {
 function App() {
   return (
     <GameProvider>
-      <GameContent />
+      <ToastProvider>
+        <GameContent />
+      </ToastProvider>
     </GameProvider>
   );
 }

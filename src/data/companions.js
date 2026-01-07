@@ -551,14 +551,20 @@ export const STAR_CONFIG = {
   maxStars: 5,
   // 등급별 별 업그레이드에 필요한 카드 수
   cardCostPerStar: {
-    normal: 3,
+    normal: 5,
     uncommon: 5,
-    rare: 10,
-    epic: 20,
-    legendary: 50
+    rare: 5,
+    epic: 5,
+    legendary: 3
   },
   // 별당 스탯 증가율 (%)
-  statBonusPerStar: 10
+  statBonusPerStar: 20
+};
+
+// ===== 동료 장착/보유 효과 =====
+export const COMPANION_EFFECT_MULTIPLIER = {
+  equipped: 1.0,   // 장착 시 100%
+  owned: 0.4       // 보유만 40%
 };
 
 // ===== 헬퍼 함수 =====

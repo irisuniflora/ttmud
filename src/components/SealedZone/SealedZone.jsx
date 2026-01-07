@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGame } from '../../store/GameContext';
+import { useToast } from '../UI/ToastContainer';
 import { RAID_BOSSES, calculateRaidBossStats, INSCRIPTION_SLOT_CONFIG, checkBossUnlock, getDifficultyName, getDifficultyColor, calculateBossDefenseRate } from '../../data/raidBosses';
 import { DEFENSE_FORMULAS } from '../../data/formulas';
 import { INSCRIPTIONS, INSCRIPTION_GRADES, INSCRIPTION_ABILITIES, calculateInscriptionStats, migrateGrade } from '../../data/inscriptions';
@@ -107,6 +108,7 @@ const getGradeCardStyle = (grade, isSelected = false) => {
 const SealedZone = () => {
   const [activeSubTab, setActiveSubTab] = useState('boss'); // 'boss' 또는 'inscription'
   const { gameState, setGameState, engine } = useGame();
+  const toast = useToast();
   const { player, sealedZone = {}, equipment = {}, skillLevels = {}, slotEnhancements = {}, heroes = {}, relics = {} } = gameState;
 
   const [selectedBoss, setSelectedBoss] = useState(null);
@@ -623,12 +625,12 @@ const SealedZone = () => {
   // 전투 시작
   const startBattle = () => {
     if (tickets <= 0) {
-      alert('도전권이 부족합니다!');
+      toast.warning('도전권 부족', '도전권이 부족합니다!');
       return;
     }
 
     if (activeInscriptions.length === 0) {
-      alert('문양을 최소 1개 선택해주세요!');
+      toast.warning('문양 선택 필요', '문양을 최소 1개 선택해주세요!');
       return;
     }
 
@@ -1833,7 +1835,7 @@ const SealedZone = () => {
                             }));
                           }
                         } else {
-                          alert('보스코인이 부족합니다!');
+                          toast.warning('재화 부족', '보스코인이 부족합니다!');
                         }
                       }}
                       className="text-[9px] bg-yellow-600 hover:bg-yellow-700 text-white px-1 py-0.5 rounded"

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
+import { useToast } from '../UI/ToastContainer';
 import { formatNumber } from '../../utils/formatter';
 import { generateShopSetItem, EQUIPMENT_SETS } from '../../data/equipmentSets';
 
@@ -73,6 +74,7 @@ const getWeekStart = () => {
 
 const BossCoinShop = () => {
   const { gameState, setGameState, engine } = useGame();
+  const toast = useToast();
   const { sealedZone = {} } = gameState;
   const { bossCoins = 0 } = sealedZone;
   const shopPurchases = gameState.shopPurchases || {};
@@ -109,12 +111,12 @@ const BossCoinShop = () => {
     const totalCost = item.cost * amount;
 
     if (amount <= 0) {
-      alert('이번 주 구매 한도에 도달했습니다!');
+      toast.warning('구매 불가', '이번 주 구매 한도에 도달했습니다!');
       return;
     }
 
     if (bossCoins < totalCost) {
-      alert('코인이 부족합니다!');
+      toast.warning('재화 부족', '코인이 부족합니다!');
       return;
     }
 
@@ -222,9 +224,9 @@ const BossCoinShop = () => {
     if (item.id === 'random_set_item' && engine?.state?.newInventory) {
       const recentItems = engine.state.newInventory.slice(-amount);
       const itemNames = recentItems.map(i => `${EQUIPMENT_SETS[i.setId]?.icon || '📦'} ${i.name}`).join(', ');
-      alert(`🎰 세트 뽑기 결과!\n${itemNames}`);
+      toast.success('세트 뽑기', `${itemNames}`);
     } else {
-      alert(`${item.name} ${amount}개 구매 완료!`);
+      toast.success('구매 완료', `${item.name} ${amount}개 구매 완료!`);
     }
     setPurchaseAmount(prev => ({ ...prev, [item.id]: 1 }));
   };

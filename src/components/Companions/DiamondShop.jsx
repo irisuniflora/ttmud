@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
+import { useToast } from '../UI/ToastContainer';
 import { DIAMOND_CONFIG, PULL_PACKAGES } from '../../data/diamondShop';
 import { COMPANION_GRADES, GRADE_ORDER } from '../../data/companions';
 import { ORB_GRADES, getOrbDisplayInfo } from '../../data/orbs';
@@ -8,11 +9,14 @@ import CardPullAnimation from './CardPullAnimation';
 
 const DiamondShop = () => {
   const { gameState, pullCompanionCards, pullOrbs } = useGame();
-  const { diamonds = 0 } = gameState;
+  const toast = useToast();
+  const { diamonds = 0, companionCards = {}, companionOrbs = [] } = gameState;
 
   const [pullResults, setPullResults] = useState(null);
   const [isPulling, setIsPulling] = useState(false);
   const [orbPullResult, setOrbPullResult] = useState(null);
+  const [localCardCounts, setLocalCardCounts] = useState({});
+  const [localOrbCount, setLocalOrbCount] = useState(0);
 
   // 동료 뽑기 실행
   const handleCompanionPull = async (packageId) => {
@@ -20,12 +24,12 @@ const DiamondShop = () => {
     if (!pkg) return;
 
     if (diamonds < pkg.cost) {
-      alert('다이아가 부족합니다!');
+      toast.warning('다이아 부족', '다이아가 부족합니다!');
       return;
     }
 
     if (!pullCompanionCards) {
-      alert('뽑기 기능이 준비 중입니다.');
+      toast.info('준비 중', '뽑기 기능이 준비 중입니다.');
       return;
     }
 
@@ -34,8 +38,17 @@ const DiamondShop = () => {
 
     if (results?.success) {
       setPullResults(results.cards);
+
+      // 즉시 로컬 카드 카운트 업데이트
+      const newCounts = { ...localCardCounts };
+      results.cards.forEach(card => {
+        const currentCount = companionCards[card.companionId] || 0;
+        const localIncrease = newCounts[card.companionId] || 0;
+        newCounts[card.companionId] = localIncrease + 1;
+      });
+      setLocalCardCounts(newCounts);
     } else {
-      alert(results?.message || '뽑기에 실패했습니다.');
+      toast.error('뽑기 실패', results?.message || '뽑기에 실패했습니다.');
       setIsPulling(false);
     }
   };
@@ -45,20 +58,23 @@ const DiamondShop = () => {
     const cost = count * 10;
 
     if (diamonds < cost) {
-      alert('다이아가 부족합니다!');
+      toast.warning('다이아 부족', '다이아가 부족합니다!');
       return;
     }
 
     if (!pullOrbs) {
-      alert('오브 뽑기 기능이 준비 중입니다.');
+      toast.info('준비 중', '오브 뽑기 기능이 준비 중입니다.');
       return;
     }
 
     const result = pullOrbs(count);
     if (result?.success) {
       setOrbPullResult(result.orbs);
+
+      // 즉시 로컬 오브 카운트 업데이트
+      setLocalOrbCount(localOrbCount + result.orbs.length);
     } else {
-      alert(result?.message || '오브 뽑기에 실패했습니다.');
+      toast.error('뽑기 실패', result?.message || '오브 뽑기에 실패했습니다.');
     }
   };
 
@@ -75,6 +91,8 @@ const DiamondShop = () => {
         <CardPullAnimation
           results={pullResults}
           onComplete={handlePullComplete}
+          companionCards={companionCards}
+          localCardCounts={localCardCounts}
         />
       )}
 
@@ -88,7 +106,19 @@ const DiamondShop = () => {
             className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-2xl w-full mx-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-2xl font-bold text-white mb-4 text-center">🌀 오브 소환 결과</h3>
+            <h3 className="text-2xl font-bold text-white mb-2 text-center">🌀 오브 소환 결과</h3>
+
+            {/* 즉시 반영된 오브 수량 표시 */}
+            <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 border border-blue-500 rounded-lg p-3 mb-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-blue-300">🌀 보유 오브</span>
+                <span className="text-lg font-bold text-white">
+                  {companionOrbs.length} → <span className="text-green-400">{companionOrbs.length + localOrbCount}</span>
+                  <span className="text-green-400 text-sm ml-1">(+{localOrbCount})</span>
+                </span>
+              </div>
+            </div>
+
             <div className="grid grid-cols-3 gap-3 mb-4">
               {orbPullResult.map((orb, idx) => {
                 const orbInfo = getOrbDisplayInfo(orb);

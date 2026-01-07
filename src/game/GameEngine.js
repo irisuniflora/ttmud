@@ -57,6 +57,12 @@ export class GameEngine {
     this.tickInterval = null;
     this.tickRate = GAME_CONFIG.tickRate;
 
+    // DPS 캐싱 시스템
+    this.dpsCache = {
+      value: null,
+      isDirty: true
+    };
+
     // 데이터 마이그레이션: orbs 초기화
     if (this.state.orbs === undefined || this.state.orbs === null || isNaN(this.state.orbs)) {
       this.state.orbs = 0;
@@ -134,6 +140,7 @@ export class GameEngine {
       equipmentFragments: 100, // 장비조각 (테스트용 100개)
       upgradeCoins: 5000, // 등급업 코인 (테스트용 5000개)
       orbs: 0, // 오브 (아이템 옵션 재조정 아이템)
+      activeBuffs: [], // 활성 버프 목록
       skillLevels: {},
       settings: {
         autoSellEnabled: false, // 자동 판매 활성화 여부
@@ -177,7 +184,21 @@ export class GameEngine {
       relicGachaCount: 0,
       prestigeRelics: {},
       // 다이아몬드 (프리미엄 재화)
-      diamonds: 100 // 테스트용 100개
+      diamonds: 100, // 테스트용 100개
+      // 동료 시스템
+      companions: {}, // { companionId: { owned, stars, equippedOrbs: [] } }
+      companionCards: {}, // { companionId: cardCount }
+      companionOrbs: [], // [{ id, orbType, grade, equippedTo }]
+      companionSlots: { // 계열별 장착 슬롯
+        assassination: null,
+        berserker: null,
+        striker: null,
+        precision: null,
+        temporal: null,
+        fortune: null,
+        wealth: null,
+        wisdom: null
+      }
     };
   }
 
@@ -198,9 +219,190 @@ export class GameEngine {
     }
   }
 
+  // ===== 버프 시스템 =====
+
+  // 버프 활성화
+  activateBuff(buffType, duration) {
+    if (!this.state.activeBuffs) {
+      this.state.activeBuffs = [];
+    }
+
+    const endTime = Date.now() + duration;
+
+    // 이미 같은 타입의 버프가 있으면 시간 연장
+    const existingBuff = this.state.activeBuffs.find(b => b.type === buffType);
+    if (existingBuff) {
+      existingBuff.endTime = Math.max(existingBuff.endTime, endTime);
+      this.addCombatLog(`${this.getBuffName(buffType)} 시간이 연장되었습니다!`, 'buff');
+    } else {
+      this.state.activeBuffs.push({
+        type: buffType,
+        endTime: endTime
+      });
+      this.addCombatLog(`${this.getBuffName(buffType)} 활성화!`, 'buff');
+    }
+
+    this.invalidateDPSCache();
+  }
+
+  // 버프 업데이트 (만료 체크)
+  updateBuffs() {
+    if (!this.state.activeBuffs) {
+      this.state.activeBuffs = [];
+      return;
+    }
+
+    const now = Date.now();
+    const expiredBuffs = [];
+
+    this.state.activeBuffs = this.state.activeBuffs.filter(buff => {
+      if (now >= buff.endTime) {
+        expiredBuffs.push(buff);
+        return false;
+      }
+      return true;
+    });
+
+    // 만료된 버프 알림
+    expiredBuffs.forEach(buff => {
+      this.addCombatLog(`${this.getBuffName(buff.type)} 효과가 종료되었습니다.`, 'info');
+    });
+  }
+
+  // 버프 효과 확인
+  hasBuff(buffType) {
+    if (!this.state.activeBuffs) return false;
+    return this.state.activeBuffs.some(b => b.type === buffType);
+  }
+
+  // 버프 이름 가져오기
+  getBuffName(buffType) {
+    const names = {
+      'gold_boost': '💰 골드 부스터',
+      'exp_boost': '📈 경험치 부스터',
+      'auto_progress': '⏰ 자동 진행'
+    };
+    return names[buffType] || buffType;
+  }
+
+  // 소모품 사용
+  useConsumable(consumableId) {
+    if (!this.state.consumables) {
+      this.state.consumables = {};
+    }
+
+    const count = this.state.consumables[consumableId] || 0;
+    if (count <= 0) {
+      return { success: false, message: '소모품이 부족합니다.' };
+    }
+
+    // 소모품 차감
+    this.state.consumables[consumableId] = count - 1;
+
+    // 소모품 효과 적용
+    switch (consumableId) {
+      case 'diamond_gold_boost':
+        this.activateBuff('gold_boost', 60 * 60 * 1000); // 1시간
+        return { success: true, message: '골드 부스터를 사용했습니다! (1시간)' };
+
+      case 'diamond_exp_boost':
+        this.activateBuff('exp_boost', 60 * 60 * 1000); // 1시간
+        return { success: true, message: '경험치 부스터를 사용했습니다! (1시간)' };
+
+      case 'diamond_auto_progress':
+        this.activateBuff('auto_progress', 60 * 60 * 1000); // 1시간
+        // 자동 진행 보상 즉시 지급
+        this.grantAutoProgressRewards();
+        return { success: true, message: '자동 진행 보상을 획득했습니다!' };
+
+      case 'diamond_legendary_ticket':
+        // 전설 몬스터 즉시 획득
+        return this.useLegendaryTicket();
+
+      default:
+        return { success: false, message: '알 수 없는 소모품입니다.' };
+    }
+  }
+
+  // 자동 진행 보상 지급
+  grantAutoProgressRewards() {
+    const floor = this.state.player.floor;
+
+    // 1시간 = 3600초, 틱당 0.1초, 몬스터당 5초 가정
+    // 1시간에 약 720마리 처치
+    const monstersKilled = 720;
+
+    // 골드 보상 (몬스터당 평균 골드 × 마릿수)
+    const avgGold = Math.floor(floor * 10 * (1 + this.state.player.stats.goldBonus / 100));
+    const totalGold = avgGold * monstersKilled;
+
+    // 경험치 보상
+    const avgExp = Math.floor(floor * 5);
+    const totalExp = avgExp * monstersKilled;
+
+    this.state.player.gold += totalGold;
+    this.gainExp(totalExp);
+
+    this.addCombatLog(`⏰ 자동 진행 보상: 💰${formatNumber(totalGold)} 📈${formatNumber(totalExp)}`, 'reward');
+  }
+
+  // 전설 소환권 사용
+  useLegendaryTicket() {
+    const floor = this.state.player.floor;
+    const floorData = FLOOR_RANGES[floor];
+
+    if (!floorData) {
+      return { success: false, message: '해당 층의 데이터가 없습니다.' };
+    }
+
+    // 랜덤 전설 몬스터 선택
+    const legendaryIndex = Math.floor(Math.random() * floorData.monsters.length);
+    const monsterName = floorData.monsters[legendaryIndex];
+    const legendaryId = `legendary_${floor}_${legendaryIndex}`;
+
+    if (!this.state.collection) {
+      this.state.collection = {};
+    }
+    if (!this.state.collection.legendaryMonsters) {
+      this.state.collection.legendaryMonsters = {};
+    }
+
+    // 이미 수집된 경우
+    if (this.state.collection.legendaryMonsters[legendaryId]?.unlocked) {
+      // 카드로 변환
+      this.state.consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] =
+        (this.state.consumables[CONSUMABLE_TYPES.LEGENDARY_TOKEN] || 0) + 1;
+
+      this.addCombatLog(`🌟 중복 전설! ${monsterName} → 👑 전설 토큰 획득`, 'legendary');
+      return { success: true, message: `중복된 전설 몬스터입니다. 전설 토큰을 획득했습니다!` };
+    }
+
+    // 새로운 전설 몬스터 등록
+    this.state.collection.legendaryMonsters[legendaryId] = {
+      unlocked: true,
+      count: 1,
+      firstCaught: Date.now()
+    };
+
+    if (!this.state.statistics) {
+      this.state.statistics = {};
+    }
+    this.state.statistics.rareMonstersCaptured = (this.state.statistics.rareMonstersCaptured || 0) + 1;
+
+    this.addCombatLog(`🌟 ${monsterName} 전설 몬스터 획득!`, 'legendary');
+    return {
+      success: true,
+      message: `전설 몬스터 ${monsterName}을(를) 획득했습니다!`,
+      monsterName: monsterName
+    };
+  }
+
   // 매 틱마다 실행
   tick() {
     const { currentMonster } = this.state;
+
+    // 버프 업데이트 (매 틱마다)
+    this.updateBuffs();
 
     // 일일 충전 체크 (60초마다 체크)
     if (!this.lastDailyRechargeCheck || Date.now() - this.lastDailyRechargeCheck >= 60000) {
@@ -255,8 +457,18 @@ export class GameEngine {
     this.checkRareMonsterSpawn(); // 희귀 몬스터 스폰 체크
   }
 
-  // 총 DPS 계산
+  // DPS 캐시 무효화 (장비/스킬/버프 변경 시 호출)
+  invalidateDPSCache() {
+    this.dpsCache.isDirty = true;
+  }
+
+  // 총 DPS 계산 (캐싱 적용)
   calculateTotalDPS() {
+    // 캐시가 유효하면 캐시된 값 반환
+    if (!this.dpsCache.isDirty && this.dpsCache.value !== null) {
+      return this.dpsCache.value;
+    }
+
     const { player, equipment, skillLevels } = this.state;
     const skillEffects = getTotalSkillEffects(skillLevels);
     const companionBuffs = this.getNewCompanionBuffs();
@@ -460,7 +672,13 @@ export class GameEngine {
     // 방관 스탯 수집 (장비, 스킬, 유물 등에서)
     const penetrations = this.collectPenetrationStats();
 
-    return { damage: finalDamage, isCrit, extraHitChance: companionBuffs.extraHit, penetrations };
+    const result = { damage: finalDamage, isCrit, extraHitChance: companionBuffs.extraHit, penetrations };
+
+    // 캐시에 저장하고 유효 표시
+    this.dpsCache.value = result;
+    this.dpsCache.isDirty = false;
+
+    return result;
   }
 
   // 방어관통 스탯 수집
@@ -620,6 +838,11 @@ export class GameEngine {
     const bossCollectionBonus = this.calculateBossCollectionBonus();
     totalGoldBonus += bossCollectionBonus.goldBonus;
 
+    // 버프: 골드 부스터 (2배)
+    if (this.hasBuff('gold_boost')) {
+      totalGoldBonus += 100; // +100% = 2배
+    }
+
     goldGained *= (1 + totalGoldBonus / 100);
     goldGained = Math.floor(goldGained);
 
@@ -638,7 +861,14 @@ export class GameEngine {
     }
 
     // 경험치 획득 (장비 버프 포함)
-    const expGained = Math.floor(EXP_CONFIG.baseExpPerKill * (1 + ((skillEffects.expPercent || 0) + equipmentExpBonus) / 100));
+    let totalExpBonus = (skillEffects.expPercent || 0) + equipmentExpBonus;
+
+    // 버프: 경험치 부스터 (2배)
+    if (this.hasBuff('exp_boost')) {
+      totalExpBonus += 100; // +100% = 2배
+    }
+
+    const expGained = Math.floor(EXP_CONFIG.baseExpPerKill * (1 + totalExpBonus / 100));
     this.gainExp(expGained);
     
     // 아이템 드랍 (기존 시스템)
@@ -1260,23 +1490,25 @@ export class GameEngine {
   // 장비 장착
   equipItem(item) {
     const { equipment, inventory } = this.state;
-    
+
     // 기존 장비 해제
     if (equipment[item.slot]) {
       equipment[item.slot].equipped = false;
       inventory.push(equipment[item.slot]);
       this.sortInventory();
     }
-    
+
     // 새 장비 장착
     equipment[item.slot] = item;
     item.equipped = true;
-    
+
     // 인벤토리에서 제거
     const index = inventory.findIndex(i => i.id === item.id);
     if (index !== -1) {
       inventory.splice(index, 1);
     }
+
+    this.invalidateDPSCache();
   }
 
   // 장비 해제
@@ -1289,6 +1521,8 @@ export class GameEngine {
       equipment[slot] = null;
       this.sortInventory();
     }
+
+    this.invalidateDPSCache();
   }
 
   // 인벤토리 정렬 (등급 높은 순)
@@ -1496,18 +1730,21 @@ export class GameEngine {
       if (player.prestigePoints >= cost) {
         player.prestigePoints -= cost;
         skillLevels[skillId] = currentLevel + 1;
+        this.invalidateDPSCache();
         return true;
       }
     } else if (costType === 'sp') {
       if ((player.skillPoints || 0) >= cost) {
         player.skillPoints = (player.skillPoints || 0) - cost;
         skillLevels[skillId] = currentLevel + 1;
+        this.invalidateDPSCache();
         return true;
       }
     } else {
       if (player.gold >= cost) {
         player.gold -= cost;
         skillLevels[skillId] = currentLevel + 1;
+        this.invalidateDPSCache();
         return true;
       }
     }
@@ -4134,6 +4371,175 @@ export class GameEngine {
     return { success: true };
   }
 
+  // ===== 오브 강화/분해 시스템 =====
+
+  // 오브 분해 (가루 획득)
+  disassembleOrb(orbId) {
+    const { companionOrbs } = this.state;
+    const orbIndex = companionOrbs.findIndex(o => o.id === orbId);
+
+    if (orbIndex === -1) {
+      return { success: false, message: '오브를 찾을 수 없습니다.' };
+    }
+
+    const orb = companionOrbs[orbIndex];
+
+    // 장착된 오브는 분해 불가
+    if (orb.equippedTo) {
+      return { success: false, message: '장착된 오브는 분해할 수 없습니다.' };
+    }
+
+    // 오브 가루 초기화
+    if (!this.state.orbDust) {
+      this.state.orbDust = 0;
+    }
+
+    // 등급별 가루 획득
+    const { ORB_UPGRADE_CONFIG } = require('../data/orbs.js');
+    const dustGained = ORB_UPGRADE_CONFIG.dustByGrade[orb.grade] || 10;
+
+    this.state.orbDust += dustGained;
+    companionOrbs.splice(orbIndex, 1);
+
+    return {
+      success: true,
+      message: `오브를 분해하여 가루 ${dustGained}개를 획득했습니다!`,
+      dustGained
+    };
+  }
+
+  // 오브 강화 (같은 타입 5개 → 1등급 상승, 70% 성공률)
+  upgradeOrb(baseOrbId, materialOrbIds) {
+    const { companionOrbs } = this.state;
+    const { ORB_UPGRADE_CONFIG, ORB_GRADE_ORDER } = require('../data/orbs.js');
+
+    // 베이스 오브 찾기
+    const baseOrb = companionOrbs.find(o => o.id === baseOrbId);
+    if (!baseOrb) {
+      return { success: false, message: '베이스 오브를 찾을 수 없습니다.' };
+    }
+
+    // 장착된 오브는 강화 불가
+    if (baseOrb.equippedTo) {
+      return { success: false, message: '장착된 오브는 강화할 수 없습니다.' };
+    }
+
+    // 이미 최대 등급
+    if (baseOrb.grade === 'legendary') {
+      return { success: false, message: '이미 최대 등급입니다.' };
+    }
+
+    // 재료 오브 검증
+    if (materialOrbIds.length !== ORB_UPGRADE_CONFIG.materialsRequired) {
+      return { success: false, message: `재료 오브 ${ORB_UPGRADE_CONFIG.materialsRequired}개가 필요합니다.` };
+    }
+
+    const materialOrbs = materialOrbIds.map(id => companionOrbs.find(o => o.id === id));
+
+    // 모든 재료가 존재하는지 확인
+    if (materialOrbs.some(o => !o)) {
+      return { success: false, message: '재료 오브를 찾을 수 없습니다.' };
+    }
+
+    // 모든 재료가 같은 타입인지 확인
+    if (materialOrbs.some(o => o.orbType !== baseOrb.orbType)) {
+      return { success: false, message: '같은 타입의 오브만 재료로 사용할 수 있습니다.' };
+    }
+
+    // 모든 재료가 같은 등급인지 확인
+    if (materialOrbs.some(o => o.grade !== baseOrb.grade)) {
+      return { success: false, message: '같은 등급의 오브만 재료로 사용할 수 있습니다.' };
+    }
+
+    // 장착된 재료가 있는지 확인
+    if (materialOrbs.some(o => o.equippedTo)) {
+      return { success: false, message: '장착된 오브는 재료로 사용할 수 없습니다.' };
+    }
+
+    // 강화 시도
+    const isSuccess = Math.random() * 100 < ORB_UPGRADE_CONFIG.successRate;
+
+    if (isSuccess) {
+      // 성공: 등급 상승
+      const currentGradeIndex = ORB_GRADE_ORDER.indexOf(baseOrb.grade);
+      baseOrb.grade = ORB_GRADE_ORDER[currentGradeIndex + 1];
+
+      // 재료 오브 모두 제거
+      materialOrbIds.forEach(id => {
+        const index = companionOrbs.findIndex(o => o.id === id);
+        if (index !== -1) companionOrbs.splice(index, 1);
+      });
+
+      return {
+        success: true,
+        upgraded: true,
+        message: `오브 강화에 성공했습니다! (${ORB_GRADE_ORDER[currentGradeIndex]} → ${baseOrb.grade})`,
+        newGrade: baseOrb.grade
+      };
+    } else {
+      // 실패: 재료 1개만 복구
+      const recoveredOrb = materialOrbs[0];
+      const otherMaterials = materialOrbIds.slice(1);
+
+      otherMaterials.forEach(id => {
+        const index = companionOrbs.findIndex(o => o.id === id);
+        if (index !== -1) companionOrbs.splice(index, 1);
+      });
+
+      return {
+        success: true,
+        upgraded: false,
+        message: `오브 강화에 실패했습니다. 재료 1개가 복구되었습니다.`,
+        recovered: true
+      };
+    }
+  }
+
+  // 오브 제작 (가루 소모)
+  craftOrb(orbType, grade) {
+    const { ORB_UPGRADE_CONFIG, getOrbById, pullOrb } = require('../data/orbs.js');
+
+    // 오브 타입 유효성 검사
+    const orbData = getOrbById(orbType);
+    if (!orbData) {
+      return { success: false, message: '존재하지 않는 오브 타입입니다.' };
+    }
+
+    // 가루 초기화
+    if (!this.state.orbDust) {
+      this.state.orbDust = 0;
+    }
+
+    // 필요 가루
+    const cost = ORB_UPGRADE_CONFIG.craftCost[grade] || 50;
+
+    if (this.state.orbDust < cost) {
+      return { success: false, message: `오브 가루가 부족합니다. (필요: ${cost}, 보유: ${this.state.orbDust})` };
+    }
+
+    // 가루 소모
+    this.state.orbDust -= cost;
+
+    // 오브 생성
+    const newOrb = {
+      id: `${orbType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      orbType: orbType,
+      grade: grade,
+      equippedTo: null
+    };
+
+    if (!this.state.companionOrbs) {
+      this.state.companionOrbs = [];
+    }
+    this.state.companionOrbs.push(newOrb);
+
+    return {
+      success: true,
+      message: `${orbData.name} (${grade})을(를) 제작했습니다!`,
+      orb: newOrb
+    };
+  }
+
   // 새 동료 시스템 능력치 계산
   getNewCompanionBuffs() {
     const buffs = {
@@ -4283,5 +4689,108 @@ export class GameEngine {
     });
 
     return buffs;
+  }
+
+  // ===== 동료 장착 시스템 =====
+
+  // 동료 장착
+  equipCompanion(companionId) {
+    import('../data/companions.js').then(({ getCompanionById, COMPANION_EFFECT_MULTIPLIER }) => {
+      const companion = getCompanionById(companionId);
+      if (!companion) {
+        return { success: false, message: '존재하지 않는 동료입니다.' };
+      }
+
+      // 보유 여부 확인
+      const companionState = this.state.companions[companionId];
+      if (!companionState || !companionState.owned) {
+        return { success: false, message: '보유하지 않은 동료입니다.' };
+      }
+
+      const category = companion.category;
+      if (!this.state.companionSlots) {
+        this.state.companionSlots = {
+          assassination: null,
+          berserker: null,
+          striker: null,
+          precision: null,
+          temporal: null,
+          fortune: null,
+          wealth: null,
+          wisdom: null
+        };
+      }
+
+      // 같은 슬롯에 이미 장착된 동료가 있으면 해제
+      const currentEquipped = this.state.companionSlots[category];
+      if (currentEquipped === companionId) {
+        return { success: false, message: '이미 장착된 동료입니다.' };
+      }
+
+      // 장착
+      this.state.companionSlots[category] = companionId;
+      this.invalidateDPSCache();
+      return { success: true, message: `${companion.name}을(를) 장착했습니다!` };
+    });
+  }
+
+  // 동료 해제
+  unequipCompanion(category) {
+    if (!this.state.companionSlots || !this.state.companionSlots[category]) {
+      return { success: false, message: '장착된 동료가 없습니다.' };
+    }
+
+    this.state.companionSlots[category] = null;
+    this.invalidateDPSCache();
+    return { success: true, message: '동료를 해제했습니다.' };
+  }
+
+  // 동료 총 효과 계산 (장착 100% + 보유 40%)
+  getTotalCompanionEffects() {
+    return import('../data/companions.js').then(({
+      getCompanionById,
+      getCompanionStats,
+      COMPANION_EFFECT_MULTIPLIER
+    }) => {
+      const effects = {
+        attack: 0,
+        critChance: 0,
+        critDamage: 0,
+        extraHit: 0,
+        accuracy: 0,
+        stageSkip: 0,
+        dropRate: 0,
+        goldBonus: 0,
+        expBonus: 0
+      };
+
+      const companions = this.state.companions || {};
+      const slots = this.state.companionSlots || {};
+
+      Object.entries(companions).forEach(([companionId, compState]) => {
+        if (!compState.owned) return;
+
+        const companion = getCompanionById(companionId);
+        if (!companion) return;
+
+        // 스탯 계산 (별 효과 포함)
+        const stats = getCompanionStats(companion, compState.stars || 0, compState.equippedOrbs || []);
+
+        // 장착 여부 확인
+        const isEquipped = slots[companion.category] === companionId;
+        const multiplier = isEquipped
+          ? COMPANION_EFFECT_MULTIPLIER.equipped  // 100%
+          : COMPANION_EFFECT_MULTIPLIER.owned;    // 40%
+
+        // 효과 적용
+        Object.entries(stats).forEach(([statKey, value]) => {
+          if (effects.hasOwnProperty(statKey)) {
+            effects[statKey] += value * multiplier;
+          }
+        });
+      });
+
+      return effects;
+    });
   }
 }

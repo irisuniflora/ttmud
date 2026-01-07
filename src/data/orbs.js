@@ -46,6 +46,31 @@ export const ORB_GRADES = {
 
 export const ORB_GRADE_ORDER = ['normal', 'uncommon', 'rare', 'epic', 'legendary'];
 
+// ===== 오브 강화/분해 설정 =====
+export const ORB_UPGRADE_CONFIG = {
+  // 오브 강화 (같은 타입 5개 → 1등급 상승)
+  materialsRequired: 5,
+  successRate: 70, // 70% 성공률
+
+  // 분해 시 획득 가루
+  dustByGrade: {
+    normal: 10,
+    uncommon: 30,
+    rare: 100,
+    epic: 300,
+    legendary: 1000
+  },
+
+  // 제작 비용 (가루)
+  craftCost: {
+    normal: 50,
+    uncommon: 150,
+    rare: 500,
+    epic: 1500,
+    legendary: 5000
+  }
+};
+
 // ===== 오브 타입 정의 =====
 // 오브 색상 = 시너지 계열 색상과 동일 (직관적 매칭)
 export const ORBS = [

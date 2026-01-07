@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
+import { useToast } from '../UI/ToastContainer';
 import { PETS, PET_GRADES, PET_ABILITIES, calculatePetStats, rollPetGrade } from '../../data/pets';
 import { formatNumber } from '../../utils/formatter';
 
 const PetManagement = () => {
   const { gameState, setGameState } = useGame();
+  const toast = useToast();
   const { player, sealedZone = {} } = gameState;
 
   const [selectedPet, setSelectedPet] = useState(null);
@@ -14,7 +16,7 @@ const PetManagement = () => {
   // 펫 뽑기
   const gachaPet = () => {
     if (petGachaTokens <= 0) {
-      alert('펫 소환권이 부족합니다!');
+      toast.warning('소환권 부족', '펫 소환권이 부족합니다!');
       return;
     }
 
@@ -39,7 +41,7 @@ const PetManagement = () => {
     }));
 
     const petData = calculatePetStats(randomPetId, grade);
-    alert(`${petData.icon} ${petData.name} (${petData.gradeName}) 획득!`);
+    toast.success('펫 획득', `${petData.icon} ${petData.name} (${petData.gradeName}) 획득!`);
   };
 
   // 펫 삭제

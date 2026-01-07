@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../../store/GameContext';
+import { useToast } from '../UI/ToastContainer';
 import { formatNumber, formatPercent } from '../../utils/formatter';
 import { getTotalSkillEffects } from '../../data/skills';
 import { EQUIPMENT_CONFIG, CLASS_CONFIG, canAdvanceClass, getClassBonuses } from '../../data/gameBalance';
@@ -72,7 +73,7 @@ const ClassAdvanceModal = ({ isOpen, onClose, className, classLevel, bonuses }) 
                   <span className="text-green-400 font-bold">+{bonuses.critChance}%</span>
                 </div>
                 <div className="flex items-center justify-between bg-purple-900/30 rounded-lg px-3 py-2">
-                  <span className="text-gray-300">🎯 치뎀</span>
+                  <span className="text-gray-300">🔺 치뎀</span>
                   <span className="text-green-400 font-bold">+{bonuses.critDamage}%</span>
                 </div>
                 <div className="flex items-center justify-between bg-purple-900/30 rounded-lg px-3 py-2">
@@ -184,6 +185,7 @@ const StatDetailPopup = ({ stat, onClose, breakdown }) => {
 
 const StatsList = () => {
   const { gameState, engine, advanceClass } = useGame();
+  const toast = useToast();
   const { player, skillLevels, equipment, slotEnhancements = {}, prestigeRelics = {} } = gameState;
   const [selectedStat, setSelectedStat] = useState(null);
   const [showDummy, setShowDummy] = useState(false);
@@ -518,7 +520,7 @@ const StatsList = () => {
     // DPS 관련 스탯 (와인색)
     { id: 'attack', icon: '⚔️', name: '공격력', value: formatNumber(totalAttack), color: 'text-rose-400' },
     { id: 'critChance', icon: '💥', name: '치명타 확률', value: totalCritChance > 100 ? `100% (+${formatPercent(totalCritChance - 100)})` : formatPercent(totalCritChance), color: 'text-rose-400', tooltip: totalCritChance > 200 ? `200% 초과! 치뎀 +${formatPercent(300 + (totalCritChance - 200) * 5)}로 전환` : totalCritChance > 100 ? `100% 초과분 치뎀 +${formatPercent((totalCritChance - 100) * 3)}로 전환` : '100%초과→치뎀×3, 200%초과→치뎀×5' },
-    { id: 'critDmg', icon: '🎯', name: '치명타 데미지', value: formatPercent(totalCritDmg), color: 'text-rose-400' },
+    { id: 'critDmg', icon: '🔺', name: '치명타 데미지', value: formatPercent(totalCritDmg), color: 'text-rose-400' },
     { id: 'bossDamage', icon: '👑', name: '보스 데미지', value: '+' + formatPercent(equipmentStats.bossDamageIncrease + (relicEffects.bossDamage || 0) + bossCollectionBonus.damageBonus + setBonuses.bossDamage), color: 'text-rose-400' },
     { id: 'relicDamage', icon: '💎', name: '유물 데미지', value: '+' + formatPercent((relicEffects.damagePercent || 0) + (relicEffects.damagePerRelic || 0) * relicCount), color: 'text-pink-400', hide: ((relicEffects.damagePercent || 0) + (relicEffects.damagePerRelic || 0) * relicCount) === 0 },
 
@@ -548,7 +550,7 @@ const StatsList = () => {
           bonuses: newBonuses
         });
       } else {
-        alert(result.message || '전직에 실패했습니다.');
+        toast.error('전직 실패', result.message || '전직에 실패했습니다.');
       }
     }
   };

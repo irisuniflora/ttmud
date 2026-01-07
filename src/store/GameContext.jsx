@@ -39,10 +39,10 @@ export const GameProvider = ({ children }) => {
     engineRef.current.start();
     setIsRunning(true);
     
-    // 정기적으로 상태 업데이트
+    // 정기적으로 상태 업데이트 (성능 최적화: 500ms)
     const updateInterval = setInterval(() => {
       setGameState({ ...engineRef.current.getState() });
-    }, 100);
+    }, 500);
     
     // 정기적으로 저장
     const saveInterval = setInterval(() => {
@@ -447,6 +447,13 @@ export const GameProvider = ({ children }) => {
     setChatMessages([]);
   };
 
+  // ===== 소모품 시스템 =====
+  const useConsumable = (consumableId) => {
+    const result = engineRef.current.useConsumable(consumableId);
+    setGameState({ ...engineRef.current.getState() });
+    return result;
+  };
+
   // ===== 새 동료 시스템 =====
   const pullCompanionCards = (packageId) => {
     const result = engineRef.current.pullCompanionCards(packageId);
@@ -482,6 +489,47 @@ export const GameProvider = ({ children }) => {
 
   const unequipOrbFromCompanion = (companionId, slotIndex) => {
     const result = engineRef.current.unequipOrbFromCompanion(companionId, slotIndex);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const equipCompanion = (companionId) => {
+    const result = engineRef.current.equipCompanion(companionId);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const unequipCompanion = (category) => {
+    const result = engineRef.current.unequipCompanion(category);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  // ===== 오브 강화/분해/제작 시스템 =====
+  const disassembleOrb = (orbId) => {
+    const result = engineRef.current.disassembleOrb(orbId);
+    if (result.success) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const upgradeOrb = (baseOrbId, materialOrbIds) => {
+    const result = engineRef.current.upgradeOrb(baseOrbId, materialOrbIds);
+    if (result.success || result.failure) {
+      setGameState({ ...engineRef.current.getState() });
+    }
+    return result;
+  };
+
+  const craftOrb = (orbType, grade) => {
+    const result = engineRef.current.craftOrb(orbType, grade);
     if (result.success) {
       setGameState({ ...engineRef.current.getState() });
     }
@@ -575,12 +623,20 @@ export const GameProvider = ({ children }) => {
       chatMessages,
       addChatMessage,
       clearChatMessages,
+      // 소모품 시스템
+      useConsumable,
       // 새 동료 시스템
       pullCompanionCards,
       pullOrbs,
       upgradeCompanionStar,
       equipOrbToCompanion,
       unequipOrbFromCompanion,
+      equipCompanion,
+      unequipCompanion,
+      // 오브 강화/분해/제작
+      disassembleOrb,
+      upgradeOrb,
+      craftOrb,
       engine: engineRef.current
     }}>
       {children}

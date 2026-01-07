@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useGame } from '../../store/GameContext';
+import { useToast } from '../UI/ToastContainer';
 import { formatNumber } from '../../utils/formatter';
 import { generateShopSetItem, EQUIPMENT_SETS } from '../../data/equipmentSets';
 
@@ -159,7 +160,8 @@ const getWeekStart = () => {
 };
 
 const Shop = () => {
-  const { gameState, setGameState, engine } = useGame();
+  const { gameState, setGameState, engine, useConsumable } = useGame();
+  const toast = useToast();
   const [activeShop, setActiveShop] = useState('coin');
   const [purchaseAmount, setPurchaseAmount] = useState({});
   const [pullResult, setPullResult] = useState(null); // 뽑기 결과 모달
@@ -169,6 +171,8 @@ const Shop = () => {
   const gold = player.gold || 0;
   const diamonds = gameState.diamonds || 0;
   const shopPurchases = gameState.shopPurchases || {};
+  const consumables = gameState.consumables || {};
+  const activeBuffs = gameState.activeBuffs || [];
 
   // 현재 탭의 재화량 가져오기
   const getCurrentCurrency = () => {
@@ -199,6 +203,43 @@ const Shop = () => {
     return purchases.count;
   };
 
+  // 버프 활성 여부 확인
+  const hasActiveBuff = (buffType) => {
+    return activeBuffs.some(buff => buff.type === buffType && buff.endTime > Date.now());
+  };
+
+  // 버프 남은 시간 계산 (분 단위)
+  const getBuffRemainingTime = (buffType) => {
+    const buff = activeBuffs.find(b => b.type === buffType && b.endTime > Date.now());
+    if (!buff) return 0;
+    return Math.ceil((buff.endTime - Date.now()) / 1000 / 60);
+  };
+
+  // 소모품 사용 핸들러
+  const handleUseConsumable = (consumableId) => {
+    if (!useConsumable) {
+      toast.error('오류', '소모품 사용 기능이 준비 중입니다.');
+      return;
+    }
+
+    // 골드/경험치 부스터는 중복 사용 방지
+    if (consumableId === 'diamond_gold_boost' && hasActiveBuff('gold_boost')) {
+      toast.warning('중복 사용 불가', '이미 골드 부스터가 활성화되어 있습니다!');
+      return;
+    }
+    if (consumableId === 'diamond_exp_boost' && hasActiveBuff('exp_boost')) {
+      toast.warning('중복 사용 불가', '이미 경험치 부스터가 활성화되어 있습니다!');
+      return;
+    }
+
+    const result = useConsumable(consumableId);
+    if (result?.success) {
+      toast.success('사용 완료!', result.message);
+    } else {
+      toast.error('사용 실패', result?.message || '사용에 실패했습니다.');
+    }
+  };
+
   // 구매 수량 변경
   const handleAmountChange = (itemId, value, weeklyLimit) => {
     const purchased = getWeeklyPurchased(itemId);
@@ -219,12 +260,12 @@ const Shop = () => {
     const tab = SHOP_TABS.find(t => t.id === activeShop);
 
     if (amount <= 0) {
-      alert('이번 주 구매 한도에 도달했습니다!');
+      toast.warning('구매 불가', '이번 주 구매 한도에 도달했습니다!');
       return;
     }
 
     if (currentCurrency < totalCost) {
-      alert(`${tab.currencyName}이(가) 부족합니다!`);
+      toast.warning('재화 부족', `${tab.currencyName}이(가) 부족합니다!`);
       return;
     }
 
@@ -373,9 +414,9 @@ const Shop = () => {
     if (item.id === 'random_set_item' && engine?.state?.newInventory) {
       const recentItems = engine.state.newInventory.slice(-amount);
       const itemNames = recentItems.map(i => `${EQUIPMENT_SETS[i.setId]?.icon || '📦'} ${i.name}`).join(', ');
-      alert(`🎰 세트 뽑기 결과!\n${itemNames}`);
+      toast.success('세트 뽑기', `${itemNames}`);
     } else {
-      alert(`${item.name} ${amount}개 구매 완료!`);
+      toast.success('구매 완료', `${item.name} ${amount}개 구매 완료!`);
     }
     setPurchaseAmount(prev => ({ ...prev, [item.id]: 1 }));
   };
@@ -385,8 +426,60 @@ const Shop = () => {
   const currentCurrency = getCurrentCurrency();
   const items = getCurrentItems();
 
+  // 사용 가능한 소모품 목록
+  const usableConsumables = [
+    { id: 'diamond_gold_boost', name: '골드 부스터', icon: '💰', buffType: 'gold_boost' },
+    { id: 'diamond_exp_boost', name: '경험치 부스터', icon: '📈', buffType: 'exp_boost' },
+    { id: 'diamond_auto_progress', name: '자동 진행', icon: '⏰', buffType: null },
+    { id: 'diamond_legendary_ticket', name: '전설 소환권', icon: '🌟', buffType: null }
+  ].filter(item => (consumables[item.id] || 0) > 0);
+
   return (
     <div className="space-y-4">
+      {/* 보유 소모품 섹션 */}
+      {usableConsumables.length > 0 && (
+        <div className="bg-gradient-to-r from-purple-900 to-indigo-900 border border-purple-500 rounded-lg p-3">
+          <h3 className="text-sm font-bold text-purple-300 mb-2">⚡ 보유 소모품</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {usableConsumables.map(item => {
+              const count = consumables[item.id] || 0;
+              const isBuffActive = item.buffType && hasActiveBuff(item.buffType);
+              const remainingTime = item.buffType ? getBuffRemainingTime(item.buffType) : 0;
+
+              return (
+                <div
+                  key={item.id}
+                  className={`bg-gray-800/50 border rounded-lg p-2 ${
+                    isBuffActive ? 'border-green-500 shadow-lg shadow-green-500/20' : 'border-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-lg">{item.icon}</span>
+                      <span className="text-xs font-bold text-white truncate">{item.name}</span>
+                    </div>
+                    <span className="text-xs text-purple-400 font-bold">×{count}</span>
+                  </div>
+
+                  {isBuffActive ? (
+                    <div className="text-[10px] text-green-400 text-center py-1">
+                      ✓ 활성 ({remainingTime}분)
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleUseConsumable(item.id)}
+                      className="w-full py-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold rounded transition-all"
+                    >
+                      사용
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 상점 탭 */}
       <div className="flex gap-2">
         {SHOP_TABS.map(tab => (

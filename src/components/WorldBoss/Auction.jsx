@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../../store/GameContext';
+import { useToast } from '../UI/ToastContainer';
 import { formatNumber } from '../../utils/formatter';
 import {
   AUCTION_ITEMS,
@@ -9,6 +10,7 @@ import {
 
 const Auction = () => {
   const { gameState, placeBid } = useGame();
+  const toast = useToast();
   const { worldBoss = {}, sealedZone = {}, player } = gameState;
   const { auction = null } = worldBoss;
   const { bossCoins = 0 } = sealedZone;
@@ -40,28 +42,28 @@ const Auction = () => {
   // 입찰하기
   const handlePlaceBid = (itemId) => {
     if (bidAmount <= 0) {
-      alert('입찰 금액을 입력해주세요!');
+      toast.warning('입찰 금액 필요', '입찰 금액을 입력해주세요!');
       return;
     }
 
     const currentBid = auction.items[itemId]?.currentBid || 0;
     if (bidAmount <= currentBid) {
-      alert(`현재 최고 입찰가(${formatNumber(currentBid)})보다 높은 금액을 입력해주세요!`);
+      toast.warning('입찰 금액 부족', `현재 최고 입찰가(${formatNumber(currentBid)})보다 높은 금액을 입력해주세요!`);
       return;
     }
 
     if (bidAmount > bossCoins) {
-      alert('보스 코인이 부족합니다!');
+      toast.warning('재화 부족', '보스 코인이 부족합니다!');
       return;
     }
 
     const result = placeBid(itemId, bidAmount, player.id, player.name || `플레이어 ${player.id}`);
     if (result.success) {
-      alert('입찰에 성공했습니다!');
+      toast.success('입찰 성공', '입찰에 성공했습니다!');
       setSelectedItem(null);
       setBidAmount(0);
     } else {
-      alert(result.message);
+      toast.error('입찰 실패', result.message);
     }
   };
 

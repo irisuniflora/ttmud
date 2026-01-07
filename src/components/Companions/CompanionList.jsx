@@ -3,18 +3,21 @@ import { useGame } from '../../store/GameContext';
 import { COMPANIONS, COMPANION_CATEGORIES, COMPANION_GRADES, GRADE_ORDER, getCompanionById } from '../../data/companions';
 import CompanionCard from './CompanionCard';
 import OrbManager from './OrbManager';
+import OrbWorkshop from './OrbWorkshop';
 import NotificationModal from '../UI/NotificationModal';
 import DiamondShop from './DiamondShop';
+import CompanionEffects from './CompanionEffects';
 
 const CompanionList = () => {
-  const { gameState, upgradeCompanionStar, equipOrbToCompanion, unequipOrbFromCompanion } = useGame();
-  const { companions = {}, companionCards = {}, companionOrbs = [] } = gameState;
+  const { gameState, upgradeCompanionStar, equipOrbToCompanion, unequipOrbFromCompanion, equipCompanion, unequipCompanion } = useGame();
+  const { companions = {}, companionCards = {}, companionOrbs = [], companionSlots = {} } = gameState;
 
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedGrade, setSelectedGrade] = useState('all');
   const [showOnlyOwned, setShowOnlyOwned] = useState(false);
   const [managingOrbsFor, setManagingOrbsFor] = useState(null);
   const [showSummonModal, setShowSummonModal] = useState(false);
+  const [showOrbWorkshop, setShowOrbWorkshop] = useState(false);
 
   const [notification, setNotification] = useState({
     isOpen: false,
@@ -82,6 +85,33 @@ const CompanionList = () => {
     unequipOrbFromCompanion(companionId, slotIndex);
   };
 
+  // 동료 장착/해제
+  const handleCompanionClick = (companionId, category) => {
+    const compState = companions[companionId];
+    if (!compState || !compState.owned) {
+      showNotification('미보유', '보유하지 않은 동료입니다.', 'warning');
+      return;
+    }
+
+    const currentEquipped = companionSlots[category];
+
+    if (currentEquipped === companionId) {
+      // 이미 장착된 동료 클릭 -> 해제
+      const result = unequipCompanion(category);
+      if (result?.success) {
+        showNotification('해제', result.message, 'info');
+      }
+    } else {
+      // 다른 동료 클릭 -> 장착 (기존 장착된 동료는 자동 해제됨)
+      const result = equipCompanion(companionId);
+      if (result?.success) {
+        showNotification('장착', result.message, 'success');
+      } else {
+        showNotification('장착 실패', result?.message || '장착에 실패했습니다.', 'error');
+      }
+    }
+  };
+
   return (
     <>
       <NotificationModal
@@ -105,16 +135,32 @@ const CompanionList = () => {
         />
       )}
 
+      {/* 오브 공방 모달 */}
+      {showOrbWorkshop && (
+        <OrbWorkshop onClose={() => setShowOrbWorkshop(false)} />
+      )}
+
       <div className="space-y-4 p-2">
-        {/* 보유 오브 현황 */}
-        <div className="bg-gradient-to-r from-blue-900 to-purple-900 border border-blue-500 rounded-lg p-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">🌀</span>
-              <span className="font-bold text-blue-300">보유 카르마 오브</span>
+        {/* 동료 효과 요약 */}
+        <CompanionEffects />
+
+        {/* 보유 오브 현황 + 공방 버튼 */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-gradient-to-r from-blue-900 to-purple-900 border border-blue-500 rounded-lg p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🌀</span>
+                <span className="font-bold text-blue-300">보유 오브</span>
+              </div>
+              <span className="text-2xl font-bold text-white">{companionOrbs.length}개</span>
             </div>
-            <span className="text-2xl font-bold text-white">{companionOrbs.length}개</span>
           </div>
+          <button
+            onClick={() => setShowOrbWorkshop(true)}
+            className="bg-gradient-to-r from-purple-700 to-pink-700 hover:from-purple-600 hover:to-pink-600 border border-purple-400 rounded-lg p-3 font-bold text-white transition-all transform hover:scale-105"
+          >
+            🔮 오브 공방
+          </button>
         </div>
 
         {/* 필터 + 소환 버튼 */}
@@ -196,6 +242,7 @@ const CompanionList = () => {
                 {categoryCompanions.map(comp => {
                   const compState = companions[comp.id] || { owned: false, stars: 0, equippedOrbs: [] };
                   const cardCount = companionCards[comp.id] || 0;
+                  const isEquipped = companionSlots[comp.category] === comp.id;
 
                   return (
                     <CompanionCard
@@ -207,6 +254,8 @@ const CompanionList = () => {
                       equippedOrbs={compState.equippedOrbs || []}
                       onUpgradeStar={handleUpgradeStar}
                       onManageOrbs={handleManageOrbs}
+                      isEquipped={isEquipped}
+                      onClick={handleCompanionClick}
                     />
                   );
                 })}
